@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "type": "debugpy",
+            "request": "launch",
+            "name": "Launch log_analyzer",
+            "program": "${workspaceFolder}/src/log_analyzer.py",
+            "args": [
+                "path/to/config.json",
+                "-p",
+                "value"
+            ]
+        }
+    ]
+}

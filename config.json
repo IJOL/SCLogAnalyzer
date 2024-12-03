@@ -1,0 +1,13 @@
+{
+    "log_file_path": "path/to/log/file",
+    "discord_webhook_url": "https://discord.com/api/webhooks/...",
+    "technical_webhook_url": "https://discord.com/api/webhooks/...",
+    "regex_patterns": {
+        "player": "m_ownerGEID\\[(?P<player>\\w+)\\]",
+        "timestamp": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+Z)>",
+        "zone": "\\[InstancedInterior\\] (?P<action>OnEntityEnterZone|OnEntityLeaveZone) - InstancedInterior \\[(?P<zone>\\w+)\\]",
+        "actor_death": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+Z)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>\\w+)' \\[\\d+\\] in zone '(?P<zone>\\w+)' killed by '(?P<killer>\\w+)' \\[\\d+\\] using '(?P<weapon>\\w+)' \\[Class unknown\\] with damage type '(?P<damage_type>\\w+)'",
+        "commodity": "\\[InstancedInterior\\] OnEntityEnterZone - InstancedInterior \\[.*\\] \\[.*\\] -> Entity \\[(?P<commodity>.*)\\] \\[.*\\] -- .* \\[.*\\], .* \\[.*\\], .* \\[.*\\], .* \\[.*\\] \\[(?P<owner>.*)\\]\\[.*\\] \\[(?P<zone>.*)\\]"
+    },
+    "important_players": ["player1", "player2"]
+}
