@@ -28,28 +28,58 @@
 
 ## Usage
 
-Run the executable with two arguments:
-```
-StarCitizenDiscordLogger.exe "C:\path\to\logfile.log" "https://discord.com/api/webhooks/your_webhook_url"
-```
+Run the script with the path to the configuration file:
 
-## Building from Source
+StarCitizenDiscordLogger.exe "path/to/config.json" [--process-all | -p]
 
-1. Run the build script:
-   ```
-   build.bat
-   ```
-
-2. The executable will be in the `dist` directory.
 
 ## Configuration
 
-- Modify the log file path
-- Use your Discord webhook URL
-- Ensure the log file is accessible
+- Modify the `config.json` file to set the log file path, Discord webhook URLs, regex patterns, and important players.
+
+### Example `config.json`
+
+```json
+{
+    "log_file_path": "path/to/log/file",
+    "discord_webhook_url": "https://discord.com/api/webhooks/...",
+    "technical_webhook_url": "https://discord.com/api/webhooks/...",
+    "regex_patterns": {
+        "player": "m_ownerGEID\\[(?P<player>\\w+)\\]",
+        "timestamp": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+Z)>",
+        "zone": "\\[InstancedInterior\\] (?P<action>OnEntityEnterZone|OnEntityLeaveZone) - InstancedInterior \\[(?P<zone>\\w+)\\]",
+        "actor_death": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+Z)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>\\w+)' \\[\\d+\\] in zone '(?P<zone>\\w+)' killed by '(?P<killer>\\w+)' \\[\\d+\\] using '(?P<weapon>\\w+)' \\[Class unknown\\] with damage type '(?P<damage_type>\\w+)'",
+        "commodity": "\\[InstancedInterior\\] OnEntityEnterZone - InstancedInterior \\[.*\\] \\[.*\\] -> Entity \\[(?P<commodity>.*)\\] \\[.*\\] -- .* \\[.*\\], .* \\[.*\\], .* \\[.*\\], .* \\[.*\\] \\[(?P<owner>.*)\\]\\[.*\\] \\[(?P<zone>.*)\\]"
+    },
+    "important_players": ["player1", "player2"]
+}
++```
 
 ## Troubleshooting
 - Check internet connection
 - Verify Discord webhook URL
 - Ensure log file path is correct
 - Confirm Python is correctly installed and added to PATH
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
