@@ -53,7 +53,7 @@ StarCitizenDiscordLogger.exe "path/to/config.json" [--process-all | -p]
     },
     "important_players": ["player1", "player2"]
 }
-+```
+```
 
 ## Troubleshooting
 - Check internet connection
