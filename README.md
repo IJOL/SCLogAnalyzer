@@ -61,6 +61,8 @@ StarCitizenDiscordLogger.exe "path/to/config.json" [--process-all | -p]
 - Ensure log file path is correct
 - Confirm Python is correctly installed and added to PATH
 
+----------------------------------------------------------------
+
 
 
 
