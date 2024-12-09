@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, config, process_all=False):
+    def __init__(self, config, process_all=False, use_discord=False):
         self.log_file_path = config['log_file_path']
         self.discord_webhook_url = config['discord_webhook_url']
         self.technical_webhook_url = config['technical_webhook_url']
@@ -29,12 +29,17 @@ class LogFileHandler(FileSystemEventHandler):
         self.last_position = 0
         self.actor_state = {}
         self.process_all = process_all
+        self.use_discord = use_discord
 
         if self.process_all:
             self.process_entire_log()
 
     def send_discord_message(self, message, technical=False):
-        """Send a message to Discord via webhook"""
+        """Send a message to Discord via webhook or stdout"""
+        if not self.use_discord:
+            print(message)
+            return
+
         try:
             payload = {
                 "content": message
@@ -216,12 +221,36 @@ class LogFileHandler(FileSystemEventHandler):
             return True
         return False
 
-def main(config_path, process_all=False):
+DEFAULT_CONFIG = {
+    "log_file_path": os.path.join(os.path.dirname(sys.executable), "Game.log"),
+    "discord_webhook_url": "",
+    "technical_webhook_url": "",
+    "regex_patterns": {
+        "player": r"Player (?P<player>\w+)",
+        "timestamp": r"\[(?P<timestamp>.*?)\]",
+        "zone": r"Zone (?P<zone>\w+): (?P<action>\w+)",
+        "actor_death": r"(?P<timestamp>\d+-\d+-\d+ \d+:\d+:\d+) - (?P<victim>\w+) was killed by (?P<killer>\w+) in zone (?P<zone>\w+) with (?P<weapon>\w+) \((?P<damage_type>\w+)\)",
+        "commodity": r"(?P<timestamp>\d+-\d+-\d+ \d+:\d+:\d+) - (?P<owner>\w+) acquired (?P<commodity>\w+) in zone (?P<zone>\w+)"
+    },
+    "important_players": []
+}
+
+def emit_default_config(config_path):
+    with open(config_path, 'w', encoding='utf-8') as config_file:
+        json.dump(DEFAULT_CONFIG, config_file, indent=4)
+    logger.info(f"Default config emitted at {config_path}")
+
+def main(process_all=False, use_discord=False):
+    config_path = os.path.join(os.path.dirname(sys.executable), "config.json")
+    
+    if not os.path.exists(config_path):
+        emit_default_config(config_path)
+    
     with open(config_path, 'r', encoding='utf-8') as config_file:
         config = json.load(config_file)
     
     logger.info(f"Monitoring log file: {config['log_file_path']}")
-    logger.info(f"Sending updates to Discord webhook")
+    logger.info(f"Sending updates to {'Discord webhook' if use_discord else 'stdout'}")
     
     # Ensure the file exists
     if not os.path.exists(config['log_file_path']):
@@ -229,7 +258,7 @@ def main(config_path, process_all=False):
         return
 
     # Create a file handler
-    event_handler = LogFileHandler(config, process_all=process_all)
+    event_handler = LogFileHandler(config, process_all=process_all, use_discord=use_discord)
     
     # Create an observer
     observer = Observer()
@@ -253,11 +282,11 @@ def main(config_path, process_all=False):
         observer.join()
 
 if __name__ == "__main__":
-    # Check if config file path is provided
-    if len(sys.argv) < 2:
-        logger.error("Usage: log_analyzer.exe <path_to_config_file> [--process-all | -p]")
-        sys.exit(1)
+    # Check for optional flags
+    if '--help' in sys.argv or '-h' in sys.argv:
+        print("Usage: log_analyzer.exe [--process-all | -p] [--discord | -d]")
+        sys.exit(0)
     
-    config_path = sys.argv[1]
     process_all = '--process-all' in sys.argv or '-p' in sys.argv
-    main(config_path, process_all)
+    use_discord = '--discord' in sys.argv or '-d' in sys.argv
+    main(process_all, use_discord)
