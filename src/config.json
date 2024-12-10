@@ -1,0 +1,15 @@
+{
+    "log_file_path": "F:\\Roberts Space Industries\\StarCitizen\\EPTU\\Game.log",
+    "discord_webhook_url": "",
+    "technical_webhook_url": "",
+    "regex_patterns": {
+        "player": "Player (?P<player>\\w+)",
+        "timestamp": "\\[(?P<timestamp>.*?)\\]",
+        "zone": "Zone (?P<zone>\\w+): (?P<action>\\w+)",
+        "actor_death": "<(?P<timestamp>.*?)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>.*?)' \\[(?P<victim_id>\\d+)\\] in zone '(?P<zone>.*?)' killed by '(?P<killer>.*?)' \\[(?P<killer_id>\\d+)\\] using '(?P<weapon>.*?)' \\[Class (?P<weapon_class>.*?)\\] with damage type '(?P<damage_type>.*?)' from direction x: (?P<direction_x>[\\d\\.-]+), y: (?P<direction_y>[\\d\\.-]+), z: (?P<direction_z>[\\d\\.-]+) \\[Team_ActorTech\\]\\[Actor\\]",
+        "commodity": "(?P<timestamp>\\d+-\\d+-\\d+ \\d+:\\d+:\\d+) - (?P<owner>\\w+) acquired (?P<commodity>\\w+) in zone (?P<zone>\\w+)",
+        "leave_zone": "<(?P<timestamp>.*?)> \\[Notice\\] <CEntityComponentInstancedInterior::OnEntityLeaveZone> \\[InstancedInterior\\] OnEntityLeaveZone - InstancedInterior \\[(?P<zone>.*?)\\] \\[(?P<zone_id>\\d+)\\] -> Entity \\[(?P<entity>.*?)\\] \\[(?P<entity_id>\\d+)\\] -- m_openDoors\\[(?P<open_doors>\\d+)\\], m_managerGEID\\[(?P<manager_geid>\\d+)\\], m_ownerGEID\\[(?P<player>.*?)\\]\\[(?P=entity_id)\\], m_isPersistent\\[(?P<persistent>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Cargo\\]",
+        "actor_stall": "<(?P<timestamp>.*?)> \\[Notice\\] <Actor stall> Actor stall detected, Player: (?P<player>.*?), Type: .*?, Length: .*?\\. \\[Team_(?P<team>.*?)\\]\\[Actor\\]"
+    },
+    "important_players": []
+}
