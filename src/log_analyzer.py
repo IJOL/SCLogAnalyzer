@@ -3,21 +3,17 @@ import time
 import re
 import sys
 import json
-import logging
 import requests
-from watchdog.observers import Observer
+#from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s: %(message)s',
-    handlers=[
-        logging.FileHandler('sc_discord_logger.log'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+def output_message(timestamp, message):
+    if timestamp:
+        print(f"{timestamp} - {message}")
+    else:
+        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        print(f"*{current_time} - {message}")
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, config, process_all=False, use_discord=False):
@@ -34,10 +30,9 @@ class LogFileHandler(FileSystemEventHandler):
         if self.process_all:
             self.process_entire_log()
 
-    def send_discord_message(self, message, technical=False):
+    def send_discord_message(self, message, technical=False, timestamp=None):
         """Send a message to Discord via webhook or stdout"""
         if not self.use_discord:
-            print(message)
             return
 
         try:
@@ -49,9 +44,9 @@ class LogFileHandler(FileSystemEventHandler):
             
             # Check if the message was sent successfully
             if response.status_code not in [200, 204]:
-                logger.error(f"Failed to send Discord message. Status code: {response.status_code}")
+                output_message(timestamp, f"Failed to send Discord message. Status code: {response.status_code}")  # Replace self.output_message
         except Exception as e:
-            logger.error(f"Error sending Discord message: {e}")
+            output_message(timestamp, f"Error sending Discord message: {e}")  # Replace self.output_message
 
     def on_modified(self, event):
         if event.src_path.lower() == self.log_file_path.lower():
@@ -73,9 +68,9 @@ class LogFileHandler(FileSystemEventHandler):
                 for entry in new_entries:
                     self.parse_log_entry(entry)
         except PermissionError:
-            logger.error("Unable to read log file. Make sure it's not locked by another process.")
+            output_message(None, "Unable to read log file. Make sure it's not locked by another process.")  # Replace self.output_message
         except Exception as e:
-            logger.error(f"Error reading log file: {e}")
+            output_message(None, f"Error reading log file: {e}")  # Replace self.output_message
 
     def process_entire_log(self):
         try:
@@ -85,9 +80,9 @@ class LogFileHandler(FileSystemEventHandler):
                     self.parse_log_entry(entry, send_message=False)
                 self.last_position = file.tell()
         except PermissionError:
-            logger.error("Unable to read log file. Make sure it's not locked by another process.")
+            output_message(None, "Unable to read log file. Make sure it's not locked by another process.")  # Replace self.output_message
         except Exception as e:
-            logger.error(f"Error reading log file: {e}")
+            output_message(None, f"Error reading log file: {e}")  # Replace self.output_message
 
     def parse_log_entry(self, entry, send_message=True):
         # Try standard detectors first
@@ -130,7 +125,7 @@ class LogFileHandler(FileSystemEventHandler):
             Tuple of (bool, dict) - Success flag and matched data
         """
         if pattern_name not in self.regex_patterns:
-            logger.error(f"Pattern {pattern_name} not found in configuration")
+            output_message(None, f"Pattern {pattern_name} not found in configuration")  # Replace self.output_message
             return False, None
 
         data = self.detect_generic(entry, self.regex_patterns[pattern_name])
@@ -138,13 +133,14 @@ class LogFileHandler(FileSystemEventHandler):
             # Extract player and action information
             player = data.get('player') or data.get('owner') or data.get('entity') or 'Unknown'
             action = pattern_name.replace('_', ' ').title()
+            timestamp = data.get('timestamp')
             
             discord_message = f"⚡ **{action}**\n" \
                             f"**Player:** {player}"
             
-            logger.info(f"{pattern_name} event for player {player}")
+            output_message(timestamp, f"{pattern_name} event for player {player}")  # Replace self.output_message
             if send_message:
-                self.send_discord_message(discord_message)
+                self.send_discord_message(discord_message, timestamp=timestamp)
             
             return True, data
         return False, None
@@ -166,9 +162,9 @@ class LogFileHandler(FileSystemEventHandler):
                             f"**Zone:** {zone}\n" \
                             f"**Timestamp:** {timestamp}"
             
-            logger.info(f"Player {player_name} {action.lower()} zone {zone}")
+            output_message(timestamp, f"Player {player_name} {action.lower()} zone {zone}")  # Replace self.output_message
             if send_message:
-                self.send_discord_message(discord_message)
+                self.send_discord_message(discord_message, timestamp=timestamp)
             
             # Update actor state
             self.actor_state[player_name] = {
@@ -185,12 +181,12 @@ class LogFileHandler(FileSystemEventHandler):
                                     f"**Zone:** {zone}\n" \
                                     f"**Timestamp:** {timestamp}\n" \
                                     f"🔊 **Sound Alert!**"
-                self.send_discord_message(augmented_message)
+                self.send_discord_message(augmented_message, timestamp=timestamp)
             
             # Send technical information for important players
             if player_name in self.important_players:
                 technical_message = f"activity,{timestamp},{player_name},{action},{zone}"
-                self.send_discord_message(technical_message, technical=True)
+                self.send_discord_message(technical_message, technical=True, timestamp=timestamp)
             
             return True
         return False
@@ -216,9 +212,9 @@ class LogFileHandler(FileSystemEventHandler):
                             f"**Damage Type:** {damage_type}\n" \
                             f"**Timestamp:** {timestamp}"
             
-            logger.info(f"Player {victim} killed by {killer} in zone {zone} using {weapon} with damage type {damage_type}")
+            output_message(timestamp, f"Player {victim} killed by {killer} in zone {zone} using {weapon} with damage type {damage_type}")  # Replace self.output_message
             if send_message:
-                self.send_discord_message(discord_message)
+                self.send_discord_message(discord_message, timestamp=timestamp)
             
             # Update actor state
             self.actor_state[victim] = {
@@ -233,7 +229,7 @@ class LogFileHandler(FileSystemEventHandler):
             # Send technical information for important players
             if victim in self.important_players or killer in self.important_players:
                 technical_message = f"death,{timestamp},{victim},{zone},{killer},{weapon},{damage_type}"
-                self.send_discord_message(technical_message, technical=True)
+                self.send_discord_message(technical_message, technical=True, timestamp=timestamp)
             
             return True
         return False
@@ -252,9 +248,9 @@ class LogFileHandler(FileSystemEventHandler):
                             f"**Zone:** {zone}\n" \
                             f"**Timestamp:** {timestamp}"
             
-            logger.info(f"Commodity {commodity} owned by {owner} in zone {zone}")
+            output_message(timestamp, f"Commodity {commodity} owned by {owner} in zone {zone}")  # Replace self.output_message
             if send_message:
-                self.send_discord_message(discord_message)
+                self.send_discord_message(discord_message, timestamp=timestamp)
             
             # Update actor state
             self.actor_state[owner] = {
@@ -266,7 +262,7 @@ class LogFileHandler(FileSystemEventHandler):
             # Send technical information for important players
             if owner in self.important_players:
                 technical_message = f"commodity,{timestamp},{owner},{commodity},{zone}"
-                self.send_discord_message(technical_message, technical=True)
+                self.send_discord_message(technical_message, technical=True, timestamp=timestamp)
             
             return True
         return False
@@ -289,7 +285,7 @@ DEFAULT_CONFIG = {
 def emit_default_config(config_path):
     with open(config_path, 'w', encoding='utf-8') as config_file:
         json.dump(DEFAULT_CONFIG, config_file, indent=4)
-    logger.info(f"Default config emitted at {config_path}")
+    output_message(None, f"Default config emitted at {config_path}")  # Replace self.output_message
 
 def main(process_all=False, use_discord=False, process_once=False):
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
@@ -300,21 +296,22 @@ def main(process_all=False, use_discord=False, process_once=False):
     with open(config_path, 'r', encoding='utf-8') as config_file:
         config = json.load(config_file)
     
-    logger.info(f"Monitoring log file: {config['log_file_path']}")
-    logger.info(f"Sending updates to {'Discord webhook' if use_discord else 'stdout'}")
-    
     # Ensure the file exists
     if not os.path.exists(config['log_file_path']):
-        logger.error(f"Log file not found at {config['log_file_path']}")
+        output_message(None, f"Log file not found at {config['log_file_path']}")  # Replace self.output_message
         return
 
     # Create a file handler
     event_handler = LogFileHandler(config, process_all=process_all, use_discord=use_discord)
     
     if process_once:
-        logger.info("Processing log file once and exiting...")
+        output_message(None, "Processing log file once and exiting...")  # Replace self.output_message
         event_handler.process_entire_log()
         return
+
+    # Log monitoring status just before starting the observer
+    output_message(None, f"Monitoring log file: {config['log_file_path']}")  # Replace self.output_message
+    output_message(None, f"Sending updates to {'Discord webhook' if use_discord else 'stdout'}")  # Replace self.output_message
 
     # Create an observer
     observer = Observer()
@@ -328,11 +325,10 @@ def main(process_all=False, use_discord=False, process_once=False):
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        # Allow clean exit
-        logger.info("Monitoring stopped by user.")
+        output_message(None, "Monitoring stopped by user.")  # Replace self.output_message
         observer.stop()
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        output_message(None, f"Unexpected error: {e}")  # Replace self.output_message
     finally:
         # Wait for the observer thread to finish
         observer.join()
@@ -340,11 +336,11 @@ def main(process_all=False, use_discord=False, process_once=False):
 if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
-        print("Usage: log_analyzer.exe [--process-all | -p] [--discord | -d] [--process-once | -o]")
-        print("Options:")
-        print("  --process-all, -p    Process entire log file before monitoring")
-        print("  --discord, -d        Send output to Discord webhook")
-        print("  --process-once, -o   Process log file once and exit")
+        print("Usage: log_analyzer.exe [--process-all | -p] [--discord | -d] [--process-once | -o]")  # Use print
+        print("Options:")  # Use print
+        print("  --process-all, -p    Process entire log file before monitoring")  # Use print
+        print("  --discord, -d        Send output to Discord webhook")  # Use print
+        print("  --process-once, -o   Process log file once and exit")  # Use print
         sys.exit(0)
     
     process_all = '--process-all' in sys.argv or '-p' in sys.argv
