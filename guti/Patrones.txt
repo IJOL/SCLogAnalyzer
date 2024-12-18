@@ -1,0 +1,54 @@
+Jugador: Roby_418 - m_ownerGEID[Roby_418][462781731085] 
+Hangar XL de Ruin Station - InstancedInterior [StreamingSOC_hangar_xltop_002_rest_rund] [468662270406]
+Nave: Entity [MISC_Starlancer_Max_469823827753] [469823827753]
+Original: <2024-12-18T11:46:42.860Z> [Notice] <CEntityComponentInstancedInterior::OnEntityEnterZone> [InstancedInterior] OnEntityEnterZone - InstancedInterior [StreamingSOC_hangar_xltop_002_rest_rund] [468662270406] -> Entity [MISC_Starlancer_Max_469823827753] [469823827753] -- m_openDoors[0], m_managerGEID[467972067418], m_ownerGEID[Roby_418][462781731085], m_isPersistent[1] [Team_NAPU][Cargo]
+
+Hangar S: InstancedInterior [StreamingSOC_hangar_smlfrnt_002_rest_rund]
+Hangar M: InstancedInterior [StreamingSOC_hangar_medfrnt_002_rest_rund]
+Hangar L: InstancedInterior [StreamingSOC_hangar_lrgtop_002_rest_rund]
+
+Subfijos de marcas de naves: ANVL_ MISC_
+Naves: Entity [ANVL_Terrapin_Medic_469823828654]
+
+[MUERTES]
+
+- Suicido por chocarse con su nave
+
+Jugador muerto: CActor::Kill: 'Escoleiro7' [455917634486]
+Donde: in zone 'DRAK_Corsair_469823831532'
+Quien: killed by 'unknown'
+Por que: using 'unknown' [Class unknown]
+Tipo de daño: with damage type 'Crash'
+
+Original: <2024-12-18T11:55:51.996Z> [Notice] <Actor Death> CActor::Kill: 'Escoleiro7' [455917634486] in zone 'DRAK_Corsair_469823831532' killed by 'unknown' [0] using 'unknown' [Class unknown] with damage type 'Crash' from direction x: 0.000000, y: 0.000000, z: 0.000000 [Team_ActorTech][Actor]
+
+- NPC muere pero no indica quien lo mata:
+
+Jugador muerto: CActor::Kill: 'PU_Human_Enemy_GroundCombat_NPC_Contestedzones_grunt_469823821553' [469823821553]
+Donde: in zone 'p2l4_contestedzone' (suponemos que es la contestedzone de Ruin Station)
+Quien: killed by 'behr_pistol_ballistic_01_469823820285' [469823820285]
+Por que: using 'behr_pistol_ballistic_01_469823820285' [Class unknown]
+Tipo de daño: with damage type 'Collision'
+
+Original: <2024-12-18T11:56:33.645Z> [Notice] <Actor Death> CActor::Kill: 'PU_Human_Enemy_GroundCombat_NPC_Contestedzones_grunt_469823821553' [469823821553] in zone 'p2l4_contestedzone' killed by 'behr_pistol_ballistic_01_469823820285' [469823820285] using 'behr_pistol_ballistic_01_469823820285' [Class unknown] with damage type 'Collision' from direction x: -0.225535, y: 0.974235, z: 0.000000 [Team_ActorTech][Actor]
+
+- Otros ejemplos de muertes:
+
+Por explosivo: <2024-12-18T11:56:37.576Z> [Notice] <Actor Death> CActor::Kill: 'PU_Human_Enemy_GroundCombat_NPC_Contestedzones_grunt_469823819850' [469823819850] in zone 'p2l4_contestedzone' killed by 'unknown' [0] using 'unknown' [Class unknown] with damage type 'Explosion' from direction x: -1.108948, y: -1.315707, z: 0.250001 [Team_ActorTech][Actor]
+Por disparos Un jugador a un NPC: <2024-12-18T11:57:07.129Z> [Notice] <Actor Death> CActor::Kill: 'PU_Human_Enemy_GroundCombat_NPC_Contestedzones_grunt_469823821535' [469823821535] in zone 'p2l4_contestedzone' killed by 'DZ_gutiway' [446695608975] using 'behr_rifle_ballistic_01_469823833017' [Class behr_rifle_ballistic_01] with damage type 'Bullet' from direction x: -0.106537, y: 0.993675, z: 0.035487 [Team_ActorTech][Actor]
+
+
+
+
+[NO RELEVANTE]
+
+Nuevo: Entity [StreamingSOC_rear_elevator] [469823833953]
+Original: <2024-12-18T11:59:58.941Z> [Notice] <CEntityComponentInstancedInterior::OnEntityEnterZone> [InstancedInterior] OnEntityEnterZone - InstancedInterior [StreamingSOC_hangar_lrgtop_002_rest_rund] [468666333882] -> Entity [StreamingSOC_rear_elevator] [469823833953] -- m_openDoors[0], m_managerGEID[467972067418], m_ownerGEID[TheRealDutchGuy][445469462634], m_isPersistent[1] [Team_NAPU][Cargo]
+
+Nuevo y no se que indicia: Entity [StreamingSOC_rstop_elev_util_cab_001_rund_001]
+Original: <2024-12-18T11:51:45.730Z> [Notice] <CEntityComponentInstancedInterior::OnEntityEnterZone> [InstancedInterior] OnEntityEnterZone - InstancedInterior [StreamingSOC_hangar_smlfrnt_002_rest_rund] [468704268768] -> Entity [StreamingSOC_rstop_elev_util_cab_001_rund_001] [469823828602] -- m_openDoors[0], m_managerGEID[467972067418], m_ownerGEID[HENLEYbls][455917632662], m_isPersistent[1] [Team_NAPU][Cargo]
+
+
+Nuevo y no se que indicia: (tractor beam?) Entity [grin_tractor_01_468675873675] [468675873675] y (optica de un arma x8?) Entity [gmni_optics_tsco_x8_s3_firerats01_468675873761]
+<2024-12-18T12:01:40.798Z> [Notice] <CEntityComponentInstancedInterior::OnEntityLeaveZone> [InstancedInterior] OnEntityLeaveZone - InstancedInterior [StreamingSOC_hangar_xltop_002_rest_rund] [467439804245] -> Entity [grin_tractor_01_468675873675] [468675873675] -- m_openDoors[0], m_managerGEID[467972067418], m_ownerGEID[XirT07][455917634810], m_isPersistent[1] [Team_NAPU][Cargo]
+<2024-12-18T12:01:47.005Z> [Notice] <CEntityComponentInstancedInterior::OnEntityLeaveZone> [InstancedInterior] OnEntityLeaveZone - InstancedInterior [StreamingSOC_hangar_xltop_002_rest_rund] [467439804245] -> Entity [gmni_optics_tsco_x8_s3_firerats01_468675873761] [468675873761] -- m_openDoors[0], m_managerGEID[467972067418], m_ownerGEID[XirT07][455917634810], m_isPersistent[1] [Team_NAPU][Cargo]
