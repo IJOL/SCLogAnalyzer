@@ -4,6 +4,7 @@ import re
 import sys
 import json
 import requests
+import traceback
 #from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
@@ -21,6 +22,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.discord_webhook_url = config['discord_webhook_url']
         self.technical_webhook_url = config['technical_webhook_url']
         self.regex_patterns = config['regex_patterns']
+        self.messages = config.get('messages', {})
         self.important_players = config['important_players']
         self.last_position = 0
         self.actor_state = {}
@@ -82,7 +84,7 @@ class LogFileHandler(FileSystemEventHandler):
         except PermissionError:
             output_message(None, "Unable to read log file. Make sure it's not locked by another process.")  # Replace self.output_message
         except Exception as e:
-            output_message(None, f"Error reading log file: {e}")  # Replace self.output_message
+            output_message(None, f"Error reading log file: {e}\n{traceback.format_exc()}")  # Replace self.output_message
 
     def parse_log_entry(self, entry, send_message=True):
         # Try standard detectors first
@@ -131,14 +133,16 @@ class LogFileHandler(FileSystemEventHandler):
         data = self.detect_generic(entry, self.regex_patterns[pattern_name])
         if data:
             # Extract player and action information
-            player = data.get('player') or data.get('owner') or data.get('entity') or 'Unknown'
-            action = pattern_name.replace('_', ' ').title()
+            data['player'] = data.get('player') or data.get('owner') or data.get('entity') or 'Unknown'
+            data['action'] = pattern_name.replace('_', ' ').title()
             timestamp = data.get('timestamp')
             
-            discord_message = f"⚡ **{action}**\n" \
-                            f"**Player:** {player}"
+            # Use the configured message format if available, otherwise use a default message
+            message_format = self.messages.get(f"{pattern_name}_discord", "⚡ **{action}**\n**Player:** {player}")
+            discord_message = message_format.format(**data)
             
-            output_message(timestamp, f"{pattern_name} event for player {player}")  # Replace self.output_message
+            output_message_format = self.messages.get(pattern_name, f"{pattern_name} event for player {data['player']}")
+            output_message(timestamp, output_message_format.format(**data))
             if send_message:
                 self.send_discord_message(discord_message, timestamp=timestamp)
             
@@ -162,7 +166,8 @@ class LogFileHandler(FileSystemEventHandler):
                             f"**Zone:** {zone}\n" \
                             f"**Timestamp:** {timestamp}"
             
-            output_message(timestamp, f"Player {player_name} {action.lower()} zone {zone}")  # Replace self.output_message
+            output_message_format = self.messages.get("player_activity", f"Player {player_name} {action.lower()} zone {zone}")
+            output_message(timestamp, output_message_format.format(player=player_name, action=action, zone=zone, timestamp=timestamp))
             if send_message:
                 self.send_discord_message(discord_message, timestamp=timestamp)
             
@@ -212,7 +217,8 @@ class LogFileHandler(FileSystemEventHandler):
                             f"**Damage Type:** {damage_type}\n" \
                             f"**Timestamp:** {timestamp}"
             
-            output_message(timestamp, f"Player {victim} killed by {killer} in zone {zone} using {weapon} with damage type {damage_type}")  # Replace self.output_message
+            output_message_format = self.messages.get("actor_death", f"Player {victim} killed by {killer} in zone {zone} using {weapon} with damage type {damage_type}")
+            output_message(timestamp, output_message_format.format(victim=victim, killer=killer, zone=zone, weapon=weapon, damage_type=damage_type, timestamp=timestamp))
             if send_message:
                 self.send_discord_message(discord_message, timestamp=timestamp)
             
@@ -248,7 +254,8 @@ class LogFileHandler(FileSystemEventHandler):
                             f"**Zone:** {zone}\n" \
                             f"**Timestamp:** {timestamp}"
             
-            output_message(timestamp, f"Commodity {commodity} owned by {owner} in zone {zone}")  # Replace self.output_message
+            output_message_format = self.messages.get("commodity_activity", f"Commodity {commodity} owned by {owner} in zone {zone}")
+            output_message(timestamp, output_message_format.format(owner=owner, commodity=commodity, zone=zone, timestamp=timestamp))
             if send_message:
                 self.send_discord_message(discord_message, timestamp=timestamp)
             
@@ -277,9 +284,13 @@ DEFAULT_CONFIG = {
         "zone": r"Zone (?P<zone>\w+): (?P<action>\w+)",
         "actor_death": r"<(?P<timestamp>.*?)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>.*?)' \\[(?P<victim_id>\\d+)\\] in zone '(?P<zone>.*?)' killed by '(?P<killer>.*?)' \\[(?P<killer_id>\\d+)\\] using '(?P<weapon>.*?)' \\[Class (?P<weapon_class>.*?)\\] with damage type '(?P<damage_type>.*?)' from direction x: (?P<direction_x>[\\d\\.-]+), y: (?P<direction_y>[\\d\\.-]+), z: (?P<direction_z>[\\d\\.-]+) \\[Team_ActorTech\\]\\[Actor\\]",
         "commodity": r"(?P<timestamp>\d+-\d+-\d+ \d+:\d+:\d+) - (?P<owner>\w+) acquired (?P<commodity>\w+) in zone (?P<zone>\w+)",
-        "leave_zone": r"<(?P<timestamp>.*?)> \\[Notice\\] <CEntityComponentInstancedInterior::OnEntityLeaveZone> \\[InstancedInterior\\] OnEntityLeaveZone - InstancedInterior \\[(?P<zone>.*?)\\] \\[(?P<zone_id>\\d+)\\] -> Entity \\[(?P<entity>.*?)\\] \\[(?P<entity_id>\\d+)\\] -- m_openDoors\\[(?P<open_doors>\\d+)\\], m_managerGEID\\[(?P<manager_geid>\\d+)\\], m_ownerGEID\\[(?P<owner>.*?)\\]\\[(?P<entity_id>\\d+)\\], m_isPersistent\\[(?P<persistent>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Cargo\\]"
+        "leave_zone": r"<(?P<timestamp>.*?)> \\[Notice\\] <CEntityComponentInstancedInterior::OnEntityLeaveZone> \\[InstancedInterior\\] OnEntityLeaveZone - InstancedInterior \\[(?P<zone>.*?)\\] \\[(?P<zone_id>\\d+)\\] -> Entity \\[(?P<entity>.*?)\\] \\[(?P<entity_id>\\d+)\\] -- m_openDoors\\[(?P<open_doors>\\d+)\\], m_managerGEID\\[(?P<manager_geid>\\d+)\\], m_ownerGEID\\[(?P<owner>.*?)\\]\\[(?P<entity_id>\\d+)\\], m_isPersistent\\[(?P<persistent>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Cargo\\]",
     },
-    "important_players": []
+    "important_players": [],
+    "messages": {
+        "actor_death": "Player {victim} killed by {killer} in zone {zone} using {weapon} with damage type {damage_type} at {timestamp}",
+        "leave_zone": "Entity {entity} left zone {zone} at {timestamp}"
+    }
 }
 
 def emit_default_config(config_path):
