@@ -90,14 +90,13 @@ class LogFileHandler(FileSystemEventHandler):
         # Try standard detectors first
         if self.detect_player_activity(entry, send_message):
             return
-        if self.detect_actor_death(entry, send_message):
-            return
+
         if self.detect_commodity_activity(entry, send_message):
             return
             
         # Try generic detection for any other configured patterns
         for pattern_name in self.regex_patterns.keys():
-            if pattern_name not in ['player', 'timestamp', 'zone', 'actor_death', 'commodity']:
+            if pattern_name not in ['player', 'timestamp', 'zone', 'commodity']:
                 success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
                 if success:
                     return
