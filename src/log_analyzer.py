@@ -28,27 +28,51 @@ class LogFileHandler(FileSystemEventHandler):
         self.actor_state = {}
         self.process_all = process_all
         self.use_discord = use_discord
+        self.discord_messages = config.get('discord', {})
 
         if self.process_all:
             self.process_entire_log()
 
-    def send_discord_message(self, message, technical=False, timestamp=None):
+    def send_discord_message(self, data, pattern_name=None, technical=False):
         """Send a message to Discord via webhook or stdout"""
         if not self.use_discord:
             return
 
         try:
-            payload = {
-                "content": message
-            }
-            url = self.technical_webhook_url if technical else self.discord_webhook_url
+            if technical:
+                # Technical messages are sent as-is
+                payload = {"content": data}
+                url = self.technical_webhook_url
+            elif pattern_name and pattern_name in self.discord_messages:
+                # Get all possible player references from the data
+                player_fields = ['player', 'owner', 'victim', 'killer', 'entity']
+                players = [data.get(field) for field in player_fields if data.get(field)]
+                
+                # Determine if we should send the message based on important_players
+                should_send = (
+                    not self.important_players or  # Send if no important players configured
+                    any(player in self.important_players for player in players)  # Or if any player is important
+                )
+                
+                if should_send:
+                    # Add alert emoji if any player is in important_players
+                    if any(player in self.important_players for player in players):
+                        data['alert'] = '🔊 Sound Alert!'
+                    else:
+                        data['alert'] = ''  # Empty string for non-important players
+                        
+                    payload = {"content": self.discord_messages[pattern_name].format(**data)}
+                    url = self.discord_webhook_url
+                else:
+                    return
+            else:
+                return
+                
             response = requests.post(url, json=payload)
-            
-            # Check if the message was sent successfully
             if response.status_code not in [200, 204]:
-                output_message(timestamp, f"Failed to send Discord message. Status code: {response.status_code}")  # Replace self.output_message
+                output_message(None, f"Failed to send Discord message. Status code: {response.status_code}")
         except Exception as e:
-            output_message(timestamp, f"Error sending Discord message: {e}")  # Replace self.output_message
+            output_message(None, f"Error sending Discord message: {e}")
 
     def on_modified(self, event):
         if event.src_path.lower() == self.log_file_path.lower():
@@ -87,16 +111,13 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, f"Error reading log file: {e}\n{traceback.format_exc()}")  # Replace self.output_message
 
     def parse_log_entry(self, entry, send_message=True):
-        # Try standard detectors first
-        if self.detect_player_activity(entry, send_message):
-            return
-
+        # Try commodity activity first
         if self.detect_commodity_activity(entry, send_message):
             return
             
         # Try generic detection for any other configured patterns
         for pattern_name in self.regex_patterns.keys():
-            if pattern_name not in ['player', 'timestamp', 'zone', 'commodity']:
+            if pattern_name not in ['timestamp', 'zone', 'commodity']:
                 success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
                 if success:
                     return
@@ -136,149 +157,64 @@ class LogFileHandler(FileSystemEventHandler):
             data['action'] = pattern_name.replace('_', ' ').title()
             timestamp = data.get('timestamp')
             
-            # Use the configured message format if available, otherwise use a default message
-            message_format = self.messages.get(f"{pattern_name}_discord", "⚡ **{action}**\n**Player:** {player}")
-            discord_message = message_format.format(**data)
-            
-            output_message_format = self.messages.get(pattern_name, f"{pattern_name} event for player {data['player']}")
-            output_message(timestamp, output_message_format.format(**data))
+            output_message_format = self.messages.get(pattern_name)
+            if not output_message_format is None:
+                output_message(timestamp, output_message_format.format(**data))
             if send_message:
-                self.send_discord_message(discord_message, timestamp=timestamp)
+                self.send_discord_message(data, pattern_name=pattern_name)
             
             return True, data
         return False, None
 
-    def detect_player_activity(self, entry, send_message=True):
-        player_data = self.detect_generic(entry, self.regex_patterns['player'])
-        timestamp_data = self.detect_generic(entry, self.regex_patterns['timestamp'])
-        zone_data = self.detect_generic(entry, self.regex_patterns['zone'])
-        
-        if player_data and timestamp_data and zone_data:
-            player_name = player_data['player']
-            timestamp = timestamp_data['timestamp']
-            action = zone_data['action']
-            zone = zone_data['zone']
-            
-            discord_message = f"🚀 **Star Citizen Activity**\n" \
-                            f"**Player:** {player_name}\n" \
-                            f"**Action:** {action}\n" \
-                            f"**Zone:** {zone}\n" \
-                            f"**Timestamp:** {timestamp}"
-            
-            output_message_format = self.messages.get("player_activity", f"Player {player_name} {action.lower()} zone {zone}")
-            output_message(timestamp, output_message_format.format(player=player_name, action=action, zone=zone, timestamp=timestamp))
-            if send_message:
-                self.send_discord_message(discord_message, timestamp=timestamp)
-            
-            # Update actor state
-            self.actor_state[player_name] = {
-                'action': action,
-                'zone': zone,
-                'timestamp': timestamp
-            }
-            
-            # Send augmented notification for important players
-            if player_name in self.important_players:
-                augmented_message = f"🔔 **Important Player Activity**\n" \
-                                    f"**Player:** {player_name}\n" \
-                                    f"**Action:** {action}\n" \
-                                    f"**Zone:** {zone}\n" \
-                                    f"**Timestamp:** {timestamp}\n" \
-                                    f"🔊 **Sound Alert!**"
-                self.send_discord_message(augmented_message, timestamp=timestamp)
-            
-            # Send technical information for important players
-            if player_name in self.important_players:
-                technical_message = f"activity,{timestamp},{player_name},{action},{zone}"
-                self.send_discord_message(technical_message, technical=True, timestamp=timestamp)
-            
-            return True
-        return False
-
-    def detect_actor_death(self, entry, send_message=True):
-        death_data = self.detect_generic(entry, self.regex_patterns['actor_death'])
-        if death_data:
-            victim = death_data['victim']
-            zone = death_data['zone']
-            killer = death_data['killer']
-            weapon = death_data['weapon']
-            damage_type = death_data['damage_type']
-            timestamp = death_data['timestamp']
-            
-            if victim.startswith('PU_') or victim.startswith('Kopion_'):
-                return False
-
-            discord_message = f"💀 **Star Citizen Death Event**\n" \
-                            f"**Victim:** {victim}\n" \
-                            f"**Zone:** {zone}\n" \
-                            f"**Killer:** {killer}\n" \
-                            f"**Weapon:** {weapon}\n" \
-                            f"**Damage Type:** {damage_type}\n" \
-                            f"**Timestamp:** {timestamp}"
-            
-            output_message_format = self.messages.get("actor_death", f"Player {victim} killed by {killer} in zone {zone} using {weapon} with damage type {damage_type}")
-            output_message(timestamp, output_message_format.format(victim=victim, killer=killer, zone=zone, weapon=weapon, damage_type=damage_type, timestamp=timestamp))
-            if send_message:
-                self.send_discord_message(discord_message, timestamp=timestamp)
-            
-            # Update actor state
-            self.actor_state[victim] = {
-                'status': 'dead',
-                'zone': zone,
-                'timestamp': timestamp,
-                'killed_by': killer,
-                'weapon': weapon,
-                'damage_type': damage_type
-            }
-            
-            # Send technical information for important players
-            if victim in self.important_players or killer in self.important_players:
-                technical_message = f"death,{timestamp},{victim},{zone},{killer},{weapon},{damage_type}"
-                self.send_discord_message(technical_message, technical=True, timestamp=timestamp)
-            
-            return True
-        return False
-
     def detect_commodity_activity(self, entry, send_message=True):
+        # Check if required pattern exists
+        if 'commodity' not in self.regex_patterns:
+            output_message(None, "Missing 'commodity' pattern in configuration")
+            return False
+            
         commodity_data = self.detect_generic(entry, self.regex_patterns['commodity'])
-        if commodity_data:
-            owner = commodity_data['owner']
-            commodity = commodity_data['commodity']
-            zone = commodity_data['zone']
-            timestamp = commodity_data['timestamp']
+        if not commodity_data:
+            return False
             
-            discord_message = f"📦 **Star Citizen Commodity Activity**\n" \
-                            f"**Owner:** {owner}\n" \
-                            f"**Commodity:** {commodity}\n" \
-                            f"**Zone:** {zone}\n" \
-                            f"**Timestamp:** {timestamp}"
+        # Validate required fields
+        required_fields = ['owner', 'commodity', 'zone', 'timestamp']
+        missing_fields = [field for field in required_fields if not commodity_data.get(field)]
+        
+        if missing_fields:
+            output_message(None, f"Missing required fields in commodity data: {', '.join(missing_fields)}")
+            return False
+
+        # All validation passed, proceed with processing
+        data = {field: commodity_data[field] for field in required_fields}
+        
+        message = self.messages.get("commodity_activity")
+        if not message:
+            output_message(None, "Missing 'commodity_activity' message template")
+            return False
             
-            output_message_format = self.messages.get("commodity_activity", f"Commodity {commodity} owned by {owner} in zone {zone}")
-            output_message(timestamp, output_message_format.format(owner=owner, commodity=commodity, zone=zone, timestamp=timestamp))
-            if send_message:
-                self.send_discord_message(discord_message, timestamp=timestamp)
-            
-            # Update actor state
-            self.actor_state[owner] = {
-                'commodity': commodity,
-                'zone': zone,
-                'timestamp': timestamp
-            }
-            
-            # Send technical information for important players
-            if owner in self.important_players:
-                technical_message = f"commodity,{timestamp},{owner},{commodity},{zone}"
-                self.send_discord_message(technical_message, technical=True, timestamp=timestamp)
-            
-            return True
-        return False
+        output_message(data['timestamp'], message.format(**data))
+        if send_message:
+            self.send_discord_message(data, pattern_name='commodity_activity')
+        
+        # Update actor state
+        self.actor_state[data['owner']] = {
+            'commodity': data['commodity'],
+            'zone': data['zone'],
+            'timestamp': data['timestamp']
+        }
+        
+        # Send technical information for important players
+        if data['owner'] in self.important_players:
+            technical_message = f"commodity,{data['timestamp']},{data['owner']},{data['commodity']},{data['zone']}"
+            self.send_discord_message(technical_message, technical=True)
+        
+        return True
 
 DEFAULT_CONFIG = {
     "log_file_path": os.path.join(os.path.dirname(__file__), "Game.log"),
     "discord_webhook_url": "",
     "technical_webhook_url": "",
     "regex_patterns": {
-        "player": r"Player (?P<player>\w+)",
         "timestamp": r"\[(?P<timestamp>.*?)\]",
         "zone": r"Zone (?P<zone>\w+): (?P<action>\w+)",
         "actor_death": r"<(?P<timestamp>.*?)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>.*?)' \\[(?P<victim_id>\\d+)\\] in zone '(?P<zone>.*?)' killed by '(?P<killer>.*?)' \\[(?P<killer_id>\\d+)\\] using '(?P<weapon>.*?)' \\[Class (?P<weapon_class>.*?)\\] with damage type '(?P<damage_type>.*?)' from direction x: (?P<direction_x>[\\d\\.-]+), y: (?P<direction_y>[\\d\\.-]+), z: (?P<direction_z>[\\d\\.-]+) \\[Team_ActorTech\\]\\[Actor\\]",
@@ -288,7 +224,13 @@ DEFAULT_CONFIG = {
     "important_players": [],
     "messages": {
         "actor_death": "Player {victim} killed by {killer} in zone {zone} using {weapon} with damage type {damage_type} at {timestamp}",
-        "leave_zone": "Entity {entity} left zone {zone} at {timestamp}"
+        "leave_zone": "Entity {entity} left zone {zone} at {timestamp}",
+        "commodity_activity": "Commodity {commodity} owned by {owner} in zone {zone}"
+    },
+    "discord": {
+        "actor_death": "💀 **Death Alert**\n**Victim:** {victim}\n**Killer:** {killer}\n**Zone:** {zone}\n**Weapon:** {weapon}\n**Type:** {damage_type}\n{alert}",
+        "leave_zone": "🚪 **Zone Change**\n**Entity:** {entity}\n**Zone:** {zone}\n{alert}",
+        "commodity_activity": "📦 **Commodity**\n**Owner:** {owner}\n**Item:** {commodity}\n**Zone:** {zone}\n{alert}"
     }
 }
 
