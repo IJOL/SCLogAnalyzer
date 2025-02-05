@@ -15,7 +15,8 @@
         "enter_player": "<(?P<timestamp>.*?)> \\[Notice\\] <CEntityComponentInstancedInterior::OnEntityEnterZone> \\[InstancedInterior\\] OnEntityEnterZone - InstancedInterior \\[(?P<zone>.*?)\\] \\[(?P<zone_id>\\d+)\\] -> Entity \\[(?P<entity>.*?)\\] \\[(?P<entity_id>\\d+)\\] -- m_openDoors\\[(?P<open_doors>\\d+)\\], m_managerGEID\\[(?P<manager_geid>\\d+)\\], m_ownerGEID\\[(?P<player>.*?)\\]\\[(?P=entity_id)\\], m_isPersistent\\[(?P<persistent>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Cargo\\]",
         "enter_ship": "<(?P<timestamp>.*?)> \\[Notice\\] <CEntityComponentInstancedInterior::OnEntityEnterZone> \\[InstancedInterior\\] OnEntityEnterZone - InstancedInterior \\[(?P<zone>.*?)\\] \\[(?P<zone_id>\\d+)\\] -> Entity \\[(?P<entity>(ORIG|CRUS|RSI|AEGS|VNCL|DRAK|ANVL|BANU|MISC|CNOU|XIAN|GAMA|TMBL|ESPR|KRIG|GRIN|XNAA)_.*?)\\] \\[(?P<entity_id>\\d+)\\] -- m_openDoors\\[(?P<open_doors>\\d+)\\], m_managerGEID\\[(?P<manager_geid>\\d+)\\], m_ownerGEID\\[(?P<player>.*?)\\]\\[(?P<player_id>.*?)\\], m_isPersistent\\[(?P<persistent>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Cargo\\]",
         "leave_ship": "<(?P<timestamp>.*?)> \\[Notice\\] <CEntityComponentInstancedInterior::OnEntityLeaveZone> \\[InstancedInterior\\] OnEntityLeaveZone - InstancedInterior \\[(?P<zone>.*?)\\] \\[(?P<zone_id>\\d+)\\] -> Entity \\[(?P<entity>(ORIG|CRUS|RSI|AEGS|VNCL|DRAK|ANVL|BANU|MISC|CNOU|XIAN|GAMA|TMBL|ESPR|KRIG|GRIN|XNAA)_.*?)\\] \\[(?P<entity_id>\\d+)\\] -- m_openDoors\\[(?P<open_doors>\\d+)\\], m_managerGEID\\[(?P<manager_geid>\\d+)\\], m_ownerGEID\\[(?P<player>.*?)\\]\\[(?P<player_id>.*?)\\], m_isPersistent\\[(?P<persistent>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Cargo\\]",
-        "connected" : "<(?P<timestamp>[^>]+)> \\[CSessionManager::OnClientConnected\\] (?P<message>Connected!)"
+        "connected" : "<(?P<timestamp>[^>]+)> \\[CSessionManager::OnClientConnected\\] (?P<message>Connected!)",
+        "quantum_jump" : "<(?P<timestamp>[^>]+)> -- Entity Trying To QT: (?P<player>.+)" 
     },
     "important_players": [],
     "messages": {
@@ -25,7 +26,8 @@
         "enter_player": "{player}: Entered zone {zone}",
         "enter_ship": "{player}: Ship {entity} entered zone {zone}",
         "leave_ship": "{player}: Ship {entity} left zone {zone}",
-        "connected": "====================== Connected ======================"
+        "connected": "====================== Connected ======================",
+        "quantum_jump": "{player} is trying to quantum jump"
     },
     "discord": {
         "player_death": "{username} :skull: **Player Death** :skull: {victim} was killed by {killer} using {weapon} in {zone} with {damage_type}"
