@@ -1,11 +1,25 @@
 {
     "configurations": [
+
+        {
+            "name": "Launch bot_fusionado.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/guti/bot_fusionado.py",
+            "console": "integratedTerminal",
+            "args": [
+                "${workspaceFolder}/guti/config_fusionado.json"
+            ]
+        },
         {
             "type": "debugpy",
             "request": "launch",
             "name": "Launch log_analyzer",
             "program": "${workspaceFolder}/src/log_analyzer.py",
-            "args": [ "-p"]
+            "console": "integratedTerminal",
+            "args": [
+                "-p"
+            ]
         }
     ]
 }

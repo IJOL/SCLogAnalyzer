@@ -1,5 +1,6 @@
 {
     "log_file_path": "E:\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log",
+    "username": "Hippoman",
     "discord_webhook_url": "",
     "technical_webhook_url": "",
     "regex_patterns": {
@@ -7,6 +8,7 @@
         "timestamp": "\\[(?P<timestamp>.*?)\\]",
         "zone": "Zone (?P<zone>\\w+): (?P<action>\\w+)",
         "actor_death": "<(?P<timestamp>.*?)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>.*?)' \\[(?P<victim_id>\\d+)\\] in zone '(?P<zone>.*?)' killed by '(?P<killer>.*?)' \\[(?P<killer_id>\\d+)\\] using '(?P<weapon>.*?)' \\[Class (?P<weapon_class>.*?)\\] with damage type '(?P<damage_type>.*?)' from direction x: (?P<direction_x>[\\d\\.-]+), y: (?P<direction_y>[\\d\\.-]+), z: (?P<direction_z>[\\d\\.-]+) \\[Team_ActorTech\\]\\[Actor\\]",
+        "player_death" : "<(?P<timestamp>.*?)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>(?!PU_).*?)' \\[(?P<victim_id>\\d+)\\] in zone '(?P<zone>.*?)' killed by '(?P<killer>(?!PU_).*?)' \\[(?P<killer_id>\\d+)\\] using '(?P<weapon>.*?)' \\[Class (?P<weapon_class>.*?)\\] with damage type '(?P<damage_type>.*?)' from direction x: (?P<direction_x>[\\d\\.-]+), y: (?P<direction_y>[\\d\\.-]+), z: (?P<direction_z>[\\d\\.-]+) \\[Team_ActorTech\\]\\[Actor\\]",
         "commodity": "(?P<timestamp>\\d+-\\d+-\\d+ \\d+:\\d+:\\d+) - (?P<owner>\\w+) acquired (?P<commodity>\\w+) in zone (?P<zone>\\w+)",
         "leave_player": "<(?P<timestamp>.*?)> \\[Notice\\] <CEntityComponentInstancedInterior::OnEntityLeaveZone> \\[InstancedInterior\\] OnEntityLeaveZone - InstancedInterior \\[(?P<zone>.*?)\\] \\[(?P<zone_id>\\d+)\\] -> Entity \\[(?P<entity>.*?)\\] \\[(?P<entity_id>\\d+)\\] -- m_openDoors\\[(?P<open_doors>\\d+)\\], m_managerGEID\\[(?P<manager_geid>\\d+)\\], m_ownerGEID\\[(?P<player>.*?)\\]\\[(?P=entity_id)\\], m_isPersistent\\[(?P<persistent>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Cargo\\]",
         "actor_stall": "<(?P<timestamp>.*?)> \\[Notice\\] <Actor stall> Actor stall detected, Player: (?P<player>.*?), Type: .*?, Length: .*?\\. \\[Team_(?P<team>.*?)\\]\\[Actor\\]",
@@ -18,10 +20,14 @@
     "important_players": [],
     "messages": {
         "actor_death": "******* {killer}->{victim}: {zone} - {weapon} - {damage_type}",
+        "actor_stall": "{player}: Stalled",
         "leave_player": "{player}: Left zone {zone}",
         "enter_player": "{player}: Entered zone {zone}",
         "enter_ship": "{player}: Ship {entity} entered zone {zone}",
         "leave_ship": "{player}: Ship {entity} left zone {zone}",
         "connected": "====================== Connected ======================"
+    },
+    "discord": {
+        "player_death": "{username} :skull: **Player Death** :skull: {victim} was killed by {killer} using {weapon} in {zone} with {damage_type}"
     }
 }
