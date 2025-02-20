@@ -9,7 +9,7 @@ call .venv\Scripts\activate
 :: pip install -r requirements.txt
 
 :: Build executable using PyInstaller
-pyinstaller --onefile --windowed src/log_analyzer.py
+pyinstaller --onefile --console --clean src/log_analyzer.py
 
 echo Build complete. Executable will be in the 'dist' directory.
 pause

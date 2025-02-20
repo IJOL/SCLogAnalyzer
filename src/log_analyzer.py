@@ -239,15 +239,33 @@ def emit_default_config(config_path):
         json.dump(DEFAULT_CONFIG, config_file, indent=4)
     output_message(None, f"Default config emitted at {config_path}")  # Replace self.output_message
 
+def get_application_path():
+    """Determine the correct application path whether running as .py or .exe"""
+    if getattr(sys, 'frozen', False):
+        # If the application is run as a bundle (exe)
+        return os.path.dirname(sys.executable)
+    else:
+        # If the application is run as a python script
+        return os.path.dirname(os.path.abspath(__file__))
+
 def main(process_all=False, use_discord=False, process_once=False):
-    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    app_path = get_application_path()
+    config_path = os.path.join(app_path, "config.json")
+    
+    output_message(None, f"Loading config from: {config_path}")
     
     if not os.path.exists(config_path):
+        output_message(None, f"Config file not found, creating default at: {config_path}")
         emit_default_config(config_path)
     
     with open(config_path, 'r', encoding='utf-8') as config_file:
         config = json.load(config_file)
+        output_message(None, f"Config loaded successfully from: {config_path}")
     
+    # If log_file_path is relative, make it relative to the application path
+    if not os.path.isabs(config['log_file_path']):
+        config['log_file_path'] = os.path.join(app_path, config['log_file_path'])
+
     # Ensure the file exists
     if not os.path.exists(config['log_file_path']):
         output_message(None, f"Log file not found at {config['log_file_path']}")  # Replace self.output_message
@@ -288,7 +306,7 @@ def main(process_all=False, use_discord=False, process_once=False):
 if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
-        print("Usage: log_analyzer.exe [--process-all | -p] [--discord | -d] [--process-once | -o]")  # Use print
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--discord | -d] [--process-once | -o]")  # Use print
         print("Options:")  # Use print
         print("  --process-all, -p    Process entire log file before monitoring")  # Use print
         print("  --discord, -d        Send output to Discord webhook")  # Use print
