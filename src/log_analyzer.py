@@ -29,6 +29,8 @@ class LogFileHandler(FileSystemEventHandler):
         self.process_all = process_all
         self.use_discord = use_discord
         self.discord_messages = config.get('discord', {})
+        self.google_sheets_webhook = config.get('google_sheets_webhook', '')
+        self.google_sheets_mapping = config.get('google_sheets_mapping', {})
 
         if self.process_all:
             self.process_entire_log()
@@ -73,6 +75,26 @@ class LogFileHandler(FileSystemEventHandler):
                 output_message(None, f"Failed to send Discord message. Status code: {response.status_code}")
         except Exception as e:
             output_message(None, f"Error sending Discord message: {e}")
+
+    def update_google_sheets(self, data, event_type):
+        """Send data to Google Sheets via webhook"""
+        if not self.google_sheets_webhook or event_type not in self.google_sheets_mapping:
+            return
+
+        try:
+            sheet_name = self.google_sheets_mapping[event_type]
+            payload = {
+                "sheet": sheet_name,
+                "data": data
+            }
+            
+            response = requests.post(self.google_sheets_webhook, json=payload)
+            if response.status_code == 200:
+                output_message(None, f"Data sent to Google Sheets sheet '{sheet_name}' successfully")
+            else:
+                output_message(None, f"Error sending data to Google Sheets: {response.status_code} - {response.text}")
+        except Exception as e:
+            output_message(None, f"Exception sending data to Google Sheets: {e}")
 
     def on_modified(self, event):
         if event.src_path.lower() == self.log_file_path.lower():
@@ -163,6 +185,10 @@ class LogFileHandler(FileSystemEventHandler):
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)
             
+            # Send to Google Sheets if pattern is configured
+            if pattern_name in self.google_sheets_mapping:
+                self.update_google_sheets(data, pattern_name)
+            
             return True, data
         return False, None
 
@@ -231,7 +257,14 @@ DEFAULT_CONFIG = {
         "actor_death": "💀 **Death Alert**\n**Victim:** {victim}\n**Killer:** {killer}\n**Zone:** {zone}\n**Weapon:** {weapon}\n**Type:** {damage_type}\n{alert}",
         "leave_zone": "🚪 **Zone Change**\n**Entity:** {entity}\n**Zone:** {zone}\n{alert}",
         "commodity_activity": "📦 **Commodity**\n**Owner:** {owner}\n**Item:** {commodity}\n**Zone:** {zone}\n{alert}"
-    }
+    },
+    "google_sheets_webhook": "",  # Add this line
+    "google_sheets_mapping": {
+        "actor_death": "deaths",
+        "enter_ship": "ships",
+        "commodity": "trading",
+        "quantum_jump": "navigation"
+    },
 }
 
 def emit_default_config(config_path):

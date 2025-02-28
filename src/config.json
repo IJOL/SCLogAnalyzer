@@ -3,6 +3,13 @@
     "username": "Hippoman",
     "discord_webhook_url": "",
     "technical_webhook_url": "",
+    "google_sheets_webhook": "https://script.google.com/macros/s/AKfycbwHB4p7Z-L9Q8J1jA2koV7mByAwpPN2sWaPgoi0XMuQj_HxolWc5iaSxlLqOZZC_GEy/exec",
+    "xgoogle_sheets_webhook": "https://script.google.com/macros/s/AKfycbytbDtbv0Utl1i8Ei7Y8gjMOt8IIMZIMYWy3isGxtE/dev",
+    "google_sheets_mapping": {
+        "actor_death": "deaths",
+        "enter_ship": "ships",
+        "quantum_jump": "navigation"
+    },
     "regex_patterns": {
         "player": "Player (?P<player>\\w+)",
         "timestamp": "\\[(?P<timestamp>.*?)\\]",
