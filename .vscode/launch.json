@@ -18,7 +18,7 @@
             "program": "${workspaceFolder}/src/log_analyzer.py",
             "console": "integratedTerminal",
             "args": [
-                "-p"
+                "-p","-d"
             ]
         }
     ]

@@ -5,6 +5,8 @@ import sys
 import json
 import requests
 import traceback
+import threading
+import queue
 #from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
@@ -31,6 +33,12 @@ class LogFileHandler(FileSystemEventHandler):
         self.discord_messages = config.get('discord', {})
         self.google_sheets_webhook = config.get('google_sheets_webhook', '')
         self.google_sheets_mapping = config.get('google_sheets_mapping', {})
+        self.username = config.get('username', 'Unknown')
+        self.filter_username_pattern = config.get('filter_username_pattern', None)
+        self.google_sheets_queue = queue.Queue()
+        self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
+        self.google_sheets_thread.daemon = True
+        self.google_sheets_thread.start()
 
         if self.process_all:
             self.process_entire_log()
@@ -76,25 +84,39 @@ class LogFileHandler(FileSystemEventHandler):
         except Exception as e:
             output_message(None, f"Error sending Discord message: {e}")
 
-    def update_google_sheets(self, data, event_type):
+    def process_google_sheets_queue(self):
+        """Worker thread to process Google Sheets queue"""
+        while True:
+            try:
+                queue_data = []
+                while not self.google_sheets_queue.empty():
+                    data, event_type = self.google_sheets_queue.get()
+                    queue_data.append({'data':data,'sheet': self.google_sheets_mapping.get(event_type)})
+                    self.google_sheets_queue.task_done()
+                
+                if queue_data:
+                    self._send_to_google_sheets(queue_data)
+            except Exception as e:
+                output_message(None, f"Exception in Google Sheets worker thread: {e}")
+
+    def _send_to_google_sheets(self, queue_data):
         """Send data to Google Sheets via webhook"""
-        if not self.google_sheets_webhook or event_type not in self.google_sheets_mapping:
+        if not self.google_sheets_webhook:
             return
 
         try:
-            sheet_name = self.google_sheets_mapping[event_type]
-            payload = {
-                "sheet": sheet_name,
-                "data": data
-            }
-            
+            payload =  queue_data
             response = requests.post(self.google_sheets_webhook, json=payload)
             if response.status_code == 200:
-                output_message(None, f"Data sent to Google Sheets sheet '{sheet_name}' successfully")
+                output_message(None, "Data sent to Google Sheets successfully")
             else:
                 output_message(None, f"Error sending data to Google Sheets: {response.status_code} - {response.text}")
         except Exception as e:
             output_message(None, f"Exception sending data to Google Sheets: {e}")
+
+    def update_google_sheets(self, data, event_type):
+        """Add data to Google Sheets queue"""
+        self.google_sheets_queue.put((data, event_type))
 
     def on_modified(self, event):
         if event.src_path.lower() == self.log_file_path.lower():
@@ -133,13 +155,19 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, f"Error reading log file: {e}\n{traceback.format_exc()}")  # Replace self.output_message
 
     def parse_log_entry(self, entry, send_message=True):
-        # Try commodity activity first
+        # Try filter_username_pattern first if defined
+        if self.filter_username_pattern and self.filter_username_pattern in self.regex_patterns:
+            success, _ = self.detect_and_emit_generic(entry, self.filter_username_pattern, send_message)
+            if success:
+                return
+            
+        # Try commodity activity next
         if self.detect_commodity_activity(entry, send_message):
             return
             
         # Try generic detection for any other configured patterns
         for pattern_name in self.regex_patterns.keys():
-            if pattern_name not in ['timestamp', 'zone', 'commodity']:
+            if pattern_name not in ['timestamp', 'zone', 'commodity'] and pattern_name != self.filter_username_pattern:
                 success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
                 if success:
                     return
@@ -169,16 +197,26 @@ class LogFileHandler(FileSystemEventHandler):
             Tuple of (bool, dict) - Success flag and matched data
         """
         if pattern_name not in self.regex_patterns:
-            output_message(None, f"Pattern {pattern_name} not found in configuration")  # Replace self.output_message
+            output_message(None, f"Pattern {pattern_name} not found in configuration")
             return False, None
 
         data = self.detect_generic(entry, self.regex_patterns[pattern_name])
         if data:
+            # Apply username filter if this is the pattern we want to filter
+            if pattern_name == self.filter_username_pattern:
+                # Extract victim and killer names for exact matching
+                victim = data.get('victim', '')
+                killer = data.get('killer', '')
+                
+                # Check if either victim or killer matches the username
+                if not (victim == self.username or killer == self.username):
+                    return False, None
+
             # Extract player and action information
             data['player'] = data.get('player') or data.get('owner') or data.get('entity') or 'Unknown'
             data['action'] = pattern_name.replace('_', ' ').title()
             timestamp = data.get('timestamp')
-            
+            data['username'] = self.username
             output_message_format = self.messages.get(pattern_name)
             if not output_message_format is None:
                 output_message(timestamp, output_message_format.format(**data))
@@ -265,6 +303,7 @@ DEFAULT_CONFIG = {
         "commodity": "trading",
         "quantum_jump": "navigation"
     },
+    "filter_username_pattern": "",  # Specify which pattern name should filter by username
 }
 
 def emit_default_config(config_path):
