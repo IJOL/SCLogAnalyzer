@@ -22,7 +22,7 @@ class LogFileHandler(FileSystemEventHandler):
     def __init__(self, config, process_all=False, use_discord=False):
         self.log_file_path = config['log_file_path']
         self.discord_webhook_url = config['discord_webhook_url']
-        self.technical_webhook_url = config['technical_webhook_url']
+        self.technical_webhook_url = config.get('technical_webhook_url',False)
         self.regex_patterns = config['regex_patterns']
         self.messages = config.get('messages', {})
         self.important_players = config['important_players']
@@ -43,6 +43,14 @@ class LogFileHandler(FileSystemEventHandler):
         if self.process_all:
             self.process_entire_log()
 
+        self.send_startup_message()
+
+    def send_startup_message(self):
+        """Send a startup message to Discord webhook if Discord is active"""
+        if self.use_discord:
+            startup_message = f"🚀 **Startup Alert**\n**Username:** {self.username}\n**Status:** Monitoring started with Discord active"
+            self.send_discord_message(startup_message, technical=True)
+
     def send_discord_message(self, data, pattern_name=None, technical=False):
         """Send a message to Discord via webhook or stdout"""
         if not self.use_discord:
@@ -52,7 +60,7 @@ class LogFileHandler(FileSystemEventHandler):
             if technical:
                 # Technical messages are sent as-is
                 payload = {"content": data}
-                url = self.technical_webhook_url
+                url = self.technical_webhook_url or self.discord_webhook_url
             elif pattern_name and pattern_name in self.discord_messages:
                 # Get all possible player references from the data
                 player_fields = ['player', 'owner', 'victim', 'killer', 'entity']

@@ -2,7 +2,7 @@
     "log_file_path": "E:\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log",
     "username": "Hippoman",
     "discord_webhook_url": "https://discord.com/api/webhooks/1344956487855902740/4iGUkN2vvssFkGBkKPRhnmCjfPIB990FMd7EHPVHUUMpgnKMokeeGplesR4rDSRo7G4Z",
-    "technical_webhook_url": "",
+    "xtechnical_webhook_url": "https://discord.com/api/webhooks/1344956487855902740/4iGUkN2vvssFkGBkKPRhnmCjfPIB990FMd7EHPVHUUMpgnKMokeeGplesR4rDSRo7G4Z",
     "google_sheets_webhook": "https://script.google.com/macros/s/AKfycbxS9O2WfxROOpmXMdnLcNzbEH4tOFgdI7wzsbbzHEFLwT2h7bYnlrZJe1WV31w1n5ww/exec",
     "google_sheets_mapping": {
         "actor_death": "deaths",
