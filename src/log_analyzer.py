@@ -41,6 +41,19 @@ class LogFileHandler(FileSystemEventHandler):
         self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
         self.google_sheets_thread.daemon = True
         self.google_sheets_thread.start()
+        
+
+        # Mode tracking
+        self.current_mode = None
+        self.modes = config.get('modes', {})
+        self.mode_patterns = {}
+        
+        # Compile mode regex patterns
+        for mode_name, mode_config in self.modes.items():
+            self.mode_patterns[mode_name] = {
+                'start': re.compile(mode_config.get('start_regex', '')),
+                'end': re.compile(mode_config.get('end_regex', ''))
+            }
 
         if self.process_all:
             self.process_entire_log()
@@ -170,6 +183,10 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, f"Error reading log file: {e}\n{traceback.format_exc()}")  # Replace self.output_message
 
     def parse_log_entry(self, entry, send_message=True):
+        # First check for mode changes
+        if self.detect_mode_change(entry, send_message):
+            return
+            
         # Try filter_username_pattern first if defined
         if self.filter_username_pattern and self.filter_username_pattern in self.regex_patterns:
             success, _ = self.detect_and_emit_generic(entry, self.filter_username_pattern, send_message)
@@ -186,6 +203,83 @@ class LogFileHandler(FileSystemEventHandler):
                 success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
                 if success:
                     return
+
+    def detect_mode_change(self, entry, send_message=True):
+        """
+        Detect if the log entry represents a change in game mode
+        Args:
+            entry: The log entry to analyze
+            send_message: Whether to send a message on mode change
+        Returns:
+            Boolean indicating if a mode change was detected
+        """
+        # Check for mode exit if we're currently in a mode
+        if self.current_mode and self.current_mode in self.mode_patterns:
+            mode_pattern = self.mode_patterns[self.current_mode]
+            match = mode_pattern['end'].search(entry)
+            if match:
+                # Try to get data from named capture groups
+                mode_data = match.groupdict() if hasattr(match, 'groupdict') else {}
+                
+                # Add mode information
+                mode_data['mode'] = self.current_mode
+                mode_data['username'] = self.username
+                mode_data['status'] = 'exited'
+                
+                # Extract timestamp if available but not in groupdict
+                if 'timestamp' not in mode_data:
+                    timestamp_match = re.search(r'<(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>', entry)
+                    if timestamp_match:
+                        mode_data['timestamp'] = timestamp_match.group(1)
+                
+                # Output message
+                output_message(mode_data.get('timestamp'), f"Mode '{self.current_mode}' ended")
+                
+                # Send to Discord if enabled
+                if send_message and self.use_discord:
+                    self.send_discord_message(mode_data, pattern_name='mode_change')
+                
+                # Reset current mode
+                prev_mode = self.current_mode
+                self.current_mode = None
+                
+                return True
+                
+        # Check for mode start patterns
+        for mode_name, patterns in self.mode_patterns.items():
+            match = patterns['start'].search(entry)
+            if match:
+                # Try to get data from named capture groups
+                mode_data = match.groupdict() if hasattr(match, 'groupdict') else {}
+                
+                # Don't reactivate the same mode
+                if mode_name == self.current_mode:
+                    return False
+                
+                # Set the current mode
+                self.current_mode = mode_name
+                
+                # Add mode information
+                mode_data['mode'] = mode_name
+                mode_data['username'] = self.username
+                mode_data['status'] = 'entered'
+                
+                # Extract timestamp if available but not in groupdict
+                if 'timestamp' not in mode_data:
+                    timestamp_match = re.search(r'<(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>', entry)
+                    if timestamp_match:
+                        mode_data['timestamp'] = timestamp_match.group(1)
+                
+                # Output message
+                output_message(mode_data.get('timestamp'), f"Entered mode '{mode_name}'")
+                
+                # Send to Discord if enabled
+                if send_message and self.use_discord:
+                    self.send_discord_message(mode_data, pattern_name='mode_change')
+                
+                return True
+                
+        return False
 
     def detect_generic(self, entry, pattern):
         """
@@ -232,6 +326,13 @@ class LogFileHandler(FileSystemEventHandler):
             data['action'] = pattern_name.replace('_', ' ').title()
             timestamp = data.get('timestamp')
             data['username'] = self.username
+            
+            # Add current mode to data if active
+            if self.current_mode:
+                data['current_mode'] = self.current_mode
+            else:
+                data['current_mode'] = 'None'
+                
             output_message_format = self.messages.get(pattern_name)
             if not output_message_format is None:
                 output_message(timestamp, output_message_format.format(**data))
@@ -266,6 +367,12 @@ class LogFileHandler(FileSystemEventHandler):
         # All validation passed, proceed with processing
         data = {field: commodity_data[field] for field in required_fields}
         
+        # Add current mode to data if active
+        if self.current_mode:
+            data['current_mode'] = self.current_mode
+        else:
+            data['current_mode'] = 'None'
+            
         message = self.messages.get("commodity_activity")
         if not message:
             output_message(None, "Missing 'commodity_activity' message template")
@@ -307,6 +414,16 @@ def emit_default_config(config_path):
         template_config = json.load(template_file)
     config = prompt_for_config_values(template_config)
     config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
+    
+    # Add default mode configuration
+    if 'modes' not in config:
+        config['modes'] = {
+            "Live": {
+                "start_regex": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)> \\[\\+\\] \\[CIG\\] \\{Join PU\\} \\[0\\] id\\[(?P<session_id>[\\w-]+)\\] status\\[(?P<status>\\d+)\\] port\\[(?P<port>\\d+)\\]",
+                "end_regex": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)> \\[Notice\\] <Channel Disconnected> cause=30016 reason=\"Remote Disconnect - Player requested disconnect\""
+            }
+        }
+    
     with open(config_path, 'w', encoding='utf-8') as config_file:
         json.dump(config, config_file, indent=4)
     output_message(None, f"Default config emitted at {config_path}")
