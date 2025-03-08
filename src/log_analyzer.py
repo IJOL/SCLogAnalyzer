@@ -19,7 +19,7 @@ def output_message(timestamp, message):
         print(f"*{current_time} - {message}")
 
 class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, config, process_all=False, use_discord=False):
+    def __init__(self, config):
         self.log_file_path = config['log_file_path']
         self.discord_webhook_url = config['discord_webhook_url']
         self.technical_webhook_url = config.get('technical_webhook_url',False)
@@ -28,8 +28,9 @@ class LogFileHandler(FileSystemEventHandler):
         self.important_players = config['important_players']
         self.last_position = 0
         self.actor_state = {}
-        self.process_all = process_all
-        self.use_discord = use_discord
+        self.process_all = config.get('process_all', False)
+        self.use_discord = config.get('use_discord', False) and bool(self.discord_webhook_url)
+        self.process_once = config.get('process_once', False)
         self.discord_messages = config.get('discord', {})
         self.google_sheets_webhook = config.get('google_sheets_webhook', '')
         self.google_sheets_mapping = config.get('google_sheets_mapping', {})
@@ -282,42 +283,35 @@ class LogFileHandler(FileSystemEventHandler):
         
         return True
 
-DEFAULT_CONFIG = {
-    "log_file_path": os.path.join(os.path.dirname(__file__), "Game.log"),
-    "discord_webhook_url": "",
-    "technical_webhook_url": "",
-    "regex_patterns": {
-        "timestamp": r"\[(?P<timestamp>.*?)\]",
-        "zone": r"Zone (?P<zone>\w+): (?P<action>\w+)",
-        "actor_death": r"<(?P<timestamp>.*?)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>.*?)' \\[(?P<victim_id>\\d+)\\] in zone '(?P<zone>.*?)' killed by '(?P<killer>.*?)' \\[(?P<killer_id>\\d+)\\] using '(?P<weapon>.*?)' \\[Class (?P<weapon_class>.*?)\\] with damage type '(?P<damage_type>.*?)' from direction x: (?P<direction_x>[\\d\\.-]+), y: (?P<direction_y>[\\d\\.-]+), z: (?P<direction_z>[\\d\\.-]+) \\[Team_ActorTech\\]\\[Actor\\]",
-        "commodity": r"(?P<timestamp>\d+-\d+-\d+ \d+:\d+:\d+) - (?P<owner>\w+) acquired (?P<commodity>\w+) in zone (?P<zone>\w+)",
-        "leave_zone": r"<(?P<timestamp>.*?)> \\[Notice\\] <CEntityComponentInstancedInterior::OnEntityLeaveZone> \\[InstancedInterior\\] OnEntityLeaveZone - InstancedInterior \\[(?P<zone>.*?)\\] \\[(?P<zone_id>\\d+)\\] -> Entity \\[(?P<entity>.*?)\\] \\[(?P<entity_id>\\d+)\\] -- m_openDoors\\[(?P<open_doors>\\d+)\\], m_managerGEID\\[(?P<manager_geid>\\d+)\\], m_ownerGEID\\[(?P<owner>.*?)\\]\\[(?P<entity_id>\\d+)\\], m_isPersistent\\[(?P<persistent>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Cargo\\]",
-    },
-    "important_players": [],
-    "messages": {
-        "actor_death": "Player {victim} killed by {killer} in zone {zone} using {weapon} with damage type {damage_type} at {timestamp}",
-        "leave_zone": "Entity {entity} left zone {zone} at {timestamp}",
-        "commodity_activity": "Commodity {commodity} owned by {owner} in zone {zone}"
-    },
-    "discord": {
-        "actor_death": "💀 **Death Alert**\n**Victim:** {victim}\n**Killer:** {killer}\n**Zone:** {zone}\n**Weapon:** {weapon}\n**Type:** {damage_type}\n{alert}",
-        "leave_zone": "🚪 **Zone Change**\n**Entity:** {entity}\n**Zone:** {zone}\n{alert}",
-        "commodity_activity": "📦 **Commodity**\n**Owner:** {owner}\n**Item:** {commodity}\n**Zone:** {zone}\n{alert}"
-    },
-    "google_sheets_webhook": "",  # Add this line
-    "google_sheets_mapping": {
-        "actor_death": "deaths",
-        "enter_ship": "ships",
-        "commodity": "trading",
-        "quantum_jump": "navigation"
-    },
-    "filter_username_pattern": "",  # Specify which pattern name should filter by username
-}
+DEFAULT_CONFIG_TEMPLATE = "config.json.template"
+
+def prompt_for_config_values(template):
+    config = template.copy()
+    for key, value in template.items():
+        if isinstance(value, str) and value.startswith("{?") and value.endswith("}"):
+            label = value[2:-1]
+            user_input = input(f"Please enter a value for {label}: ")
+            config[key] = user_input
+        elif isinstance(value, dict):
+            config[key] = prompt_for_config_values(value)
+    return config
 
 def emit_default_config(config_path):
+    with open(get_template_path(), 'r', encoding='utf-8') as template_file:
+        template_config = json.load(template_file)
+    config = prompt_for_config_values(template_config)
+    config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
     with open(config_path, 'w', encoding='utf-8') as config_file:
-        json.dump(DEFAULT_CONFIG, config_file, indent=4)
-    output_message(None, f"Default config emitted at {config_path}")  # Replace self.output_message
+        json.dump(config, config_file, indent=4)
+    output_message(None, f"Default config emitted at {config_path}")
+
+def get_template_path():
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle
+        return os.path.join(sys._MEIPASS, DEFAULT_CONFIG_TEMPLATE)
+    else:
+        # Running in normal Python environment
+        return os.path.join(os.path.dirname(__file__), DEFAULT_CONFIG_TEMPLATE)
 
 def get_application_path():
     """Determine the correct application path whether running as .py or .exe"""
@@ -348,20 +342,25 @@ def main(process_all=False, use_discord=False, process_once=False):
 
     # Ensure the file exists
     if not os.path.exists(config['log_file_path']):
-        output_message(None, f"Log file not found at {config['log_file_path']}")  # Replace self.output_message
+        output_message(None, f"Log file not found at {config['log_file_path']}")
         return
 
+    # Override config values with command-line parameters if provided
+    config['process_all'] = process_all or config.get('process_all', False)
+    config['use_discord'] = use_discord or config.get('use_discord', False)
+    config['process_once'] = process_once or config.get('process_once', False)
+
     # Create a file handler
-    event_handler = LogFileHandler(config, process_all=process_all, use_discord=use_discord)
+    event_handler = LogFileHandler(config)
     
-    if process_once:
-        output_message(None, "Processing log file once and exiting...")  # Replace self.output_message
+    if event_handler.process_once:
+        output_message(None, "Processing log file once and exiting...")
         event_handler.process_entire_log()
         return
 
     # Log monitoring status just before starting the observer
-    output_message(None, f"Monitoring log file: {config['log_file_path']}")  # Replace self.output_message
-    output_message(None, f"Sending updates to {'Discord webhook' if use_discord else 'stdout'}")  # Replace self.output_message
+    output_message(None, f"Monitoring log file: {config['log_file_path']}")
+    output_message(None, f"Sending updates to {'Discord webhook' if event_handler.use_discord else 'stdout'}")
 
     # Create an observer
     observer = Observer()
@@ -375,10 +374,10 @@ def main(process_all=False, use_discord=False, process_once=False):
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        output_message(None, "Monitoring stopped by user.")  # Replace self.output_message
+        output_message(None, "Monitoring stopped by user.")
         observer.stop()
     except Exception as e:
-        output_message(None, f"Unexpected error: {e}")  # Replace self.output_message
+        output_message(None, f"Unexpected error: {e}")
     finally:
         # Wait for the observer thread to finish
         observer.join()
@@ -386,11 +385,11 @@ def main(process_all=False, use_discord=False, process_once=False):
 if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
-        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--discord | -d] [--process-once | -o]")  # Use print
-        print("Options:")  # Use print
-        print("  --process-all, -p    Process entire log file before monitoring")  # Use print
-        print("  --discord, -d        Send output to Discord webhook")  # Use print
-        print("  --process-once, -o   Process log file once and exit")  # Use print
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--discord | -d] [--process-once | -o]")
+        print("Options:")
+        print("  --process-all, -p    Process entire log file before monitoring")
+        print("  --discord, -d        Send output to Discord webhook")
+        print("  --process-once, -o   Process log file once and exit")
         sys.exit(0)
     
     process_all = '--process-all' in sys.argv or '-p' in sys.argv

@@ -5,7 +5,9 @@ from cx_Freeze import setup, Executable
 build_exe_options = {
     "packages": ["os", "sys", "requests", "watchdog"],
     "excludes": ["tkinter", "matplotlib", "scipy", "numpy"],
-    "include_files": []
+    "include_files": [
+        "src/config.json.template"
+    ]
 }
 
 # GUI applications require a different base on Windows
