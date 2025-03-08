@@ -3,6 +3,7 @@ import sys
 import json
 import logging
 import requests
+import discord
 from discord.ext import commands
 
 # Configure logging
@@ -87,7 +88,7 @@ class StatusBoardBot(commands.Cog):
         except Exception as e:
             await ctx.send(f"Error fetching data from Google Sheets: {e}")
 
-def main():
+async def main():
     app_path = get_application_path()
     config_path = os.path.join(app_path, "config.json")
 
@@ -98,10 +99,13 @@ def main():
     with open(config_path, 'r', encoding='utf-8') as config_file:
         config = json.load(config_file)
 
-    bot = commands.Bot(command_prefix='!')
-    bot.add_cog(StatusBoardBot(bot, config))
+    intents = discord.Intents.default()
+    intents.message_content = True
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    await bot.add_cog(StatusBoardBot(bot, config))
 
-    bot.run(config['discord_bot_token'])
+    await bot.start(config['discord_bot_token'])
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
