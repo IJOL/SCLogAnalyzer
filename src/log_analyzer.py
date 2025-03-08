@@ -40,6 +40,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
         self.google_sheets_thread.daemon = True
         self.google_sheets_thread.start()
+        self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
 
         if self.process_all:
             self.process_entire_log()
@@ -96,6 +97,9 @@ class LogFileHandler(FileSystemEventHandler):
     def process_google_sheets_queue(self):
         """Worker thread to process Google Sheets queue"""
         while True:
+            if not self.use_googlesheet:
+                time.sleep(1)
+                continue
             try:
                 queue_data = []
                 while not self.google_sheets_queue.empty():
@@ -110,7 +114,7 @@ class LogFileHandler(FileSystemEventHandler):
 
     def _send_to_google_sheets(self, queue_data):
         """Send data to Google Sheets via webhook"""
-        if not self.google_sheets_webhook:
+        if not self.use_googlesheet:
             return
 
         try:
@@ -125,6 +129,8 @@ class LogFileHandler(FileSystemEventHandler):
 
     def update_google_sheets(self, data, event_type):
         """Add data to Google Sheets queue"""
+        if not self.use_googlesheet:
+            return
         self.google_sheets_queue.put((data, event_type))
 
     def on_modified(self, event):
@@ -322,7 +328,7 @@ def get_application_path():
         # If the application is run as a python script
         return os.path.dirname(os.path.abspath(__file__))
 
-def main(process_all=False, use_discord=False, process_once=False):
+def main(process_all=False, use_discord=False, process_once=False, use_googlesheet=False):
     app_path = get_application_path()
     config_path = os.path.join(app_path, "config.json")
     
@@ -349,6 +355,7 @@ def main(process_all=False, use_discord=False, process_once=False):
     config['process_all'] = process_all or config.get('process_all', False)
     config['use_discord'] = use_discord or config.get('use_discord', False)
     config['process_once'] = process_once or config.get('process_once', False)
+    config['use_googlesheet'] = use_googlesheet or config.get('use_googlesheet', False)
 
     # Create a file handler
     event_handler = LogFileHandler(config)
@@ -385,14 +392,16 @@ def main(process_all=False, use_discord=False, process_once=False):
 if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
-        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--discord | -d] [--process-once | -o]")
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--discord | -d] [--process-once | -o] [--googlesheet | -g]")
         print("Options:")
         print("  --process-all, -p    Process entire log file before monitoring")
         print("  --discord, -d        Send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
+        print("  --googlesheet, -g    Send output to Google Sheets webhook")
         sys.exit(0)
     
     process_all = '--process-all' in sys.argv or '-p' in sys.argv
     use_discord = '--discord' in sys.argv or '-d' in sys.argv
     process_once = '--process-once' in sys.argv or '-o' in sys.argv
-    main(process_all, use_discord, process_once)
+    use_googlesheet = '--googlesheet' in sys.argv or '-g' in sys.argv
+    main(process_all, use_discord, process_once, use_googlesheet)

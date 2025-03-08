@@ -29,6 +29,7 @@
     },
     "important_players": [],
     "messages": {
+        "vehicle_destruction": "{vehicle}:{driver} was destroyed by {cause} with {damage_type} in {zone}",
         "actor_death": "******* {killer}->{victim}: {zone} - {weapon} - {damage_type}",
         "username_death": "+++++++ {killer}->{victim}: {zone} - {weapon} - {damage_type}",
         "actor_stall": "{player}: Stalled",
