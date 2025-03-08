@@ -36,11 +36,11 @@ class LogFileHandler(FileSystemEventHandler):
         self.google_sheets_mapping = config.get('google_sheets_mapping', {})
         self.username = config.get('username', 'Unknown')
         self.filter_username_pattern = config.get('filter_username_pattern', None)
+        self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
         self.google_sheets_queue = queue.Queue()
         self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
         self.google_sheets_thread.daemon = True
         self.google_sheets_thread.start()
-        self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
 
         if self.process_all:
             self.process_entire_log()
@@ -328,7 +328,19 @@ def get_application_path():
         # If the application is run as a python script
         return os.path.dirname(os.path.abspath(__file__))
 
-def main(process_all=False, use_discord=False, process_once=False, use_googlesheet=False):
+def is_valid_url(url):
+    """Validate if the given string is a correctly formatted URL"""
+    regex = re.compile(
+        r'^(?:http|ftp)s?://'  # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # domain...
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|'  # ...or ipv4
+        r'\[?[A-F0-9]*:[A-F0-9:]+\]?)'  # ...or ipv6
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+    return re.match(regex, url) is not None
+
+def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None):
     app_path = get_application_path()
     config_path = os.path.join(app_path, "config.json")
     
@@ -351,11 +363,30 @@ def main(process_all=False, use_discord=False, process_once=False, use_googleshe
         output_message(None, f"Log file not found at {config['log_file_path']}")
         return
 
+    # Determine if Discord should be used based on the webhook URL and command-line parameter
+    discord_webhook_url = config.get('discord_webhook_url')
+    if use_discord is None:
+        if not bool(config.get('use_discord', True)):
+            config['use_discord'] = False
+        else:
+            config['use_discord'] = is_valid_url(discord_webhook_url)
+    else:
+        config['use_discord'] = use_discord
+
+    # Determine if Google Sheets should be used based on the webhook URL and command-line parameter
+    google_sheets_webhook = config.get('google_sheets_webhook')
+    if use_googlesheet is None:
+        if not bool(config.get('use_googlesheet', True)):
+            config['use_googlesheet'] = False
+        else:
+            config['use_googlesheet'] = is_valid_url(google_sheets_webhook)
+    else:
+        config['use_googlesheet'] = use_googlesheet
+
+
     # Override config values with command-line parameters if provided
-    config['process_all'] = process_all or config.get('process_all', False)
-    config['use_discord'] = use_discord or config.get('use_discord', False)
-    config['process_once'] = process_once or config.get('process_once', False)
-    config['use_googlesheet'] = use_googlesheet or config.get('use_googlesheet', False)
+    config['process_all'] = process_all or bool(config.get('process_all', False))
+    config['process_once'] = process_once or bool(config.get('process_once', False))
 
     # Create a file handler
     event_handler = LogFileHandler(config)
@@ -392,16 +423,16 @@ def main(process_all=False, use_discord=False, process_once=False, use_googleshe
 if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
-        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--discord | -d] [--process-once | -o] [--googlesheet | -g]")
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng]")
         print("Options:")
         print("  --process-all, -p    Process entire log file before monitoring")
-        print("  --discord, -d        Send output to Discord webhook")
+        print("  --no-discord, -nd    Do not send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
-        print("  --googlesheet, -g    Send output to Google Sheets webhook")
+        print("  --no-googlesheet, -ng    Do not send output to Google Sheets webhook")
         sys.exit(0)
     
     process_all = '--process-all' in sys.argv or '-p' in sys.argv
-    use_discord = '--discord' in sys.argv or '-d' in sys.argv
+    use_discord = not ('--no-discord' in sys.argv or '-nd' in sys.argv)
     process_once = '--process-once' in sys.argv or '-o' in sys.argv
-    use_googlesheet = '--googlesheet' in sys.argv or '-g' in sys.argv
+    use_googlesheet = not ('--no-googlesheet' in sys.argv or '-ng' in sys.argv)
     main(process_all, use_discord, process_once, use_googlesheet)
