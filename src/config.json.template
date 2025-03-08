@@ -2,11 +2,8 @@
     "log_file_path": "",
     "username": "{?username}",
     "discord_webhook_url": "{?discord_webhook_url}",
-    "google_sheets_webhook": "https://script.google.com/macros/s/AKfycbxS9O2WfxROOpmXMdnLcNzbEH4tOFgdI7wzsbbzHEFLwT2h7bYnlrZJe1WV31w1n5ww/exec",
+    "google_sheets_webhook": "{?google_sheets_webhook}",
     "google_sheets_mapping": {
-        "actor_death": "deaths",
-        "enter_ship": "ships",
-        "quantum_jump": "navigation",
         "username_death": "Player deaths"
     },
     "filter_username_pattern": "username_death",
