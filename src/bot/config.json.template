@@ -1,0 +1,4 @@
+{
+    "discord_bot_token": "{?discord_bot_token}",
+    "google_sheets_webhook": "{?google_sheets_webhook}"
+}
