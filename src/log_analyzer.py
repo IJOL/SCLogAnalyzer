@@ -57,8 +57,23 @@ class LogFileHandler(FileSystemEventHandler):
 
         if self.process_all:
             self.process_entire_log()
+        else:
+            # Move to the end of the file if we're not processing everything
+            self.last_position = self._get_file_end_position()
+            output_message(None, f"Skipping to the end of log file (position {self.last_position})")
 
         self.send_startup_message()
+        
+    def _get_file_end_position(self):
+        """Get the current end position of the log file"""
+        try:
+            with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                # Go to the end of the file
+                file.seek(0, 2)  # 0 is the offset, 2 means from the end of the file
+                return file.tell()
+        except Exception as e:
+            output_message(None, f"Error getting file end position: {e}")
+            return 0
 
     def send_startup_message(self):
         """Send a startup message to Discord webhook if Discord is active"""
@@ -313,12 +328,13 @@ class LogFileHandler(FileSystemEventHandler):
         if data:
             # Apply username filter if this is the pattern we want to filter
             if pattern_name == self.filter_username_pattern:
-                # Extract victim and killer names for exact matching
-                victim = data.get('victim', '')
-                killer = data.get('killer', '')
+                # Extract victim and killer names for case-insensitive matching
+                victim = data.get('victim', '').lower()
+                killer = data.get('killer', '').lower()
+                username_lower = self.username.lower()
                 
-                # Check if either victim or killer matches the username
-                if not (victim == self.username or killer == self.username):
+                # Check if either victim or killer matches the username (case-insensitive)
+                if not (victim == username_lower or killer == username_lower):
                     return False, None
 
             # Extract player and action information
