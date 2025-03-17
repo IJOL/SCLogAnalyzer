@@ -11,6 +11,13 @@ import queue
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
 
+# Import version information
+try:
+    from version import get_version
+except ImportError:
+    def get_version():
+        return "unknown"
+
 def output_message(timestamp, message):
     if timestamp:
         print(f"{timestamp} - {message}")
@@ -41,6 +48,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
         self.google_sheets_thread.daemon = True
         self.google_sheets_thread.start()
+        self.version = get_version()
         
 
         # Mode tracking
@@ -78,7 +86,7 @@ class LogFileHandler(FileSystemEventHandler):
     def send_startup_message(self):
         """Send a startup message to Discord webhook if Discord is active"""
         if self.use_discord:
-            startup_message = f"🚀 **Startup Alert**\n**Username:** {self.username}\n**Status:** Monitoring started with Discord active"
+            startup_message = f"🚀 **Startup Alert**\n**Username:** {self.username}\n**Version:** {self.version}\n**Status:** Monitoring started with Discord active"
             self.send_discord_message(startup_message, technical=True)
 
     def send_discord_message(self, data, pattern_name=None, technical=False):
@@ -542,16 +550,21 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
 if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
+        print(f"SC Log Analyzer v{get_version()}")
         print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng]")
         print("Options:")
         print("  --process-all, -p    Process entire log file before monitoring")
         print("  --no-discord, -nd    Do not send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
         print("  --no-googlesheet, -ng    Do not send output to Google Sheets webhook")
+        print(f"Version: {get_version()}")
         sys.exit(0)
     
     process_all = '--process-all' in sys.argv or '-p' in sys.argv
     use_discord = not ('--no-discord' in sys.argv or '-nd' in sys.argv)
     process_once = '--process-once' in sys.argv or '-o' in sys.argv
     use_googlesheet = not ('--no-googlesheet' in sys.argv or '-ng' in sys.argv)
+    
+    # Show version info on startup
+    print(f"SC Log Analyzer v{get_version()} starting...")
     main(process_all, use_discord, process_once, use_googlesheet)
