@@ -17,7 +17,7 @@
             "name": "Launch log_analyzer",
             "program": "${workspaceFolder}/src/log_analyzer.py",
             "console": "integratedTerminal",
-            "args": [           
+            "args": [ "-p"          
             ]
         }
     ]

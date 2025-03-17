@@ -39,17 +39,6 @@
         "mode_change": "Game Mode changed: {mode} {status} at {timestamp}"
     },
     "discord": {
-        "username_death": "{username} :skull: **Player Death** :skull: {victim} was killed by {killer} using {weapon} in {zone} with {damage_type}"
+        "username_death": "{username} :skull: **Player Death** :skull:\n{victim} was killed by {killer} using {weapon} in {zone} with {damage_type}"
     }
-    "modes": {
-        "Live": {
-            "start_regex": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)> \\[\\+\\] \\[CIG\\] \\{Join PU\\} \\[0\\] id\\[(?P<session_id>[\\w-]+)\\] status\\[(?P<status>\\d+)\\] port\\[(?P<port>\\d+)\\]",
-            "end_regex": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)> \\[Notice\\] <Channel Disconnected> cause=30016 reason=\"Remote Disconnect - Player requested disconnect\""
-        },
-        "Arena": {
-            "start_regex": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)> \\[\\+\\] \\[CIG\\] \\{Join Match\\} \\[0\\] id\\[(?P<match_id>[\\w-]+)\\] status\\[(?P<status>\\d+)\\] port\\[(?P<port>\\d+)\\]",
-            "end_regex": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)> \\[Notice\\] <Channel Disconnected>"
-        }
-
-    },
 }    

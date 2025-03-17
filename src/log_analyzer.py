@@ -50,18 +50,15 @@ class LogFileHandler(FileSystemEventHandler):
         self.google_sheets_thread.start()
         self.version = get_version()
         
-
-        # Mode tracking
+        # Mode tracking (new approach)
         self.current_mode = None
-        self.modes = config.get('modes', {})
-        self.mode_patterns = {}
         
         # Compile mode regex patterns
-        for mode_name, mode_config in self.modes.items():
-            self.mode_patterns[mode_name] = {
-                'start': re.compile(mode_config.get('start_regex', '')),
-                'end': re.compile(mode_config.get('end_regex', ''))
-            }
+        self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
+        self.mode_end_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected> cause=(?P<cause>\d+) reason=\"(?P<reason>.*?)\" frame=(?P<frame>\d+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>[\d\.:\w]+) localAddr=(?P<local_addr>[\d\.:\w]+) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+) \[(?P<tags>.*?)\]")
+
+        # Simpler Channel Disconnected pattern for other types of disconnects
+        self.simple_disconnect_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected>")
 
         if self.process_all:
             self.process_entire_log()
@@ -167,7 +164,7 @@ class LogFileHandler(FileSystemEventHandler):
         """Add data to Google Sheets queue"""
         if not self.use_googlesheet:
             return
-        self.google_sheets_queue.put((data, event_type))
+        self.google_sheets_queue.put((data, f"{event_type}-{self.current_mode or 'None'}"))
 
     def on_modified(self, event):
         if event.src_path.lower() == self.log_file_path.lower():
@@ -229,73 +226,91 @@ class LogFileHandler(FileSystemEventHandler):
 
     def detect_mode_change(self, entry, send_message=True):
         """
-        Detect if the log entry represents a change in game mode
+        Detect if the log entry represents a change in game mode using the new regex patterns
         Args:
             entry: The log entry to analyze
             send_message: Whether to send a message on mode change
         Returns:
             Boolean indicating if a mode change was detected
         """
-        # Check for mode exit if we're currently in a mode
-        if self.current_mode and self.current_mode in self.mode_patterns:
-            mode_pattern = self.mode_patterns[self.current_mode]
-            match = mode_pattern['end'].search(entry)
-            if match:
-                # Try to get data from named capture groups
-                mode_data = match.groupdict() if hasattr(match, 'groupdict') else {}
+        # Check for mode start (Context Establisher Done)
+        start_match = self.mode_start_regex.search(entry)
+        if start_match:
+            mode_data = start_match.groupdict()
+            new_mode = mode_data.get('gamerules')
+            timestamp = mode_data.get('timestamp')
+            
+            # If it's a different mode than the current one, update it
+            if new_mode != self.current_mode:
+                old_mode = self.current_mode
+                self.current_mode = new_mode
                 
-                # Add mode information
+                # Format the mode data for output
+                mode_data['mode'] = new_mode
+                mode_data['username'] = self.username
+                mode_data['status'] = 'entered'
+                mode_data['old_mode'] = old_mode or 'None'
+                
+                # Output message
+                output_message(timestamp, f"Mode changed: '{old_mode or 'None'}' → '{new_mode}'")
+                
+                # Send to Discord if enabled
+                if send_message and self.use_discord and 'mode_change' in self.discord_messages:
+                    self.send_discord_message(mode_data, pattern_name='mode_change')
+                
+                return True
+        
+        # Check for mode end (Channel Disconnected with gamerules)
+        end_match = self.mode_end_regex.search(entry)
+        if end_match:
+            mode_data = end_match.groupdict()
+            gamerules = mode_data.get('gamerules')
+            timestamp = mode_data.get('timestamp')
+            
+            # Only consider it an end if it matches the current mode
+            if gamerules == self.current_mode:
+                # Format the mode data for output
                 mode_data['mode'] = self.current_mode
                 mode_data['username'] = self.username
                 mode_data['status'] = 'exited'
-                               
-                # Output message
-                output_message(mode_data.get('timestamp'), f"Mode '{self.current_mode}' ended")
                 
-                # Send to Discord if enabled
-                if send_message and self.use_discord:
-                    self.send_discord_message(mode_data, pattern_name='mode_change')
+                # Output message
+                output_message(timestamp, f"Exited mode: '{self.current_mode}'")
                 
                 # Reset current mode
-                prev_mode = self.current_mode
                 self.current_mode = None
                 
-                return True
-                
-        # Check for mode start patterns
-        for mode_name, patterns in self.mode_patterns.items():
-            match = patterns['start'].search(entry)
-            if match:
-                # Try to get data from named capture groups
-                mode_data = match.groupdict() if hasattr(match, 'groupdict') else {}
-                
-                # Don't reactivate the same mode
-                if mode_name == self.current_mode:
-                    return False
-                
-                # Set the current mode
-                self.current_mode = mode_name
-                
-                # Add mode information
-                mode_data['mode'] = mode_name
-                mode_data['username'] = self.username
-                mode_data['status'] = 'entered'
-                
-                # Extract timestamp if available but not in groupdict
-                if 'timestamp' not in mode_data:
-                    timestamp_match = re.search(r'<(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>', entry)
-                    if timestamp_match:
-                        mode_data['timestamp'] = timestamp_match.group(1)
-                
-                # Output message
-                output_message(mode_data.get('timestamp'), f"Entered mode '{mode_name}'")
-                
                 # Send to Discord if enabled
-                if send_message and self.use_discord:
+                if send_message and self.use_discord and 'mode_change' in self.discord_messages:
                     self.send_discord_message(mode_data, pattern_name='mode_change')
                 
                 return True
-                
+        
+        # Check for simple disconnects (for modes that don't have the full disconnect message)
+        if self.current_mode and self.simple_disconnect_regex.search(entry):
+            timestamp = self.simple_disconnect_regex.search(entry).group('timestamp')
+            
+            # Create mode data for the message
+            mode_data = {
+                'timestamp': timestamp,
+                'mode': self.current_mode,
+                'username': self.username,
+                'status': 'exited',
+                'reason': 'Channel Disconnected'
+            }
+            
+            # Output message
+            output_message(timestamp, f"Exited mode: '{self.current_mode}'")
+            
+            # Reset current mode
+            self.current_mode = None
+            
+            # Send to Discord if enabled
+            if send_message and self.use_discord and 'mode_change' in self.discord_messages:
+                self.send_discord_message(mode_data, pattern_name='mode_change')
+            
+            return True
+            
         return False
 
     def detect_generic(self, entry, pattern):
