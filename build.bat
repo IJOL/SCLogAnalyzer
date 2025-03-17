@@ -10,7 +10,7 @@ FOR /F "tokens=* USEBACKQ" %%C IN (`git rev-parse --short HEAD`) DO (
 echo Current commit hash: %commit_hash%
 
 echo Incrementing version...
-python src\increment_version.py %commit_hash%
+IF NOT "%1"=="" python src\increment_version.py %commit_hash% patch
 echo.
 echo Building SC Log Analyzer...
 FOR /F "tokens=* USEBACKQ" %%F IN (`python -c "from src.version import get_version; print(get_version())"`) DO (
