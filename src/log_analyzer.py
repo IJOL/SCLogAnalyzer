@@ -240,13 +240,7 @@ class LogFileHandler(FileSystemEventHandler):
                 mode_data['mode'] = self.current_mode
                 mode_data['username'] = self.username
                 mode_data['status'] = 'exited'
-                
-                # Extract timestamp if available but not in groupdict
-                if 'timestamp' not in mode_data:
-                    timestamp_match = re.search(r'<(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>', entry)
-                    if timestamp_match:
-                        mode_data['timestamp'] = timestamp_match.group(1)
-                
+                               
                 # Output message
                 output_message(mode_data.get('timestamp'), f"Mode '{self.current_mode}' ended")
                 
@@ -431,15 +425,7 @@ def emit_default_config(config_path):
     config = prompt_for_config_values(template_config)
     config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
     
-    # Add default mode configuration
-    if 'modes' not in config:
-        config['modes'] = {
-            "Live": {
-                "start_regex": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)> \\[\\+\\] \\[CIG\\] \\{Join PU\\} \\[0\\] id\\[(?P<session_id>[\\w-]+)\\] status\\[(?P<status>\\d+)\\] port\\[(?P<port>\\d+)\\]",
-                "end_regex": "<(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)> \\[Notice\\] <Channel Disconnected> cause=30016 reason=\"Remote Disconnect - Player requested disconnect\""
-            }
-        }
-    
+ 
     with open(config_path, 'w', encoding='utf-8') as config_file:
         json.dump(config, config_file, indent=4)
     output_message(None, f"Default config emitted at {config_path}")
