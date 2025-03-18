@@ -7,6 +7,7 @@ import requests
 import traceback
 import threading
 import queue
+import signal
 #from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
@@ -45,6 +46,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.filter_username_pattern = config.get('filter_username_pattern', None)
         self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
         self.google_sheets_queue = queue.Queue()
+        self.stop_event = threading.Event()
         self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
         self.google_sheets_thread.daemon = True
         self.google_sheets_thread.start()
@@ -69,6 +71,20 @@ class LogFileHandler(FileSystemEventHandler):
 
         self.send_startup_message()
         
+    def stop(self):
+        """Stop the handler and cleanup threads"""
+        self.stop_event.set()
+        output_message(None, "Stopping log analyzer...")
+        
+        # Wait for Google Sheets thread to finish processing remaining items
+        if self.google_sheets_thread.is_alive():
+            output_message(None, "Waiting for Google Sheets queue to complete...")
+            self.google_sheets_queue.join()
+            # Give it a moment to exit gracefully
+            time.sleep(0.5)
+            
+        output_message(None, "Log analyzer stopped successfully")
+
     def _get_file_end_position(self):
         """Get the current end position of the log file"""
         try:
@@ -129,21 +145,33 @@ class LogFileHandler(FileSystemEventHandler):
 
     def process_google_sheets_queue(self):
         """Worker thread to process Google Sheets queue"""
-        while True:
+        while not self.stop_event.is_set():
             if not self.use_googlesheet:
                 time.sleep(1)
                 continue
             try:
                 queue_data = []
-                while not self.google_sheets_queue.empty():
-                    data, event_type = self.google_sheets_queue.get()
-                    queue_data.append({'data':data,'sheet': self.google_sheets_mapping.get(event_type)})
+                try:
+                    # Get queue items with timeout to check stop_event regularly
+                    data, event_type = self.google_sheets_queue.get(timeout=1)
+                    queue_data.append({'data':data,'sheet': "{}-{}".format(self.google_sheets_mapping.get(event_type), self.current_mode or 'None')})
                     self.google_sheets_queue.task_done()
+                    
+                    # Get any additional items that might be in the queue
+                    while not self.google_sheets_queue.empty():
+                        data, event_type = self.google_sheets_queue.get_nowait()
+                        queue_data.append({'data':data,'sheet': self.google_sheets_mapping.get(event_type)})
+                        self.google_sheets_queue.task_done()
+                except queue.Empty:
+                    # No items in queue, just continue loop
+                    pass
                 
                 if queue_data:
                     self._send_to_google_sheets(queue_data)
             except Exception as e:
                 output_message(None, f"Exception in Google Sheets worker thread: {e}")
+        
+        output_message(None, "Google Sheets worker thread stopped")
 
     def _send_to_google_sheets(self, queue_data):
         """Send data to Google Sheets via webhook"""
@@ -164,7 +192,7 @@ class LogFileHandler(FileSystemEventHandler):
         """Add data to Google Sheets queue"""
         if not self.use_googlesheet:
             return
-        self.google_sheets_queue.put((data, f"{event_type}-{self.current_mode or 'None'}"))
+        self.google_sheets_queue.put((data, event_type))
 
     def on_modified(self, event):
         if event.src_path.lower() == self.log_file_path.lower():
@@ -482,6 +510,14 @@ def is_valid_url(url):
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
     return re.match(regex, url) is not None
 
+def signal_handler(signum, frame):
+    """Handle external signals to stop the application"""
+    output_message(None, f"Received signal {signum}, shutting down...")
+    if hasattr(signal_handler, 'event_handler') and signal_handler.event_handler:
+        signal_handler.event_handler.stop()
+    if hasattr(signal_handler, 'observer') and signal_handler.observer:
+        signal_handler.observer.stop()
+
 def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None):
     app_path = get_application_path()
     config_path = os.path.join(app_path, "config.json")
@@ -527,7 +563,13 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
 
 
     # Override config values with command-line parameters if provided
-    config['process_all'] = process_all or bool(config.get('process_all', False))
+    if not process_all:
+        # Reverse logic: -p flag forces process_all to False
+        config['process_all'] = True
+    else:
+        # Use the config value if -p flag not present
+        config['process_all'] = bool(config.get('process_all', True))
+        
     config['process_once'] = process_once or bool(config.get('process_once', False))
 
     # Create a file handler
@@ -546,18 +588,29 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
     observer = Observer()
     observer.schedule(event_handler, path=os.path.dirname(config['log_file_path']), recursive=False)
     
+    # Store references for signal handler
+    signal_handler.event_handler = event_handler
+    signal_handler.observer = observer
+    
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     try:
         # Start the observer
         observer.start()
         
-        # Keep the script running
-        while True:
+        # Keep the script running until stop event is set
+        while not event_handler.stop_event.is_set():
             time.sleep(1)
     except KeyboardInterrupt:
         output_message(None, "Monitoring stopped by user.")
+        event_handler.stop()
         observer.stop()
     except Exception as e:
         output_message(None, f"Unexpected error: {e}")
+        event_handler.stop()
+        observer.stop()
     finally:
         # Wait for the observer thread to finish
         observer.join()
@@ -568,7 +621,7 @@ if __name__ == "__main__":
         print(f"SC Log Analyzer v{get_version()}")
         print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng]")
         print("Options:")
-        print("  --process-all, -p    Process entire log file before monitoring")
+        print("  --process-all, -p    Skip processing entire log file (overrides config)")
         print("  --no-discord, -nd    Do not send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
         print("  --no-googlesheet, -ng    Do not send output to Google Sheets webhook")
