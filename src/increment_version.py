@@ -28,17 +28,17 @@ def increment_minor_version(commit_hash=None, increment=None):
             content = content.replace(f"MINOR = {old_minor}", f"MINOR = {new_minor}")
             
             # If commit hash is provided, set the PATCH version
-            if commit_hash is not None:
-                patch_pattern = re.compile(r'PATCH = [\'"]?([^\'"]+)[\'"]?')
-                patch_match = patch_pattern.search(content)
-                
-                if patch_match:
-                    old_patch = patch_match.group(1)
-                    # Use quotes around the commit hash as it's a string
-                    content = content.replace(f'PATCH = "{old_patch}"' if '"' in patch_match.group(0) else f"PATCH = '{old_patch}'", f'PATCH = "{commit_hash}"')
-                    print(f'Patch version set to commit hash: "{commit_hash}"')
-                else:
-                    print("Could not find PATCH version in version.py")
+        if commit_hash is not None:
+            patch_pattern = re.compile(r'PATCH = [\'"]?([^\'"]+)[\'"]?')
+            patch_match = patch_pattern.search(content)
+            
+            if patch_match:
+                old_patch = patch_match.group(1)
+                # Use quotes around the commit hash as it's a string
+                content = content.replace(f'PATCH = "{old_patch}"' if '"' in patch_match.group(0) else f"PATCH = '{old_patch}'", f'PATCH = "{commit_hash}"')
+                print(f'Patch version set to commit hash: "{commit_hash}"')
+            else:
+                print("Could not find PATCH version in version.py")
             
             with open(version_file_path, 'w', encoding='utf-8') as file:
                 file.write(content)
