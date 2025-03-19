@@ -1,8 +1,8 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 7
-PATCH = "0825162"
+MINOR = 8
+PATCH = "05c1e1b"
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 
