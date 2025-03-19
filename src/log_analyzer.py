@@ -20,17 +20,28 @@ except ImportError:
         return "unknown"
 
 def output_message(timestamp, message):
+    """
+    Output a message to stdout
+    
+    Args:
+        timestamp: Timestamp string or None
+        message: Message to output
+    """
+    formatted_msg = ""
     if timestamp:
-        print(f"{timestamp} - {message}")
+        formatted_msg = f"{timestamp} - {message}"
     else:
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        print(f"*{current_time} - {message}")
+        formatted_msg = f"*{current_time} - {message}"
+    
+    # Print to console
+    print(formatted_msg)
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, config):
         self.log_file_path = config['log_file_path']
         self.discord_webhook_url = config['discord_webhook_url']
-        self.technical_webhook_url = config.get('technical_webhook_url',False)
+        self.technical_webhook_url = config.get('technical_webhook_url', False)
         self.regex_patterns = config['regex_patterns']
         self.messages = config.get('messages', {})
         self.important_players = config['important_players']
@@ -47,9 +58,11 @@ class LogFileHandler(FileSystemEventHandler):
         self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
         self.google_sheets_queue = queue.Queue()
         self.stop_event = threading.Event()
-        self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
-        self.google_sheets_thread.daemon = True
-        self.google_sheets_thread.start()
+
+        if not self.process_once:
+            self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
+            self.google_sheets_thread.daemon = True
+            self.google_sheets_thread.start()
         self.version = get_version()
         
         # Mode tracking (new approach)
@@ -69,21 +82,24 @@ class LogFileHandler(FileSystemEventHandler):
             self.last_position = self._get_file_end_position()
             output_message(None, f"Skipping to the end of log file (position {self.last_position})")
 
-        self.send_startup_message()
+        if not self.process_once:
+            self.send_startup_message()
         
     def stop(self):
         """Stop the handler and cleanup threads"""
         self.stop_event.set()
         output_message(None, "Stopping log analyzer...")
-        
+        self.cleanup_threads()
+        output_message(None, "Log analyzer stopped successfully")
+
+    def cleanup_threads(self):
+        """Ensure all threads are stopped"""
         # Wait for Google Sheets thread to finish processing remaining items
         if self.google_sheets_thread.is_alive():
             output_message(None, "Waiting for Google Sheets queue to complete...")
             self.google_sheets_queue.join()
             # Give it a moment to exit gracefully
             time.sleep(0.5)
-            
-        output_message(None, "Log analyzer stopped successfully")
 
     def _get_file_end_position(self):
         """Get the current end position of the log file"""
@@ -214,9 +230,9 @@ class LogFileHandler(FileSystemEventHandler):
                 for entry in new_entries:
                     self.parse_log_entry(entry)
         except PermissionError:
-            output_message(None, "Unable to read log file. Make sure it's not locked by another process.")  # Replace self.output_message
+            output_message(None, "Unable to read log file. Make sure it's not locked by another process.")
         except Exception as e:
-            output_message(None, f"Error reading log file: {e}")  # Replace self.output_message
+            output_message(None, f"Error reading log file: {e}")
 
     def process_entire_log(self):
         try:
@@ -226,9 +242,9 @@ class LogFileHandler(FileSystemEventHandler):
                     self.parse_log_entry(entry, send_message=False)
                 self.last_position = file.tell()
         except PermissionError:
-            output_message(None, "Unable to read log file. Make sure it's not locked by another process.")  # Replace self.output_message
+            output_message(None, "Unable to read log file. Make sure it's not locked by another process.")
         except Exception as e:
-            output_message(None, f"Error reading log file: {e}\n{traceback.format_exc()}")  # Replace self.output_message
+            output_message(None, f"Error reading log file: {e}\n{traceback.format_exc()}")
 
     def parse_log_entry(self, entry, send_message=True):
         # First check for mode changes
@@ -518,7 +534,22 @@ def signal_handler(signum, frame):
     if hasattr(signal_handler, 'observer') and signal_handler.observer:
         signal_handler.observer.stop()
 
-def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None):
+def stop_monitor(event_handler, observer):
+    """
+    Stop the observer and Google Sheets thread cleanly.
+    
+    Args:
+        event_handler: The LogFileHandler instance.
+        observer: The Observer instance.
+    """
+    output_message(None, "Stopping monitor...")
+    if observer.is_alive():
+        observer.stop()
+        observer.join()
+    event_handler.stop()
+    output_message(None, "Monitor stopped successfully")
+
+def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None):
     app_path = get_application_path()
     config_path = os.path.join(app_path, "config.json")
     
@@ -532,8 +563,11 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
         config = json.load(config_file)
         output_message(None, f"Config loaded successfully from: {config_path}")
     
+    # If a custom log file path is provided, use it (for GUI)
+    if log_file_path:
+        config['log_file_path'] = log_file_path
     # If log_file_path is relative, make it relative to the application path
-    if not os.path.isabs(config['log_file_path']):
+    elif not os.path.isabs(config['log_file_path']):
         config['log_file_path'] = os.path.join(app_path, config['log_file_path'])
 
     # Ensure the file exists
@@ -578,7 +612,7 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
     if event_handler.process_once:
         output_message(None, "Processing log file once and exiting...")
         event_handler.process_entire_log()
-        return
+        return event_handler
 
     # Log monitoring status just before starting the observer
     output_message(None, f"Monitoring log file: {config['log_file_path']}")
@@ -592,9 +626,17 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
     signal_handler.event_handler = event_handler
     signal_handler.observer = observer
     
-    # Register signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # If in GUI mode, start the observer in a separate thread and return immediately
+    if hasattr(main, 'in_gui') and main.in_gui:
+        observer_thread = threading.Thread(target=observer.start)
+        observer_thread.daemon = True
+        observer_thread.start()
+        return event_handler, observer
+    
+    # Register signal handlers if not in a GUI environment
+    if not hasattr(main, 'in_gui') or not main.in_gui:
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
     
     try:
         # Start the observer
@@ -614,6 +656,7 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
     finally:
         # Wait for the observer thread to finish
         observer.join()
+        return event_handler
 
 if __name__ == "__main__":
     # Check for optional flags
