@@ -22,10 +22,11 @@ def increment_minor_version(commit_hash=None, increment=None):
         minor_pattern = re.compile(r'MINOR = (\d+)')
         minor_match = minor_pattern.search(content)
         
-        if minor_match and increment is not None:
+        if minor_match :
             old_minor = int(minor_match.group(1))
             new_minor = old_minor + 1
-            content = content.replace(f"MINOR = {old_minor}", f"MINOR = {new_minor}")
+            if increment is not None:
+                content = content.replace(f"MINOR = {old_minor}", f"MINOR = {new_minor}")
             
             # If commit hash is provided, set the PATCH version
         if commit_hash is not None:
