@@ -216,6 +216,13 @@ class LogFileHandler(FileSystemEventHandler):
 
     def process_new_entries(self):
         try:
+            current_file_size = os.path.getsize(self.log_file_path)
+            
+            # Detect log truncation
+            if self.last_position > current_file_size:
+                output_message(None, "Log file truncated. Resetting position to the beginning.")
+                self.last_position = 0
+
             with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as file:
                 # Move to the last read position
                 file.seek(self.last_position)
@@ -229,6 +236,9 @@ class LogFileHandler(FileSystemEventHandler):
                 # Process each new entry
                 for entry in new_entries:
                     self.parse_log_entry(entry)
+        except FileNotFoundError:
+            output_message(None, "Log file not found. Waiting for it to be created...")
+            time.sleep(1)  # Wait briefly for the file to reappear
         except PermissionError:
             output_message(None, "Unable to read log file. Make sure it's not locked by another process.")
         except Exception as e:
