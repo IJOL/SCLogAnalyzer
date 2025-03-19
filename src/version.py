@@ -4,7 +4,7 @@ MAJOR = 0
 MINOR = 6
 PATCH = "8dd5e9c"
 
-VERSION = f"{MAJOR}.{MINOR}.{PATCH} nogui"
+VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 
 def get_version():
     """Return the full version string"""
