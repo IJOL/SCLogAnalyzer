@@ -6,6 +6,7 @@ import threading
 import log_analyzer
 import time
 from watchdog.observers.polling import PollingObserver as Observer
+import wx.adv  # Import wx.adv for taskbar icon support
 
 class RedirectText:
     """Class to redirect stdout to a text control"""
@@ -27,7 +28,10 @@ class LogAnalyzerFrame(wx.Frame):
         super().__init__(None, title="SC Log Analyzer", size=(800, 600))
         
         # Set flag for GUI mode
-        log_analyzer.main.in_gui = True
+        log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled
+        
+        # Set up a custom log handler for GUI
+        log_analyzer.main.gui_log_handler = self.append_log_message
         
         # Initialize variables
         self.observer = None
@@ -101,6 +105,9 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Set up stdout redirection
         sys.stdout = RedirectText(self.log_text)
+
+        # Create taskbar icon
+        self.taskbar_icon = TaskBarIcon(self)
         
     def load_default_config(self):
         """Load default log file path from config"""
@@ -121,8 +128,8 @@ class LogAnalyzerFrame(wx.Frame):
                 
                 # Set checkbox defaults from config
                 self.process_all_check.SetValue(config.get('process_all', True))
-                self.discord_check.SetValue(config.get('use_discord', False))
-                self.googlesheet_check.SetValue(config.get('use_googlesheet', False))
+                self.discord_check.SetValue(config.get('use_discord', True))  # Default to True
+                self.googlesheet_check.SetValue(config.get('use_googlesheet', True))  # Default to True
                 
             except Exception as e:
                 self.log_text.AppendText(f"Error loading config: {e}\n")
@@ -242,6 +249,10 @@ class LogAnalyzerFrame(wx.Frame):
             self.event_handler = None
             self.observer = None
     
+    def append_log_message(self, message):
+        """Append a log message to the GUI log output area."""
+        wx.CallAfter(self.log_text.AppendText, message + "\n")
+
     def on_close(self, event):
         """Handle window close event"""
         if self.monitoring:
@@ -249,9 +260,59 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Restore original stdout
         sys.stdout = sys.__stdout__
-        
+
+        # Remove the custom log handler
+        log_analyzer.main.gui_log_handler = None
+
+        # Destroy the taskbar icon
+        self.taskbar_icon.RemoveIcon()
+        self.taskbar_icon.Destroy()
+
         # Destroy the window
         self.Destroy()
+
+class TaskBarIcon(wx.adv.TaskBarIcon):
+    def __init__(self, frame):
+        super().__init__()
+        self.frame = frame
+
+        # Set the icon using a stock icon
+        icon = wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16))
+        self.SetIcon(icon, "SC Log Analyzer")
+
+        # Bind events
+        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.on_left_click)
+        self.Bind(wx.adv.EVT_TASKBAR_RIGHT_DOWN, self.on_right_click)
+
+    def on_left_click(self, event):
+        """Show or hide the main window on left-click"""
+        if self.frame.IsShown():
+            self.frame.Hide()
+        else:
+            self.frame.Show()
+            self.frame.Raise()
+
+    def on_right_click(self, event):
+        """Show a context menu on right-click"""
+        menu = wx.Menu()
+        show_item = menu.Append(wx.ID_ANY, "Show Main Window")
+        exit_item = menu.Append(wx.ID_EXIT, "Exit")
+
+        self.Bind(wx.EVT_MENU, self.on_show, show_item)
+        self.Bind(wx.EVT_MENU, self.on_exit, exit_item)
+
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def on_show(self, event):
+        """Show the main window"""
+        if not self.frame.IsShown():
+            self.frame.Show()
+            self.frame.Raise()
+
+    def on_exit(self, event):
+        """Exit the application"""
+        wx.CallAfter(self.frame.Close)
 
 def main():
     app = wx.App()

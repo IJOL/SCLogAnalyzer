@@ -21,7 +21,7 @@ except ImportError:
 
 def output_message(timestamp, message):
     """
-    Output a message to stdout
+    Output a message to stdout or a custom handler in GUI mode.
     
     Args:
         timestamp: Timestamp string or None
@@ -34,8 +34,11 @@ def output_message(timestamp, message):
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         formatted_msg = f"*{current_time} - {message}"
     
-    # Print to console
-    print(formatted_msg)
+    # Redirect to GUI log handler if in GUI mode
+    if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler'):
+        main.gui_log_handler(formatted_msg)
+    else:
+        print(formatted_msg)
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, config):
