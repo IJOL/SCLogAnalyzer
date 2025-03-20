@@ -7,6 +7,7 @@ import log_analyzer
 import time
 from watchdog.observers.polling import PollingObserver as Observer
 import wx.adv  # Import wx.adv for taskbar icon support
+import json  # For handling JSON files
 
 class RedirectText:
     """Class to redirect stdout to a text control"""
@@ -22,6 +23,211 @@ class RedirectText:
     def flush(self):
         self.stdout.flush()
 
+class KeyValueGrid(wx.Panel):
+    """A reusable grid for editing key-value pairs."""
+    def __init__(self, parent, title, data):
+        super().__init__(parent)
+        self.data = data
+
+        # Create main sizer
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Add title
+        title_label = wx.StaticText(self, label=title)
+        main_sizer.Add(title_label, 0, wx.ALL, 5)
+
+        # Create grid
+        self.grid = wx.FlexGridSizer(cols=3, hgap=5, vgap=5)
+        self.grid.AddGrowableCol(1, 1)  # Make value column expandable
+
+        # Add headers
+        self.grid.Add(wx.StaticText(self, label="Key"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.grid.Add(wx.StaticText(self, label="Value"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.grid.Add(wx.StaticText(self, label="Actions"), 0, wx.ALIGN_CENTER_VERTICAL)
+
+        # Populate grid with data
+        self.controls = []
+        for key, value in self.data.items():
+            self.add_row(key, value)
+
+        main_sizer.Add(self.grid, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Add buttons
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        add_button = wx.Button(self, label="Add")
+        button_sizer.Add(add_button, 0, wx.ALL, 5)
+        main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT)
+
+        self.SetSizer(main_sizer)
+
+        # Bind events
+        add_button.Bind(wx.EVT_BUTTON, self.on_add)
+
+    def add_row(self, key="", value=""):
+        """Add a row to the grid."""
+        key_ctrl = wx.TextCtrl(self, value=key)
+        value_ctrl = wx.TextCtrl(self, value=value)
+        delete_button = wx.Button(self, label="Delete")
+
+        self.grid.Add(key_ctrl, 0, wx.EXPAND)
+        self.grid.Add(value_ctrl, 1, wx.EXPAND)
+        self.grid.Add(delete_button, 0, wx.ALIGN_CENTER)
+
+        self.controls.append((key_ctrl, value_ctrl, delete_button))
+
+        # Bind delete button event
+        delete_button.Bind(wx.EVT_BUTTON, lambda event: self.on_delete(key_ctrl, value_ctrl, delete_button))
+
+        self.Layout()
+
+    def on_add(self, event):
+        """Handle add button click."""
+        # Add a new row with empty inputs for key and value
+        self.add_row("", "")
+
+    def on_delete(self, key_ctrl, value_ctrl, delete_button):
+        """Handle delete button click."""
+        key_ctrl.Destroy()
+        value_ctrl.Destroy()
+        delete_button.Destroy()
+        self.controls.remove((key_ctrl, value_ctrl, delete_button))
+        self.Layout()
+
+    def get_data(self):
+        """Retrieve the data from the grid."""
+        return {key_ctrl.GetValue(): value_ctrl.GetValue() for key_ctrl, value_ctrl, _ in self.controls}
+
+class ConfigDialog(wx.Frame):
+    """Resizable, non-modal dialog for editing configuration options."""
+    def __init__(self, parent, config_path):
+        super().__init__(parent, title="Edit Configuration", size=(600, 400))
+        self.config_path = config_path
+        self.config_data = {}
+
+        # Load the configuration file
+        self.load_config()
+
+        # Create main sizer
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Create notebook
+        notebook = wx.Notebook(self)
+
+        # Add general config tab
+        general_panel = wx.Panel(notebook)
+        general_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.general_controls = {}
+        for key, value in self.config_data.items():
+            if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
+                label = wx.StaticText(general_panel, label=key)
+                if isinstance(value, bool):
+                    control = wx.CheckBox(general_panel)
+                    control.SetValue(value)
+                else:
+                    control = wx.TextCtrl(general_panel, value=str(value))
+                self.general_controls[key] = control
+                row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+                row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+                row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
+                general_sizer.Add(row_sizer, 0, wx.EXPAND)
+        general_panel.SetSizer(general_sizer)
+        notebook.AddPage(general_panel, "General Config")
+
+        # Add regex_patterns tab
+        regex_panel = wx.ScrolledWindow(notebook)  # Use ScrolledWindow for vertical scrolling
+        regex_panel.SetScrollRate(5, 5)  # Set scroll rate
+        regex_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.regex_patterns_grid = KeyValueGrid(regex_panel, "Regex Patterns", self.config_data.get("regex_patterns", {}))
+        regex_sizer.Add(self.regex_patterns_grid, 1, wx.EXPAND | wx.ALL, 5)
+        regex_panel.SetSizer(regex_sizer)
+        notebook.AddPage(regex_panel, "Regex Patterns")
+
+        # Add messages tab
+        messages_panel = wx.ScrolledWindow(notebook)  # Use ScrolledWindow for vertical scrolling
+        messages_panel.SetScrollRate(5, 5)  # Set scroll rate
+        messages_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.messages_grid = KeyValueGrid(messages_panel, "Messages", self.config_data.get("messages", {}))
+        messages_sizer.Add(self.messages_grid, 1, wx.EXPAND | wx.ALL, 5)
+        messages_panel.SetSizer(messages_sizer)
+        notebook.AddPage(messages_panel, "Messages")
+
+        # Add discord tab
+        discord_panel = wx.ScrolledWindow(notebook)  # Use ScrolledWindow for vertical scrolling
+        discord_panel.SetScrollRate(5, 5)  # Set scroll rate
+        discord_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.discord_grid = KeyValueGrid(discord_panel, "Discord Messages", self.config_data.get("discord", {}))
+        discord_sizer.Add(self.discord_grid, 1, wx.EXPAND | wx.ALL, 5)
+        discord_panel.SetSizer(discord_sizer)
+        notebook.AddPage(discord_panel, "Discord")
+
+        main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Add Accept, Save, and Cancel buttons
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        accept_button = wx.Button(self, label="Accept")
+        save_button = wx.Button(self, label="Save")
+        cancel_button = wx.Button(self, label="Cancel")
+        button_sizer.Add(accept_button, 0, wx.ALL, 5)
+        button_sizer.Add(save_button, 0, wx.ALL, 5)
+        button_sizer.Add(cancel_button, 0, wx.ALL, 5)
+        main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+
+        self.SetSizer(main_sizer)
+
+        # Bind events
+        accept_button.Bind(wx.EVT_BUTTON, self.on_accept)
+        save_button.Bind(wx.EVT_BUTTON, self.on_save)
+        cancel_button.Bind(wx.EVT_BUTTON, self.on_close)
+
+    def load_config(self):
+        """Load configuration from the JSON file."""
+        if os.path.exists(self.config_path):
+            with open(self.config_path, 'r', encoding='utf-8') as config_file:
+                self.config_data = json.load(config_file)
+
+    def save_config(self):
+        """Save configuration to the JSON file."""
+        # Save general config values
+        for key, control in self.general_controls.items():
+            if isinstance(control, wx.CheckBox):
+                self.config_data[key] = control.GetValue()
+            else:
+                value = control.GetValue()
+                try:
+                    # Try to convert to int or float if applicable
+                    if value.isdigit():
+                        value = int(value)
+                    else:
+                        value = float(value)
+                except ValueError:
+                    pass
+                self.config_data[key] = value
+
+        # Save grid data
+        self.config_data["regex_patterns"] = self.regex_patterns_grid.get_data()
+        self.config_data["messages"] = self.messages_grid.get_data()
+        self.config_data["discord"] = self.discord_grid.get_data()
+
+    def save_to_file(self):
+        """Save the current configuration to the JSON file."""
+        with open(self.config_path, 'w', encoding='utf-8') as config_file:
+            json.dump(self.config_data, config_file, indent=4)
+
+    def on_accept(self, event):
+        """Handle the Accept button click."""
+        self.save_config()
+        self.Destroy()
+
+    def on_save(self, event):
+        """Handle the Save button click."""
+        self.save_config()
+        self.save_to_file()
+        wx.MessageBox("Configuration saved successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
+        self.Destroy()
+
+    def on_close(self, event):
+        """Handle the Cancel button click."""
+        self.Destroy()
 
 class LogAnalyzerFrame(wx.Frame):
     def __init__(self):
@@ -30,6 +236,9 @@ class LogAnalyzerFrame(wx.Frame):
         # Set flag for GUI mode
         log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled
         
+        # Ensure default config exists
+        self.ensure_default_config()
+
         # Set up a custom log handler for GUI
         log_analyzer.main.gui_log_handler = self.append_log_message
         
@@ -99,6 +308,16 @@ class LogAnalyzerFrame(wx.Frame):
         self.process_button.Bind(wx.EVT_BUTTON, self.on_process)
         self.monitor_button.Bind(wx.EVT_BUTTON, self.on_monitor)
         self.Bind(wx.EVT_CLOSE, self.on_close)
+
+        # Add a menu bar with a Config menu
+        menu_bar = wx.MenuBar()
+        config_menu = wx.Menu()
+        edit_config_item = config_menu.Append(wx.ID_ANY, "Edit Config...")
+        menu_bar.Append(config_menu, "Config")
+        self.SetMenuBar(menu_bar)
+
+        # Bind menu events
+        self.Bind(wx.EVT_MENU, self.on_edit_config, edit_config_item)
         
         # Try to get the default log file path from config
         self.load_default_config()
@@ -109,6 +328,14 @@ class LogAnalyzerFrame(wx.Frame):
         # Create taskbar icon
         self.taskbar_icon = TaskBarIcon(self)
         
+    def ensure_default_config(self):
+        """Ensure the default configuration file exists."""
+        app_path = log_analyzer.get_application_path()
+        config_path = os.path.join(app_path, "config.json")
+        
+        if not os.path.exists(config_path):
+            log_analyzer.emit_default_config(config_path, in_gui=True)
+
     def load_default_config(self):
         """Load default log file path from config"""
         app_path = log_analyzer.get_application_path()
@@ -252,6 +479,15 @@ class LogAnalyzerFrame(wx.Frame):
     def append_log_message(self, message):
         """Append a log message to the GUI log output area."""
         wx.CallAfter(self.log_text.AppendText, message + "\n")
+
+    def on_edit_config(self, event):
+        """Open the configuration dialog."""
+        app_path = log_analyzer.get_application_path()
+        config_path = os.path.join(app_path, "config.json")
+        if not hasattr(self, 'config_dialog') or not self.config_dialog:
+            self.config_dialog = ConfigDialog(self, config_path)
+        self.config_dialog.Show()
+        self.config_dialog.Raise()
 
     def on_close(self, event):
         """Handle window close event"""
