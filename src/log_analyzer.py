@@ -499,10 +499,13 @@ def prompt_for_config_values(template):
             config[key] = prompt_for_config_values(value)
     return config
 
-def emit_default_config(config_path):
+def emit_default_config(config_path, in_gui=False):
     with open(get_template_path(), 'r', encoding='utf-8') as template_file:
         template_config = json.load(template_file)
-    config = prompt_for_config_values(template_config)
+    if not in_gui:
+        config = prompt_for_config_values(template_config)
+    else:
+        config = template_config
     config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
     
  
