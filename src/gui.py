@@ -113,52 +113,13 @@ class ConfigDialog(wx.Frame):
         # Create notebook
         notebook = wx.Notebook(self)
 
-        # Add general config tab
-        general_panel = wx.Panel(notebook)
-        general_sizer = wx.BoxSizer(wx.VERTICAL)
+        # Add tabs using the helper method
         self.general_controls = {}
-        for key, value in self.config_data.items():
-            if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
-                label = wx.StaticText(general_panel, label=key)
-                if isinstance(value, bool):
-                    control = wx.CheckBox(general_panel)
-                    control.SetValue(value)
-                else:
-                    control = wx.TextCtrl(general_panel, value=str(value))
-                self.general_controls[key] = control
-                row_sizer = wx.BoxSizer(wx.HORIZONTAL)
-                row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-                row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
-                general_sizer.Add(row_sizer, 0, wx.EXPAND)
-        general_panel.SetSizer(general_sizer)
-        notebook.AddPage(general_panel, "General Config")
-
-        # Add regex_patterns tab
-        regex_panel = wx.ScrolledWindow(notebook)  # Use ScrolledWindow for vertical scrolling
-        regex_panel.SetScrollRate(5, 5)  # Set scroll rate
-        regex_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.regex_patterns_grid = KeyValueGrid(regex_panel, "Regex Patterns", self.config_data.get("regex_patterns", {}))
-        regex_sizer.Add(self.regex_patterns_grid, 1, wx.EXPAND | wx.ALL, 5)
-        regex_panel.SetSizer(regex_sizer)
-        notebook.AddPage(regex_panel, "Regex Patterns")
-
-        # Add messages tab
-        messages_panel = wx.ScrolledWindow(notebook)  # Use ScrolledWindow for vertical scrolling
-        messages_panel.SetScrollRate(5, 5)  # Set scroll rate
-        messages_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.messages_grid = KeyValueGrid(messages_panel, "Messages", self.config_data.get("messages", {}))
-        messages_sizer.Add(self.messages_grid, 1, wx.EXPAND | wx.ALL, 5)
-        messages_panel.SetSizer(messages_sizer)
-        notebook.AddPage(messages_panel, "Messages")
-
-        # Add discord tab
-        discord_panel = wx.ScrolledWindow(notebook)  # Use ScrolledWindow for vertical scrolling
-        discord_panel.SetScrollRate(5, 5)  # Set scroll rate
-        discord_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.discord_grid = KeyValueGrid(discord_panel, "Discord Messages", self.config_data.get("discord", {}))
-        discord_sizer.Add(self.discord_grid, 1, wx.EXPAND | wx.ALL, 5)
-        discord_panel.SetSizer(discord_sizer)
-        notebook.AddPage(discord_panel, "Discord")
+        self.add_general_tab(notebook, "General Config", self.config_data)
+        self.regex_patterns_grid = self.add_tab(notebook, "Regex Patterns", "regex_patterns")
+        self.messages_grid = self.add_tab(notebook, "Messages", "messages")
+        self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord")
+        self.sheets_mapping_grid = self.add_tab(notebook, "Google Sheets Mapping", "google_sheets_mapping")
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -178,6 +139,37 @@ class ConfigDialog(wx.Frame):
         accept_button.Bind(wx.EVT_BUTTON, self.on_accept)
         save_button.Bind(wx.EVT_BUTTON, self.on_save)
         cancel_button.Bind(wx.EVT_BUTTON, self.on_close)
+
+    def add_tab(self, notebook, title, config_key):
+        """Helper method to add a tab with a KeyValueGrid."""
+        panel = wx.ScrolledWindow(notebook)
+        panel.SetScrollRate(5, 5)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        grid = KeyValueGrid(panel, title, self.config_data.get(config_key, {}))
+        sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 5)
+        panel.SetSizer(sizer)
+        notebook.AddPage(panel, title)
+        return grid
+
+    def add_general_tab(self, notebook, title, config_data):
+        """Helper method to add the general configuration tab."""
+        panel = wx.Panel(notebook)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        for key, value in config_data.items():
+            if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
+                label = wx.StaticText(panel, label=key)
+                if isinstance(value, bool):
+                    control = wx.CheckBox(panel)
+                    control.SetValue(value)
+                else:
+                    control = wx.TextCtrl(panel, value=str(value))
+                self.general_controls[key] = control
+                row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+                row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+                row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
+                sizer.Add(row_sizer, 0, wx.EXPAND)
+        panel.SetSizer(sizer)
+        notebook.AddPage(panel, title)
 
     def load_config(self):
         """Load configuration from the JSON file."""
@@ -207,6 +199,7 @@ class ConfigDialog(wx.Frame):
         self.config_data["regex_patterns"] = self.regex_patterns_grid.get_data()
         self.config_data["messages"] = self.messages_grid.get_data()
         self.config_data["discord"] = self.discord_grid.get_data()
+        self.config_data["google_sheets_mapping"] = self.sheets_mapping_grid.get_data()
 
     def save_to_file(self):
         """Save the current configuration to the JSON file."""
@@ -224,6 +217,7 @@ class ConfigDialog(wx.Frame):
         self.save_to_file()
         wx.MessageBox("Configuration saved successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
         self.Destroy()
+        
 
     def on_close(self, event):
         """Handle the Cancel button click."""
