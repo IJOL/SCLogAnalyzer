@@ -370,7 +370,6 @@ class LogAnalyzerFrame(wx.Frame):
                 return
             
             self.file_path.SetValue(file_dialog.GetPath())
-            self.config_data['log_file_path'] = file_dialog.GetPath()
     
     def on_process(self, event):
         """Handle process once button click event"""
