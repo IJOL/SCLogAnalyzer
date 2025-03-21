@@ -1,10 +1,11 @@
 """Version information for SC Log Analyzer"""
 
-MAJOR = 0
-MINOR = 10
-PATCH = "4871d02"
+MAJOR = 1
+MINOR = 0
+RELEASE = 0
+PATCH = "c113264"
 
-VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
+VERSION = f"{MAJOR}.{MINOR}.{RELEASE} - {PATCH}"
 
 def get_version():
     """Return the full version string"""
