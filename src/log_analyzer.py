@@ -262,11 +262,7 @@ class LogFileHandler(FileSystemEventHandler):
         # First check for mode changes
         if self.detect_mode_change(entry, send_message):
             return
-            
-        # Try commodity activity next
-        if self.detect_commodity_activity(entry, send_message):
-            return
-            
+                       
         # Try generic detection for any other configured patterns
         for pattern_name in self.regex_patterns.keys():
             if pattern_name not in ['timestamp', 'zone', 'commodity']:
