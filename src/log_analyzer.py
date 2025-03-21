@@ -57,7 +57,6 @@ class LogFileHandler(FileSystemEventHandler):
         self.google_sheets_webhook = config.get('google_sheets_webhook', '')
         self.google_sheets_mapping = config.get('google_sheets_mapping', {})
         self.username = config.get('username', 'Unknown')
-        self.filter_username_pattern = config.get('filter_username_pattern', None)
         self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
         self.google_sheets_queue = queue.Queue()
         self.stop_event = threading.Event()
@@ -264,19 +263,13 @@ class LogFileHandler(FileSystemEventHandler):
         if self.detect_mode_change(entry, send_message):
             return
             
-        # Try filter_username_pattern first if defined
-        if self.filter_username_pattern and self.filter_username_pattern in self.regex_patterns:
-            success, _ = self.detect_and_emit_generic(entry, self.filter_username_pattern, send_message)
-            if success:
-                return
-            
         # Try commodity activity next
         if self.detect_commodity_activity(entry, send_message):
             return
             
         # Try generic detection for any other configured patterns
         for pattern_name in self.regex_patterns.keys():
-            if pattern_name not in ['timestamp', 'zone', 'commodity'] and pattern_name != self.filter_username_pattern:
+            if pattern_name not in ['timestamp', 'zone', 'commodity']:
                 success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
                 if success:
                     return
@@ -400,17 +393,6 @@ class LogFileHandler(FileSystemEventHandler):
 
         data = self.detect_generic(entry, self.regex_patterns[pattern_name])
         if data:
-            # Apply username filter if this is the pattern we want to filter
-            if pattern_name == self.filter_username_pattern:
-                # Extract victim and killer names for case-insensitive matching
-                victim = data.get('victim', '').lower()
-                killer = data.get('killer', '').lower()
-                username_lower = self.username.lower()
-                
-                # Check if either victim or killer matches the username (case-insensitive)
-                if not (victim == username_lower or killer == username_lower):
-                    return False, None
-
             # Extract player and action information
             data['player'] = data.get('player') or data.get('owner') or data.get('entity') or 'Unknown'
             data['action'] = pattern_name.replace('_', ' ').title()
