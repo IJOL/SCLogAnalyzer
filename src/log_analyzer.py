@@ -262,10 +262,17 @@ class LogFileHandler(FileSystemEventHandler):
         # First check for mode changes
         if self.detect_mode_change(entry, send_message):
             return
-                       
-        # Try generic detection for any other configured patterns
+
+        # Process patterns in google_sheets_mapping first
+        processed_patterns = set()
+        for pattern_name in self.google_sheets_mapping.keys():
+            success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
+            if success:
+                processed_patterns.add(pattern_name)
+
+        # Process remaining patterns not in google_sheets_mapping
         for pattern_name in self.regex_patterns.keys():
-            if pattern_name not in ['timestamp', 'zone', 'commodity']:
+            if pattern_name not in processed_patterns:
                 success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
                 if success:
                     return
@@ -408,61 +415,11 @@ class LogFileHandler(FileSystemEventHandler):
                 self.send_discord_message(data, pattern_name=pattern_name)
             
             # Send to Google Sheets if pattern is configured
-            if pattern_name in self.google_sheets_mapping:
+            if pattern_name in self.google_sheets_mapping and send_message:
                 self.update_google_sheets(data, pattern_name)
             
             return True, data
         return False, None
-
-    def detect_commodity_activity(self, entry, send_message=True):
-        # Check if required pattern exists
-        if 'commodity' not in self.regex_patterns:
-            output_message(None, "Missing 'commodity' pattern in configuration")
-            return False
-            
-        commodity_data = self.detect_generic(entry, self.regex_patterns['commodity'])
-        if not commodity_data:
-            return False
-            
-        # Validate required fields
-        required_fields = ['owner', 'commodity', 'zone', 'timestamp']
-        missing_fields = [field for field in required_fields if not commodity_data.get(field)]
-        
-        if missing_fields:
-            output_message(None, f"Missing required fields in commodity data: {', '.join(missing_fields)}")
-            return False
-
-        # All validation passed, proceed with processing
-        data = {field: commodity_data[field] for field in required_fields}
-        
-        # Add current mode to data if active
-        if self.current_mode:
-            data['current_mode'] = self.current_mode
-        else:
-            data['current_mode'] = 'None'
-            
-        message = self.messages.get("commodity_activity")
-        if not message:
-            output_message(None, "Missing 'commodity_activity' message template")
-            return False
-            
-        output_message(data['timestamp'], message.format(**data))
-        if send_message:
-            self.send_discord_message(data, pattern_name='commodity_activity')
-        
-        # Update actor state
-        self.actor_state[data['owner']] = {
-            'commodity': data['commodity'],
-            'zone': data['zone'],
-            'timestamp': data['timestamp']
-        }
-        
-        # Send technical information for important players
-        if data['owner'] in self.important_players:
-            technical_message = f"commodity,{data['timestamp']},{data['owner']},{data['commodity']},{data['zone']}"
-            self.send_discord_message(technical_message, technical=True)
-        
-        return True
 
 DEFAULT_CONFIG_TEMPLATE = "config.json.template"
 
