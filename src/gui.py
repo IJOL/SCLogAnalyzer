@@ -68,15 +68,23 @@ class KeyValueGrid(wx.Panel):
         key_ctrl = wx.TextCtrl(self, value=key)
         value_ctrl = wx.TextCtrl(self, value=value)
         delete_button = wx.Button(self, label="Delete")
+        move_up_button = wx.Button(self, label="Up")
+        move_down_button = wx.Button(self, label="Down")
 
         self.grid.Add(key_ctrl, 0, wx.EXPAND)
         self.grid.Add(value_ctrl, 1, wx.EXPAND)
-        self.grid.Add(delete_button, 0, wx.ALIGN_CENTER)
+        action_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        action_sizer.Add(delete_button, 0, wx.ALL, 2)
+        action_sizer.Add(move_up_button, 0, wx.ALL, 2)
+        action_sizer.Add(move_down_button, 0, wx.ALL, 2)
+        self.grid.Add(action_sizer, 0, wx.ALIGN_CENTER)
 
-        self.controls.append((key_ctrl, value_ctrl, delete_button))
+        self.controls.append((key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
 
-        # Bind delete button event
-        delete_button.Bind(wx.EVT_BUTTON, lambda event: self.on_delete(key_ctrl, value_ctrl, delete_button))
+        # Bind button events
+        delete_button.Bind(wx.EVT_BUTTON, lambda event: self.on_delete(key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
+        move_up_button.Bind(wx.EVT_BUTTON, lambda event: self.on_move_up(key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
+        move_down_button.Bind(wx.EVT_BUTTON, lambda event: self.on_move_down(key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
 
         self.Layout()
 
@@ -85,17 +93,67 @@ class KeyValueGrid(wx.Panel):
         # Add a new row with empty inputs for key and value
         self.add_row("", "")
 
-    def on_delete(self, key_ctrl, value_ctrl, delete_button):
+    def on_delete(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button):
         """Handle delete button click."""
+        wx.CallAfter(self._delete_row, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button)
+
+    def _delete_row(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button):
+        """Perform the actual deletion of a row."""
         key_ctrl.Destroy()
         value_ctrl.Destroy()
         delete_button.Destroy()
-        self.controls.remove((key_ctrl, value_ctrl, delete_button))
+        move_up_button.Destroy()
+        move_down_button.Destroy()
+        self.controls.remove((key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
+        self.refresh_grid()
+
+    def on_move_up(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button):
+        """Move the row up."""
+        wx.CallAfter(self._move_row, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button, -1)
+
+    def on_move_down(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button):
+        """Move the row down."""
+        wx.CallAfter(self._move_row, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button, 1)
+
+    def _move_row(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button, direction):
+        """Perform the actual row movement."""
+        index = self.controls.index((key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
+        new_index = index + direction
+        if 0 <= new_index < len(self.controls):
+            # Swap the rows
+            self.controls[index], self.controls[new_index] = self.controls[new_index], self.controls[index]
+            self.refresh_grid()
+
+    def refresh_grid(self):
+        """Refresh the grid to reflect the updated order."""
+        wx.CallAfter(self._refresh_grid)
+
+    def _refresh_grid(self):
+        """Perform the actual grid refresh."""
+        # Safely destroy all child widgets in the grid
+        # for child in self.grid.GetChildren():
+        #     child.GetWindow().Destroy() if child.GetWindow() else None
+        data=self.get_data()  # Save the data before clearing the grid
+
+        self.grid.Clear(True)  # Clear the grid layout
+        self.controls = []
+        # Re-add headers
+        self.grid.Add(wx.StaticText(self, label="Key"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.grid.Add(wx.StaticText(self, label="Value"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.grid.Add(wx.StaticText(self, label="Actions"), 0, wx.ALIGN_CENTER_VERTICAL)
+
+        # Rebuild the controls list and recreate rows
+        new_controls = []
+        for key,value in data.items():
+            # Extract the key and value before destroying the old widgets
+            # Add a new row with the extracted key and value
+            self.add_row(key, value)
+
         self.Layout()
 
     def get_data(self):
         """Retrieve the data from the grid."""
-        return {key_ctrl.GetValue(): value_ctrl.GetValue() for key_ctrl, value_ctrl, _ in self.controls}
+        return {key_ctrl.GetValue(): value_ctrl.GetValue() for key_ctrl, value_ctrl, _, _, _ in self.controls}
 
 class ConfigDialog(wx.Frame):
     """Resizable, non-modal dialog for editing configuration options."""
