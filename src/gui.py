@@ -25,9 +25,10 @@ class RedirectText:
 
 class KeyValueGrid(wx.Panel):
     """A reusable grid for editing key-value pairs."""
-    def __init__(self, parent, title, data):
+    def __init__(self, parent, title, data, key_choices=None):
         super().__init__(parent)
         self.data = data
+        self.key_choices = key_choices  # List of available keys for selection
 
         # Create main sizer
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -65,11 +66,17 @@ class KeyValueGrid(wx.Panel):
 
     def add_row(self, key="", value=""):
         """Add a row to the grid."""
-        key_ctrl = wx.TextCtrl(self, value=key)
+        if self.key_choices:
+            key_ctrl = wx.Choice(self, choices=self.key_choices)
+            if key in self.key_choices:
+                key_ctrl.SetStringSelection(key)
+        else:
+            key_ctrl = wx.TextCtrl(self, value=key)
+
         value_ctrl = wx.TextCtrl(self, value=value)
         delete_button = wx.Button(self, label="Delete")
-        move_up_button = wx.Button(self, label="Up")
-        move_down_button = wx.Button(self, label="Down")
+        move_up_button = wx.Button(self, label="↑", size=(25, -1))  # Adjusted size
+        move_down_button = wx.Button(self, label="↓", size=(25, -1))  # Adjusted size
 
         self.grid.Add(key_ctrl, 0, wx.EXPAND)
         self.grid.Add(value_ctrl, 1, wx.EXPAND)
@@ -153,7 +160,10 @@ class KeyValueGrid(wx.Panel):
 
     def get_data(self):
         """Retrieve the data from the grid."""
-        return {key_ctrl.GetValue(): value_ctrl.GetValue() for key_ctrl, value_ctrl, _, _, _ in self.controls}
+        return {
+            (key_ctrl.GetStringSelection() if isinstance(key_ctrl, wx.Choice) else key_ctrl.GetValue()): value_ctrl.GetValue()
+            for key_ctrl, value_ctrl, _, _, _ in self.controls
+        }
 
 class ConfigDialog(wx.Frame):
     """Resizable, non-modal dialog for editing configuration options."""
@@ -175,9 +185,11 @@ class ConfigDialog(wx.Frame):
         self.general_controls = {}
         self.add_general_tab(notebook, "General Config", self.config_data)
         self.regex_patterns_grid = self.add_tab(notebook, "Regex Patterns", "regex_patterns")
-        self.messages_grid = self.add_tab(notebook, "Messages", "messages")
-        self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord")
-        self.sheets_mapping_grid = self.add_tab(notebook, "Google Sheets Mapping", "google_sheets_mapping")
+        regex_keys = list(self.config_data.get("regex_patterns", {}).keys())
+        regex_keys.append("mode_change")  # Add the fixed option
+        self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
+        self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
+        self.sheets_mapping_grid = self.add_tab(notebook, "Google Sheets Mapping", "google_sheets_mapping", regex_keys)
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -198,12 +210,12 @@ class ConfigDialog(wx.Frame):
         save_button.Bind(wx.EVT_BUTTON, self.on_save)
         cancel_button.Bind(wx.EVT_BUTTON, self.on_close)
 
-    def add_tab(self, notebook, title, config_key):
+    def add_tab(self, notebook, title, config_key, key_choices=None):
         """Helper method to add a tab with a KeyValueGrid."""
         panel = wx.ScrolledWindow(notebook)
         panel.SetScrollRate(5, 5)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        grid = KeyValueGrid(panel, title, self.config_data.get(config_key, {}))
+        grid = KeyValueGrid(panel, title, self.config_data.get(config_key, {}), key_choices)
         sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 5)
         panel.SetSizer(sizer)
         notebook.AddPage(panel, title)
