@@ -3,7 +3,7 @@
 MAJOR = 1
 MINOR = 0
 RELEASE = 0
-PATCH = "ad5ea56"
+PATCH = "9e649e0"
 
 VERSION = f"{MAJOR}.{MINOR}.{RELEASE} - {PATCH}"
 
