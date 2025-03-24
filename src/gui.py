@@ -9,6 +9,7 @@ from watchdog.observers.polling import PollingObserver as Observer
 import wx.adv  # Import wx.adv for taskbar icon support
 import json  # For handling JSON files
 import winreg  # Import for Windows registry manipulation
+import wx.lib.newevent  # For custom events
 
 class RedirectText:
     """Class to redirect stdout to a text control"""
@@ -54,9 +55,10 @@ class KeyValueGrid(wx.Panel):
 
         main_sizer.Add(self.grid, 1, wx.EXPAND | wx.ALL, 5)
 
-        # Add buttons
+        # Add buttons at the bottom
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        add_button = wx.Button(self, label="Add")
+        add_button = wx.Button(self, label="+", size=(40, 40))
+        add_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
         button_sizer.Add(add_button, 0, wx.ALL, 5)
         main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT)
 
@@ -74,10 +76,16 @@ class KeyValueGrid(wx.Panel):
         else:
             key_ctrl = wx.TextCtrl(self, value=key)
 
-        value_ctrl = wx.TextCtrl(self, value=value)
-        delete_button = wx.Button(self, label="Delete")
-        move_up_button = wx.Button(self, label="↑", size=(25, -1))  # Adjusted size
-        move_down_button = wx.Button(self, label="↓", size=(25, -1))  # Adjusted size
+        # Use a multiline TextCtrl for the value field
+        value_ctrl = wx.TextCtrl(self, value=value, style=wx.TE_MULTILINE)
+        value_ctrl.SetMinSize((200, 50))  # Set a minimum size for better usability
+
+        delete_button = wx.Button(self, label="-", size=(40, 40))
+        delete_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
+        move_up_button = wx.Button(self, label="↑", size=(40, 40))
+        move_up_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
+        move_down_button = wx.Button(self, label="↓", size=(40, 40))
+        move_down_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
 
         self.grid.Add(key_ctrl, 0, wx.EXPAND)
         self.grid.Add(value_ctrl, 1, wx.EXPAND)
@@ -291,9 +299,24 @@ class ConfigDialog(wx.Frame):
                 row_sizer = wx.BoxSizer(wx.HORIZONTAL)
                 row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
                 row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
+
+                # Add a "Browse" button for the "log_file_path" key
+                if key == "log_file_path":
+                    browse_button = wx.Button(panel, label="Browse...")
+                    row_sizer.Add(browse_button, 0, wx.ALL, 5)
+                    browse_button.Bind(wx.EVT_BUTTON, lambda event: self.on_browse_log_file(control))
+
                 sizer.Add(row_sizer, 0, wx.EXPAND)
         panel.SetSizer(sizer)
         notebook.AddPage(panel, title)
+
+    def on_browse_log_file(self, control):
+        """Handle the Browse button click for log_file_path."""
+        with wx.FileDialog(self, "Select log file", wildcard="Log files (*.log)|*.log|All files (*.*)|*.*",
+                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as file_dialog:
+            if file_dialog.ShowModal() == wx.ID_CANCEL:
+                return
+            control.SetValue(file_dialog.GetPath())
 
     def load_config(self):
         """Load configuration from the JSON file."""
@@ -402,10 +425,14 @@ class LogAnalyzerFrame(wx.Frame):
         # Create log output area
         log_label = wx.StaticText(panel, label="Log Output:")
         self.log_text = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL)
-        
+
         # Set font to a monospaced font for better log readability
         font = wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         self.log_text.SetFont(font)
+
+        # Set black background and green text
+        self.log_text.SetBackgroundColour(wx.Colour(0, 0, 0))  # Black background
+        self.log_text.SetForegroundColour(wx.Colour(0, 255, 0))  # Green text
         
         # Add all controls to main sizer
         main_sizer.Add(file_sizer, 0, wx.EXPAND | wx.ALL, 5)
@@ -450,6 +477,16 @@ class LogAnalyzerFrame(wx.Frame):
         if "--start-hidden" in sys.argv:
             self.Hide()
             self.start_monitoring()
+
+        self.save_timer = wx.Timer(self)  # Timer to delay saving window info
+        self.Bind(wx.EVT_TIMER, self.on_save_timer, self.save_timer)
+        self.Bind(wx.EVT_MOVE, self.on_window_move_or_resize)
+        self.Bind(wx.EVT_SIZE, self.on_window_move_or_resize)
+
+        self.restore_window_info()  # Restore window position, size, and state from the registry
+
+        # Bind close event to save window position
+        self.Bind(wx.EVT_CLOSE, self.on_close)
         
     def ensure_default_config(self):
         """Ensure the default configuration file exists."""
@@ -609,11 +646,96 @@ class LogAnalyzerFrame(wx.Frame):
         config_path = os.path.join(app_path, "config.json")
         if not hasattr(self, 'config_dialog') or not self.config_dialog:
             self.config_dialog = ConfigDialog(self, config_path)
+        
+        # Ensure the config dialog is within the main window boundaries
+        main_window_position = self.GetPosition()
+        main_window_size = self.GetSize()
+        config_dialog_size = self.config_dialog.GetSize()
+        
+        new_x = max(main_window_position.x, min(main_window_position.x + main_window_size.x - config_dialog_size.x, self.config_dialog.GetPosition().x))
+        new_y = max(main_window_position.y, min(main_window_position.y + main_window_size.y - config_dialog_size.y, self.config_dialog.GetPosition().y))
+        
+        self.config_dialog.SetPosition(wx.Point(new_x, new_y))
+        
         self.config_dialog.Show()
         self.config_dialog.Raise()
 
+    def save_window_info(self):
+        """Save the window's current position, size, and state to the Windows registry."""
+        try:
+            key_path = r"Software\SCLogAnalyzer\WindowInfo"
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+            position = list(self.GetPosition())
+            size = list(self.GetSize())
+            is_maximized = self.IsMaximized()
+            is_iconized = self.IsIconized()
+            winreg.SetValueEx(key, "Position", 0, winreg.REG_SZ, f"{position[0]},{position[1]}")
+            winreg.SetValueEx(key, "Size", 0, winreg.REG_SZ, f"{size[0]},{size[1]}")
+            winreg.SetValueEx(key, "Maximized", 0, winreg.REG_SZ, str(is_maximized))
+            winreg.SetValueEx(key, "Iconized", 0, winreg.REG_SZ, str(is_iconized))
+            winreg.CloseKey(key)
+        except Exception as e:
+            self.log_text.AppendText(f"Error saving window info: {e}\n")
+
+    def restore_window_info(self):
+        """Restore the window's position, size, and state from the Windows registry."""
+        try:
+            key_path = r"Software\SCLogAnalyzer\WindowInfo"
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+            position = winreg.QueryValueEx(key, "Position")[0].split(",")
+            size = winreg.QueryValueEx(key, "Size")[0].split(",")
+            is_maximized = winreg.QueryValueEx(key, "Maximized")[0] == "True"
+            is_iconized = winreg.QueryValueEx(key, "Iconized")[0] == "True"
+            winreg.CloseKey(key)
+
+            # Convert position and size to integers
+            position = [int(position[0]), int(position[1])]
+            size = [int(size[0]), int(size[1])]
+
+            # Check if the window fits in any display
+            fits_in_display = False
+            for i in range(wx.Display.GetCount()):
+                display_bounds = wx.Display(i).GetGeometry()
+                if display_bounds.Contains(wx.Rect(position[0], position[1], size[0], size[1])):
+                    fits_in_display = True
+                    break
+
+            # If the window does not fit in any display, default to the primary display
+            if not fits_in_display:
+                primary_display_bounds = wx.Display(0).GetGeometry()
+                position[0] = max(primary_display_bounds.GetLeft(), min(position[0], primary_display_bounds.GetRight() - size[0]))
+                position[1] = max(primary_display_bounds.GetTop(), min(position[1], primary_display_bounds.GetBottom() - size[1]))
+
+            # Set the position and size
+            self.SetPosition(wx.Point(*position))
+            self.SetSize(wx.Size(*size))
+
+            # Restore maximized or iconized state
+            if is_maximized:
+                self.Maximize()
+            elif is_iconized:
+                self.Iconize()
+        except FileNotFoundError:
+            # Use default position and size if registry key is not found
+            self.SetPosition(wx.Point(50, 50))
+            self.SetSize(wx.Size(800, 600))
+        except Exception as e:
+            self.log_text.AppendText(f"Error restoring window info: {e}\n")
+
+    def on_window_move_or_resize(self, event):
+        """Handle window move or resize events."""
+        if not self.save_timer.IsRunning():
+            self.save_timer.Start(500)  # Start the timer only if it's not already running
+        event.Skip()
+
+    def on_save_timer(self, event):
+        """Save window info when the timer fires."""
+        self.save_window_info()
+        self.save_timer.Stop()
+
     def on_close(self, event):
-        """Handle window close event"""
+        """Handle window close event."""
+        self.save_window_info()  # Save position, size, and state before closing
         if self.monitoring:
             self.stop_monitoring()
         
@@ -676,8 +798,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 def main():
     app = wx.App()
     frame = LogAnalyzerFrame()
-    if "--start-hidden" not in sys.argv:
-        frame.Show()
+    frame.Show()
     app.MainLoop()
 
 if __name__ == "__main__":
