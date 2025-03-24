@@ -8,6 +8,7 @@ import time
 from watchdog.observers.polling import PollingObserver as Observer
 import wx.adv  # Import wx.adv for taskbar icon support
 import json  # For handling JSON files
+import winreg  # Import for Windows registry manipulation
 
 class RedirectText:
     """Class to redirect stdout to a text control"""
@@ -193,6 +194,14 @@ class ConfigDialog(wx.Frame):
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
+        # Add startup configuration section
+        startup_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.startup_label = wx.StaticText(self, label="Startup: Checking...")
+        self.startup_button = wx.Button(self, label="Toggle Startup")
+        startup_sizer.Add(self.startup_label, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        startup_sizer.Add(self.startup_button, 0, wx.ALL, 5)
+        main_sizer.Add(startup_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
         # Add Accept, Save, and Cancel buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         accept_button = wx.Button(self, label="Accept")
@@ -209,6 +218,51 @@ class ConfigDialog(wx.Frame):
         accept_button.Bind(wx.EVT_BUTTON, self.on_accept)
         save_button.Bind(wx.EVT_BUTTON, self.on_save)
         cancel_button.Bind(wx.EVT_BUTTON, self.on_close)
+        self.startup_button.Bind(wx.EVT_BUTTON, self.on_toggle_startup)
+
+        # Check startup status
+        self.check_startup_status()
+
+    def check_startup_status(self):
+        """Check if the application is set to run on Windows startup."""
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_READ)
+            value, _ = winreg.QueryValueEx(key, "SCLogAnalyzer")
+            winreg.CloseKey(key)
+            if value:
+                self.startup_label.SetLabel("Startup: Enabled")
+                self.startup_button.SetLabel("Disable Startup")
+        except FileNotFoundError:
+            self.startup_label.SetLabel("Startup: Disabled")
+            self.startup_button.SetLabel("Enable Startup")
+        except Exception as e:
+            self.startup_label.SetLabel(f"Startup: Error ({e})")
+            self.startup_button.Disable()
+
+    def on_toggle_startup(self, event):
+        """Toggle the startup entry in the Windows registry."""
+        try:
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            app_path = sys.executable  # Path to the Python executable or bundled EXE
+            startup_command = f'"{app_path}" --start-hidden'
+
+            if self.startup_button.GetLabel() == "Enable Startup":
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
+                winreg.SetValueEx(key, "SCLogAnalyzer", 0, winreg.REG_SZ, startup_command)
+                winreg.CloseKey(key)
+                wx.MessageBox("Startup enabled successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
+            else:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
+                winreg.DeleteValue(key, "SCLogAnalyzer")
+                winreg.CloseKey(key)
+                wx.MessageBox("Startup disabled successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
+
+            # Refresh the startup status
+            self.check_startup_status()
+        except FileNotFoundError:
+            wx.MessageBox("Startup entry not found.", "Info", wx.OK | wx.ICON_INFORMATION)
+        except Exception as e:
+            wx.MessageBox(f"Failed to toggle startup: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
     def add_tab(self, notebook, title, config_key, key_choices=None):
         """Helper method to add a tab with a KeyValueGrid."""
@@ -391,6 +445,11 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Create taskbar icon
         self.taskbar_icon = TaskBarIcon(self)
+
+        # Check if the app is started with Windows
+        if "--start-hidden" in sys.argv:
+            self.Hide()
+            self.start_monitoring()
         
     def ensure_default_config(self):
         """Ensure the default configuration file exists."""
@@ -617,7 +676,8 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 def main():
     app = wx.App()
     frame = LogAnalyzerFrame()
-    frame.Show()
+    if "--start-hidden" not in sys.argv:
+        frame.Show()
     app.MainLoop()
 
 if __name__ == "__main__":
