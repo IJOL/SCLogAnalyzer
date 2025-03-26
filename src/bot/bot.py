@@ -5,6 +5,7 @@ import logging
 import requests
 import discord
 from discord.ext import commands
+import time  # Add this import for measuring execution time
 
 # Configure logging
 logging.basicConfig(
@@ -67,15 +68,23 @@ class StatusBoardBot(commands.Cog):
 
     @commands.command(name='stats')
     async def fetch_google_sheets_stats(self, ctx):
+        logger.info(f"Command 'stats' invoked by user: {ctx.author} in channel: {ctx.channel}")
+        start_time = time.time()  # Start timing the command execution
+
         if not self.google_sheets_webhook:
+            logger.warning("Google Sheets webhook URL is not configured.")
             await ctx.send("Google Sheets webhook URL is not configured.")
             return
 
         try:
+            logger.info(f"Sending GET request to Google Sheets webhook: {self.google_sheets_webhook}")
             response = requests.get(self.google_sheets_webhook)
+            logger.info(f"Received response with status code: {response.status_code}")
+
             if response.status_code == 200:
                 data = response.json()
                 if not isinstance(data, list) or not data:
+                    logger.warning("The response data is empty or not in the expected format.")
                     await ctx.send("The response data is empty or not in the expected format.")
                     return
 
@@ -93,11 +102,17 @@ class StatusBoardBot(commands.Cog):
                 for item in data:
                     summary += " | ".join(f"{str(item.get(key, '')):<{column_widths[key]}}" for key in keys) + "\n"
                 summary += "```"
+                logger.info("Successfully generated Google Sheets summary.")
                 await ctx.send(summary)
             else:
+                logger.error(f"Failed to fetch data from Google Sheets. Status code: {response.status_code}")
                 await ctx.send(f"Failed to fetch data from Google Sheets. Status code: {response.status_code}")
         except Exception as e:
+            logger.exception(f"Error fetching data from Google Sheets: {e}")
             await ctx.send(f"Error fetching data from Google Sheets: {e}")
+        finally:
+            execution_time = time.time() - start_time
+            logger.info(f"Command 'stats' executed in {execution_time:.2f} seconds.")
 
 async def main():
     app_path = get_application_path()
