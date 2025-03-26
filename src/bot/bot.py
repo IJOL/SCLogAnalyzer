@@ -99,6 +99,7 @@ class StatusBoardBot(commands.Cog):
                     if i == 0:
                         # First column is always treated as a string
                         column_types[key] = 'str'
+                        column_widths[key] = max(len(str(key)), max(len(str(v)) for v in values))
                     elif "Ratio" in key:
                         # Columns containing "Ratio" are treated as floats
                         column_types[key] = 'float'
@@ -110,10 +111,11 @@ class StatusBoardBot(commands.Cog):
                     else:
                         column_types[key] = 'str'
 
-                    column_widths[key] = max(
-                        len(str(key)),
-                        max(len(f"{float(v):.2f}" if column_types[key] == 'float' else str(v)) for v in values)
-                    )
+                    if i != 0:  # Skip recalculating width for the first column
+                        column_widths[key] = max(
+                            len(str(key)),
+                            max(len(f"{float(v):.2f}" if column_types[key] == 'float' else str(v)) for v in values)
+                        )
 
                 # Generate the table header
                 summary = "📊 **Google Sheets Summary**\n"
