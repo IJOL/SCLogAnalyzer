@@ -97,7 +97,7 @@ class StatusBoardBot(commands.Cog):
                     values = [item.get(key, '') for item in data]
 
                     if i == 0:
-                        # First column is always treated as a string
+                        # First column is always treated as a string and has a fixed width
                         column_types[key] = 'str'
                         column_widths[key] = max(len(str(key)), max(len(str(v)) for v in values))
                     elif "Ratio" in key:
@@ -126,7 +126,7 @@ class StatusBoardBot(commands.Cog):
                 # Populate rows based on the data
                 for item in data:
                     summary += " | ".join(
-                        f"{(f'{float(item.get(key, 0)):.2f}' if column_types[key] == 'float' else str(item.get(key, ''))):>{column_widths[key] if column_types[key] != 'str' else ''}}"
+                        f"{(f'{float(item.get(key, 0)):.2f}' if column_types[key] == 'float' else str(item.get(key, ''))):<{column_widths[key]}}"
                         for key in keys
                     ) + "\n"
                 summary += "```"
