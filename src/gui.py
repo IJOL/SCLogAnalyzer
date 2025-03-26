@@ -11,6 +11,17 @@ import json  # For handling JSON files
 import winreg  # Import for Windows registry manipulation
 import wx.lib.newevent  # For custom events
 
+# Define constants for repeated strings and values
+CONFIG_FILE_NAME = "config.json"
+REGISTRY_KEY_PATH = r"Software\SCLogAnalyzer\WindowInfo"
+STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+STARTUP_APP_NAME = "SCLogAnalyzer"
+STARTUP_COMMAND_FLAG = "--start-hidden"
+DEFAULT_WINDOW_POSITION = (50, 50)
+DEFAULT_WINDOW_SIZE = (800, 600)
+LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
+TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
+
 class RedirectText:
     """Class to redirect stdout to a text control"""
     def __init__(self, text_ctrl):
@@ -234,8 +245,8 @@ class ConfigDialog(wx.Frame):
     def check_startup_status(self):
         """Check if the application is set to run on Windows startup."""
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_READ)
-            value, _ = winreg.QueryValueEx(key, "SCLogAnalyzer")
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_READ)
+            value, _ = winreg.QueryValueEx(key, STARTUP_APP_NAME)
             winreg.CloseKey(key)
             if value:
                 self.startup_label.SetLabel("Startup: Enabled")
@@ -250,18 +261,17 @@ class ConfigDialog(wx.Frame):
     def on_toggle_startup(self, event):
         """Toggle the startup entry in the Windows registry."""
         try:
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
             app_path = sys.executable  # Path to the Python executable or bundled EXE
-            startup_command = f'"{app_path}" --start-hidden'
+            startup_command = f'"{app_path}" {STARTUP_COMMAND_FLAG}'
 
             if self.startup_button.GetLabel() == "Enable Startup":
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
-                winreg.SetValueEx(key, "SCLogAnalyzer", 0, winreg.REG_SZ, startup_command)
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_SET_VALUE)
+                winreg.SetValueEx(key, STARTUP_APP_NAME, 0, winreg.REG_SZ, startup_command)
                 winreg.CloseKey(key)
                 wx.MessageBox("Startup enabled successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
             else:
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
-                winreg.DeleteValue(key, "SCLogAnalyzer")
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_SET_VALUE)
+                winreg.DeleteValue(key, STARTUP_APP_NAME)
                 winreg.CloseKey(key)
                 wx.MessageBox("Startup disabled successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
 
@@ -312,7 +322,7 @@ class ConfigDialog(wx.Frame):
 
     def on_browse_log_file(self, control):
         """Handle the Browse button click for log_file_path."""
-        with wx.FileDialog(self, "Select log file", wildcard="Log files (*.log)|*.log|All files (*.*)|*.*",
+        with wx.FileDialog(self, "Select log file", wildcard=LOG_FILE_WILDCARD,
                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as file_dialog:
             if file_dialog.ShowModal() == wx.ID_CANCEL:
                 return
@@ -474,7 +484,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.taskbar_icon = TaskBarIcon(self)
 
         # Check if the app is started with Windows
-        if "--start-hidden" in sys.argv:
+        if STARTUP_COMMAND_FLAG in sys.argv:
             self.Hide()
             self.start_monitoring()
 
@@ -491,7 +501,7 @@ class LogAnalyzerFrame(wx.Frame):
     def ensure_default_config(self):
         """Ensure the default configuration file exists."""
         app_path = log_analyzer.get_application_path()
-        config_path = os.path.join(app_path, "config.json")
+        config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         
         if not os.path.exists(config_path):
             log_analyzer.emit_default_config(config_path, in_gui=True)
@@ -499,7 +509,7 @@ class LogAnalyzerFrame(wx.Frame):
     def load_default_config(self):
         """Load default log file path from config"""
         app_path = log_analyzer.get_application_path()
-        config_path = os.path.join(app_path, "config.json")
+        config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         
         if os.path.exists(config_path):
             try:
@@ -530,7 +540,7 @@ class LogAnalyzerFrame(wx.Frame):
             self.SetStatusText("Monitoring stopped")
             self.monitoring = False
         
-        with wx.FileDialog(self, "Select log file", wildcard="Log files (*.log)|*.log|All files (*.*)|*.*",
+        with wx.FileDialog(self, "Select log file", wildcard=LOG_FILE_WILDCARD,
                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as file_dialog:
             if file_dialog.ShowModal() == wx.ID_CANCEL:
                 return
@@ -539,6 +549,8 @@ class LogAnalyzerFrame(wx.Frame):
     
     def on_process(self, event):
         """Handle process once button click event"""
+        if not self or not self.IsShown():
+            return  # Prevent actions if the frame is destroyed
         if self.monitoring:
             wx.MessageBox("Stop monitoring first before processing log", "Cannot Process", wx.OK | wx.ICON_INFORMATION)
             return
@@ -581,6 +593,8 @@ class LogAnalyzerFrame(wx.Frame):
     
     def on_monitor(self, event):
         """Handle start/stop monitoring button click event"""
+        if not self or not self.IsShown():
+            return  # Prevent actions if the frame is destroyed
         if self.monitoring:
             self.stop_monitoring()
             self.monitor_button.SetLabel("Start Monitoring")
@@ -638,12 +652,13 @@ class LogAnalyzerFrame(wx.Frame):
     
     def append_log_message(self, message):
         """Append a log message to the GUI log output area."""
-        wx.CallAfter(self.log_text.AppendText, message + "\n")
+        if self.log_text and self.log_text.IsShownOnScreen():
+            wx.CallAfter(self.log_text.AppendText, message + "\n")
 
     def on_edit_config(self, event):
         """Open the configuration dialog."""
         app_path = log_analyzer.get_application_path()
-        config_path = os.path.join(app_path, "config.json")
+        config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         if not hasattr(self, 'config_dialog') or not self.config_dialog:
             self.config_dialog = ConfigDialog(self, config_path)
         
@@ -663,8 +678,7 @@ class LogAnalyzerFrame(wx.Frame):
     def save_window_info(self):
         """Save the window's current position, size, and state to the Windows registry."""
         try:
-            key_path = r"Software\SCLogAnalyzer\WindowInfo"
-            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY_PATH)
             position = list(self.GetPosition())
             size = list(self.GetSize())
             is_maximized = self.IsMaximized()
@@ -680,8 +694,7 @@ class LogAnalyzerFrame(wx.Frame):
     def restore_window_info(self):
         """Restore the window's position, size, and state from the Windows registry."""
         try:
-            key_path = r"Software\SCLogAnalyzer\WindowInfo"
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY_PATH, 0, winreg.KEY_READ)
             position = winreg.QueryValueEx(key, "Position")[0].split(",")
             size = winreg.QueryValueEx(key, "Size")[0].split(",")
             is_maximized = winreg.QueryValueEx(key, "Maximized")[0] == "True"
@@ -717,8 +730,8 @@ class LogAnalyzerFrame(wx.Frame):
                 self.Iconize()
         except FileNotFoundError:
             # Use default position and size if registry key is not found
-            self.SetPosition(wx.Point(50, 50))
-            self.SetSize(wx.Size(800, 600))
+            self.SetPosition(wx.Point(*DEFAULT_WINDOW_POSITION))
+            self.SetSize(wx.Size(*DEFAULT_WINDOW_SIZE))
         except Exception as e:
             self.log_text.AppendText(f"Error restoring window info: {e}\n")
 
@@ -730,12 +743,19 @@ class LogAnalyzerFrame(wx.Frame):
 
     def on_save_timer(self, event):
         """Save window info when the timer fires."""
-        self.save_window_info()
-        self.save_timer.Stop()
+        if self.save_timer:
+            self.save_window_info()
+            self.save_timer.Stop()
 
     def on_close(self, event):
         """Handle window close event."""
-        self.save_window_info()  # Save position, size, and state before closing
+        self.save_window_info()
+        # Disconnect event bindings to prevent callbacks after destruction
+        self.Unbind(wx.EVT_MOVE)
+        self.Unbind(wx.EVT_SIZE)
+        self.save_timer.Stop()
+        self.save_timer = None
+
         if self.monitoring:
             self.stop_monitoring()
         
@@ -746,8 +766,10 @@ class LogAnalyzerFrame(wx.Frame):
         log_analyzer.main.gui_log_handler = None
 
         # Destroy the taskbar icon
-        self.taskbar_icon.RemoveIcon()
-        self.taskbar_icon.Destroy()
+        if hasattr(self, "taskbar_icon") and self.taskbar_icon:
+            self.taskbar_icon.RemoveIcon()
+            self.taskbar_icon.Destroy()
+            self.taskbar_icon = None
 
         # Destroy the window
         self.Destroy()
@@ -759,7 +781,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
         # Set the icon using a stock icon
         icon = wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16))
-        self.SetIcon(icon, "SC Log Analyzer")
+        self.SetIcon(icon, TASKBAR_ICON_TOOLTIP)
 
         # Bind events
         self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.on_left_click)
@@ -767,9 +789,9 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
     def on_left_click(self, event):
         """Show or hide the main window on left-click"""
-        if self.frame.IsShown():
+        if self.frame and self.frame.IsShown():
             self.frame.Hide()
-        else:
+        elif self.frame:
             self.frame.Show()
             self.frame.Raise()
 
@@ -793,7 +815,8 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
     def on_exit(self, event):
         """Exit the application"""
-        wx.CallAfter(self.frame.Close)
+        if self.frame:
+            wx.CallAfter(self.frame.Close)
 
 def main():
     app = wx.App()
