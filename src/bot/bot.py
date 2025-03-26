@@ -88,14 +88,21 @@ class StatusBoardBot(commands.Cog):
                     await ctx.send("The response data is empty or not in the expected format.")
                     return
 
-                # Determine column widths and types based on the longest value in each column
+                # Determine column widths and types based on column names and contents
                 keys = data[0].keys()
                 column_widths = {}
                 column_types = {}
 
-                for key in keys:
+                for i, key in enumerate(keys):
                     values = [item.get(key, '') for item in data]
-                    if all(isinstance(v, (int, float)) or str(v).replace('.', '', 1).isdigit() for v in values if v != ''):
+
+                    if i == 0:
+                        # First column is always treated as a string
+                        column_types[key] = 'str'
+                    elif "Ratio" in key:
+                        # Columns containing "Ratio" are treated as floats
+                        column_types[key] = 'float'
+                    elif all(isinstance(v, (int, float)) or str(v).replace('.', '', 1).isdigit() for v in values if v != ''):
                         if any(isinstance(v, float) or (isinstance(v, str) and '.' in v) for v in values):
                             column_types[key] = 'float'
                         else:
@@ -117,7 +124,7 @@ class StatusBoardBot(commands.Cog):
                 # Populate rows based on the data
                 for item in data:
                     summary += " | ".join(
-                        f"{(f'{float(item.get(key, 0)):.2f}' if column_types[key] == 'float' else item.get(key, '')):<{column_widths[key]}}"
+                        f"{(f'{float(item.get(key, 0)):.2f}' if column_types[key] == 'float' else str(item.get(key, ''))):>{column_widths[key] if column_types[key] != 'str' else ''}}"
                         for key in keys
                     ) + "\n"
                 summary += "```"
