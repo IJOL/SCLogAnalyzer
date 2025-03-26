@@ -88,12 +88,25 @@ class StatusBoardBot(commands.Cog):
                     await ctx.send("The response data is empty or not in the expected format.")
                     return
 
-                # Determine column widths based on the longest value in each column
+                # Determine column widths and types based on the longest value in each column
                 keys = data[0].keys()
-                column_widths = {
-                    key: max(len(str(key)), max(len(str(item.get(key, ''))) for item in data))
-                    for key in keys
-                }
+                column_widths = {}
+                column_types = {}
+
+                for key in keys:
+                    values = [item.get(key, '') for item in data]
+                    if all(isinstance(v, (int, float)) or str(v).replace('.', '', 1).isdigit() for v in values if v != ''):
+                        if any(isinstance(v, float) or (isinstance(v, str) and '.' in v) for v in values):
+                            column_types[key] = 'float'
+                        else:
+                            column_types[key] = 'int'
+                    else:
+                        column_types[key] = 'str'
+
+                    column_widths[key] = max(
+                        len(str(key)),
+                        max(len(f"{float(v):.2f}" if column_types[key] == 'float' else str(v)) for v in values)
+                    )
 
                 # Generate the table header
                 summary = "📊 **Google Sheets Summary**\n"
@@ -103,7 +116,10 @@ class StatusBoardBot(commands.Cog):
 
                 # Populate rows based on the data
                 for item in data:
-                    summary += " | ".join(f"{str(item.get(key, '')):<{column_widths[key]}}" for key in keys) + "\n"
+                    summary += " | ".join(
+                        f"{(f'{float(item.get(key, 0)):.2f}' if column_types[key] == 'float' else item.get(key, '')):<{column_widths[key]}}"
+                        for key in keys
+                    ) + "\n"
                 summary += "```"
                 logger.info("Successfully generated Google Sheets summary.")
                 await ctx.send(summary)
