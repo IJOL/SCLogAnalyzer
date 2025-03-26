@@ -75,12 +75,20 @@ class StatusBoardBot(commands.Cog):
             response = requests.get(self.google_sheets_webhook)
             if response.status_code == 200:
                 data = response.json()
+                if not isinstance(data, list) or not data:
+                    await ctx.send("The response data is empty or not in the expected format.")
+                    return
+
+                # Dynamically generate a table header based on the keys of the first item
+                keys = data[0].keys()
                 summary = "📊 **Google Sheets Summary**\n"
                 summary += "```\n"
-                summary += f"{'Jugador':<20} {'Kills':<10} {'Deaths':<10}\n"
-                summary += "-" * 40 + "\n"
+                summary += " | ".join(f"{key:<15}" for key in keys) + "\n"
+                summary += "-" * (len(keys) * 17) + "\n"
+
+                # Dynamically populate rows based on the data
                 for item in data:
-                    summary += f"{item['Jugador']:<20} {item['Kills']:<10} {item['Deaths']:<10}\n"
+                    summary += " | ".join(f"{str(item.get(key, '')):<15}" for key in keys) + "\n"
                 summary += "```"
                 await ctx.send(summary)
             else:
