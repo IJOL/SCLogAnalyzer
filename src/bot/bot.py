@@ -79,16 +79,19 @@ class StatusBoardBot(commands.Cog):
                     await ctx.send("The response data is empty or not in the expected format.")
                     return
 
-                # Dynamically generate a table header based on the keys of the first item
+                # Determine column widths based on the longest value in each column
                 keys = data[0].keys()
+                column_widths = {key: max(len(str(key)), max(len(str(item.get(key, ''))) for item in data))}
+
+                # Generate the table header
                 summary = "📊 **Google Sheets Summary**\n"
                 summary += "```\n"
-                summary += " | ".join(f"{key:<11}" for key in keys) + "\n"
-                summary += "-" * (len(keys) * 13) + "\n"
+                summary += " | ".join(f"{key:<{column_widths[key]}}" for key in keys) + "\n"
+                summary += "-" * (sum(column_widths.values()) + len(keys) * 3 - 1) + "\n"
 
-                # Dynamically populate rows based on the data
+                # Populate rows based on the data
                 for item in data:
-                    summary += " | ".join(f"{str(item.get(key, '')):<11}" for key in keys) + "\n"
+                    summary += " | ".join(f"{str(item.get(key, '')):<{column_widths[key]}}" for key in keys) + "\n"
                 summary += "```"
                 await ctx.send(summary)
             else:
