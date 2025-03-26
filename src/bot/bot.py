@@ -90,7 +90,10 @@ class StatusBoardBot(commands.Cog):
 
                 # Determine column widths based on the longest value in each column
                 keys = data[0].keys()
-                column_widths = {key: max(len(str(key)), max(len(str(item.get(key, ''))) for item in data))}
+                column_widths = {
+                    key: max(len(str(key)), max(len(str(item.get(key, ''))) for item in data))
+                    for key in keys
+                }
 
                 # Generate the table header
                 summary = "📊 **Google Sheets Summary**\n"
