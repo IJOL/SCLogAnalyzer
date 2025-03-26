@@ -83,12 +83,12 @@ class StatusBoardBot(commands.Cog):
                 keys = data[0].keys()
                 summary = "📊 **Google Sheets Summary**\n"
                 summary += "```\n"
-                summary += " | ".join(f"{key:<15}" for key in keys) + "\n"
-                summary += "-" * (len(keys) * 17) + "\n"
+                summary += " | ".join(f"{key:<11}" for key in keys) + "\n"
+                summary += "-" * (len(keys) * 13) + "\n"
 
                 # Dynamically populate rows based on the data
                 for item in data:
-                    summary += " | ".join(f"{str(item.get(key, '')):<15}" for key in keys) + "\n"
+                    summary += " | ".join(f"{str(item.get(key, '')):<11}" for key in keys) + "\n"
                 summary += "```"
                 await ctx.send(summary)
             else:
