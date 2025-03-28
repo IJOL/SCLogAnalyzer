@@ -7,5 +7,5 @@ Pillow
 pyzbar
 pywin32
 pynput
-psutil
-# Removed any dependencies related to image enhancement.
+mss  # Added for GPU-rendered window capturing
+psutil  # Re-added for process and system utilities
