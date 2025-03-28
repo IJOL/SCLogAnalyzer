@@ -11,13 +11,16 @@ import signal
 #from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
-from PIL import Image  # Remove ImageEnhance import
+from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustment
 from pyzbar.pyzbar import decode  # For QR code detection
 import win32gui
 import win32con
-from pynput.keyboard import Controller, Key
+from pynput.keyboard import Controller, Key  # Import Controller and Key for keyboard interactions
 import win32process
 import psutil
+import win32ui
+import mss  # Add mss for GPU-rendered window capturing
+import random  # Import random for sampling lines
 
 # Define constants
 CROP_WIDTH = 650
@@ -73,8 +76,41 @@ def find_window_by_title(title, class_name=None, process_name=None):
     win32gui.EnumWindows(enum_windows_callback, windows)
     return windows[0] if windows else None
 
-def send_keystrokes_to_window(window_title, keystrokes, **kwargs):
-    """Send keystrokes to a specific window."""
+def capture_window_screenshot(hwnd, output_path):
+    """
+    Capture a screenshot of a specific window using its handle.
+
+    Args:
+        hwnd (int): The handle of the window to capture.
+        output_path (str): The file path to save the screenshot.
+    """
+    try:
+        # Get the window's rectangle
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        width = right - left
+        height = bottom - top
+
+        # Use mss to capture the screen region
+        with mss.mss() as sct:
+            monitor = {
+                "top": top,
+                "left": left,
+                "width": width,
+                "height": height
+            }
+            screenshot = sct.grab(monitor)
+
+            # Save the screenshot as a JPG file
+            img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
+            img.save(output_path, format="JPEG", quality=85)
+
+        output_message(None, f"Screenshot saved to {output_path}")
+
+    except Exception as e:
+        output_message(None, f"Error capturing screenshot: {e}")
+
+def send_keystrokes_to_window(window_title, keystrokes, screenshots_folder, **kwargs):
+    """Send keystrokes to a specific window and capture a screenshot if PRINT_SCREEN_KEY is triggered."""
     try:
         hwnd = find_window_by_title(window_title, kwargs.get('class_name'), kwargs.get('process_name'))
         if not hwnd:
@@ -89,27 +125,24 @@ def send_keystrokes_to_window(window_title, keystrokes, **kwargs):
         # Simulate keystrokes
         keyboard = Controller()
         for key in keystrokes:
-            if isinstance(key, str):
-                for char in key:  # Send each character in the string
-                    keyboard.press(char)
-                    keyboard.release(char)
-                    time.sleep(0.01)  # Small delay between keystrokes
-            elif key == PRINT_SCREEN_KEY:
-                keyboard.press(Key.print_screen)
-                keyboard.release(Key.print_screen)
-                time.sleep(0.01)  # Small delay for PrintScreen key
+            if key == PRINT_SCREEN_KEY:
+                # Capture a screenshot
+                timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+                screenshot_path = os.path.join(screenshots_folder, f"screenshot_{timestamp}.jpg")
+                capture_window_screenshot(hwnd, screenshot_path)
+                output_message(None, f"Screenshot saved to {screenshot_path}")
             elif key == RETURN_KEY:
-                keyboard.press(Key.enter)
-                keyboard.release(Key.enter)
-                time.sleep(0.01)  # Small delay for Return key
+                keyboard.tap(Key.enter)
+            elif isinstance(key, str):
+                for char in key:  # Send each character in the string
+                    keyboard.tap(char)
+                    time.sleep(0.05)  # Small delay between characters
             else:
-                keyboard.press(key)
-                keyboard.release(key)
-                time.sleep(0.01)  # Small delay between keystrokes
-    
+                keyboard.tap(key)
+            time.sleep(0.1)  # Small delay between keystrokes
+
     except Exception as e:
         output_message(None, f"Error sending keystrokes to window: {e}")
-        
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, config):
@@ -162,9 +195,27 @@ class LogFileHandler(FileSystemEventHandler):
 
         if not self.process_once:
             self.send_startup_message()
-        
-        # Process the latest image in the screenshots folder at startup
-#        self.process_latest_screenshot()
+
+    def send_keystrokes_to_sc(self):
+        """Send predefined keystrokes to the Star Citizen window."""
+        send_keystrokes_to_window(
+            "Star Citizen",
+            [
+                "º", "r_DisplaySessionInfo 1", RETURN_KEY,
+                "º", PRINT_SCREEN_KEY,
+                "º", "r_DisplaySessionInfo 0", RETURN_KEY,
+                "º"
+            ],
+            self.screenshots_folder,
+            class_name="CryENGINE",
+            process_name="StarCitizen.exe"
+        )
+
+    def send_startup_keystrokes(self):
+        """Send predefined keystrokes to the Star Citizen window at startup."""
+        if self.current_mode == "SC_Default" and not self.process_once:
+            output_message(None, "Startup detected with mode SC_Default. Sending keystrokes to Star Citizen window.")
+            self.send_keystrokes_to_sc()
 
     def stop(self):
         """Stop the handler and cleanup threads"""
@@ -309,35 +360,72 @@ class LogFileHandler(FileSystemEventHandler):
 
     def process_new_screenshot(self, file_path):
         """Process a new screenshot to extract shard and version information."""
-        try:
-            # Open the image
-            image = Image.open(file_path)
+        max_retries = 3
+        retry_delay = 0.5  # 500 milliseconds
 
-            # Crop the top-right corner using the defined constants
-            width, height = image.size
-            top_right = image.crop((width - CROP_WIDTH, 0, width, CROP_HEIGHT))
+        for attempt in range(max_retries):
+            try:
+                # Open the image
+                image = Image.open(file_path)
 
-            # Try to decode QR code
-            qr_codes = decode(top_right)
-            if qr_codes:
-                # Extract shard and version information from QR code
-                qr_data = qr_codes[0].data.decode('utf-8')
-                qr_parts = qr_data.split()
-                if len(qr_parts) >= 4:
-                    self.current_shard = qr_parts[1]  # Second value as shard
-                    self.current_version = qr_parts[3]  # Fourth value as version
-                    output_message(None, f"Shard updated: {self.current_shard}, Version updated: {self.current_version}")
+                # Ensure the image is fully loaded
+                image.load()
+
+                # Crop a fixed 200x200 pixel area from the top-right corner
+                width, height = image.size
+                top_right = image.crop((width - 200, 0, width, 200))
+
+                # Convert to grayscale for QR code detection
+                top_right = top_right.convert("L")  # Convert to grayscale
+
+                # Dynamically determine the dark threshold by sampling 20 random lines
+                pixels = top_right.load()
+                sampled_lines = random.sample(range(top_right.height), min(20, top_right.height))
+                sampled_values = [pixels[x, y] for y in sampled_lines for x in range(top_right.width)]
+                min_darkness = min(sampled_values)
+                max_darkness = max(sampled_values)
+                dark_threshold = (min_darkness + max_darkness) // 2  # Use the midpoint as the threshold
+
+                # Darken only the pixels that are already dark
+                for x in range(top_right.width):
+                    for y in range(top_right.height):
+                        current_pixel = pixels[x, y]
+                        if current_pixel < dark_threshold:  # Only darken pixels below the threshold
+                            pixels[x, y] = max(0, current_pixel - 50)  # Darken by reducing brightness
+
+                # Try to decode QR code
+                qr_codes = decode(top_right)
+                if qr_codes:
+                    # Extract shard and version information from QR code
+                    qr_data = qr_codes[0].data.decode('utf-8')
+                    qr_parts = qr_data.split()
+                    if len(qr_parts) >= 4:
+                        self.current_shard = qr_parts[1]  # Second value as shard
+                        self.current_version = qr_parts[3]  # Fourth value as version
+                        output_message(None, f"Shard updated: {self.current_shard}, Version updated: {self.current_version}")
+                    else:
+                        output_message(None, "QR code does not contain sufficient information.")
                 else:
-                    output_message(None, "QR code does not contain sufficient information.")
-            else:
-                output_message(None, "No QR code detected in the screenshot.")
+                    # Save the cropped image if no QR code is detected
+                    cropped_path = os.path.join(
+                        os.path.dirname(file_path),
+                        f"cropped_{os.path.basename(file_path)}"
+                    )
+                    top_right.save(cropped_path, format="JPEG", quality=85)
+                    output_message(None, f"No QR code detected. Cropped image saved to {cropped_path}")
 
-            # Optionally send shard info to Discord or Google Sheets
-            if self.current_shard:
-                self.send_discord_message({"shard_info": self.current_shard, "version_info": self.current_version}, pattern_name="shard_info")
+                # Optionally send shard info to Discord or Google Sheets
+                if self.current_shard:
+                    self.send_discord_message({"shard_info": self.current_shard, "version_info": self.current_version}, pattern_name="shard_info")
 
-        except Exception as e:
-            output_message(None, f"Error processing screenshot {file_path}: {e}")
+                return  # Exit the retry loop if successful
+
+            except IOError as e:
+                if attempt < max_retries - 1:
+                    output_message(None, f"Retrying screenshot processing ({attempt + 1}/{max_retries}) due to error: {e}")
+                    time.sleep(retry_delay)  # Wait before retrying
+                else:
+                    output_message(None, f"Error processing screenshot {file_path}: {e}")
 
     def process_latest_screenshot(self):
         """
@@ -465,12 +553,7 @@ class LogFileHandler(FileSystemEventHandler):
                 # Only send keystrokes if send_message is True
                 if new_mode == "SC_Default" and send_message:
                     output_message(timestamp, "Mode changed to SC_Default. Sending keystrokes to Star Citizen window.")
-                    send_keystrokes_to_window("Star Citizen", [
-                                                    "º", "r_DisplaySessionInfo 1", RETURN_KEY,
-                                                    "º", PRINT_SCREEN_KEY, 
-                                                    "º", "r_DisplaySessionInfo 0", RETURN_KEY, 
-                                                    "º"],
-                                                class_name="CryENGINE", process_name="StarCitizen.exe")
+                    self.send_keystrokes_to_sc()
                 
                 return True
         
@@ -761,18 +844,23 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
     try:
         # Start the observer
         observer.start()
-        
+
+        # Ensure monitoring is started before generating screenshots
+        output_message(None, "Monitoring started successfully.")
+
+        # Call the startup keystrokes method after monitoring starts
+        if event_handler:
+            event_handler.send_startup_keystrokes()
+
         # Keep the script running until stop event is set
         while not event_handler.stop_event.is_set():
             time.sleep(1)
     except KeyboardInterrupt:
         output_message(None, "Monitoring stopped by user.")
-        event_handler.stop()
-        observer.stop()
+        stop_monitor(event_handler, observer)
     except Exception as e:
         output_message(None, f"Unexpected error: {e}")
-        event_handler.stop()
-        observer.stop()
+        stop_monitor(event_handler, observer)
     finally:
         # Wait for the observer thread to finish
         observer.join()
