@@ -2,7 +2,7 @@
 
 :: Check for push parameter
 SET PUSH_CHANGES=0
-IF NOT "%1"=="" SET PUSH_CHANGES=1
+IF "%1"=="p" SET PUSH_CHANGES=1
 echo Getting commit short hash for patch identifier...
 FOR /F "tokens=* USEBACKQ" %%C IN (`git rev-parse --short HEAD`) DO (
   SET commit_hash=%%C
@@ -10,7 +10,7 @@ FOR /F "tokens=* USEBACKQ" %%C IN (`git rev-parse --short HEAD`) DO (
 echo Current commit hash: %commit_hash%
 
 echo Incrementing version...
-IF NOT "%1"=="" python src\increment_version.py %commit_hash% %1
+python src\increment_version.py %commit_hash% %1
 echo.
 echo Building SC Log Analyzer...
 FOR /F "tokens=* USEBACKQ" %%F IN (`python -c "from src.version import get_version; print(get_version())"`) DO (
@@ -30,7 +30,6 @@ IF %PUSH_CHANGES%==1 (
   echo Skipping push to remote repository. Use -p or --push parameter to push changes.
 )
 echo.
-IF "%1"=="" exit
 echo Building Star Citizen Discord Logger Executable
 
 :: Create virtual environment
@@ -44,7 +43,12 @@ call venv\Scripts\activate
 pyinstaller --onefile --console --clean --add-data "src/config.json.template;." --name log_analyzer src/log_analyzer.py
 pyinstaller --onefile --console --clean --add-data "src/bot/config.json.template;." --name StatusBoardBot src/bot/bot.py
 
+:: Build executable for SCLogAnalyzer GUI app
+pyinstaller --onefile --windowed --clean --add-data "src/config.json.template;." --name SCLogAnalyzer src/gui.py
+
 :: Update ZIP files with new executables
-powershell -Command "Compress-Archive -Path 'dist\log_analyzer.exe' -DestinationPath 'dist\log_analyzer.zip' -Update"
+powershell -Command "Compress-Archive -Path 'dist\log_analyzer.exe', 'dist\readme' -DestinationPath 'dist\log_analyzer.zip' -Update"
 powershell -Command "Compress-Archive -Path 'dist\StatusBoardBot.exe' -DestinationPath 'dist\StatusBoardBot.zip' -Update"
+powershell -Command "Compress-Archive -Path 'dist\SCLogAnalyzer.exe', 'dist\readme' -DestinationPath 'dist\SCLogAnalyzer.zip' -Update"
+
 echo Build complete. Executable will be in the 'dist' directory.

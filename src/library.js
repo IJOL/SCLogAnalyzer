@@ -35,12 +35,13 @@ function doPost(e) {
     }
 }
 
-function doGet() {
+function doGet(e) {
     try {
+        var sheetName = e && e.parameter && e.parameter.sheet ? e.parameter.sheet : "Resumen";
         var ss = SpreadsheetApp.getActiveSpreadsheet();
-        var sheet = ss.getSheetByName("Resumen");
+        var sheet = ss.getSheetByName(sheetName);
         if (!sheet) {
-            return ContentService.createTextOutput("❌ Error: No se encontró la hoja 'Resumen'.")
+            return ContentService.createTextOutput(`❌ Error: No se encontró la hoja '${sheetName}'.`)
                 .setMimeType(ContentService.MimeType.TEXT);
         }
 

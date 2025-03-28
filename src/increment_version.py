@@ -19,14 +19,9 @@ def increment_minor_version(commit_hash=None, increment=None):
             content = file.read()
         
         # Find and increment the MINOR version
-        minor_pattern = re.compile(r'MINOR = (\d+)')
-        minor_match = minor_pattern.search(content)
+        #content, old_minor, new_minor = increase_version(content,'MINOR',bool(increment))
+        content, old_minor, new_minor = increase_version(content,'RELEASE',bool(increment))
         
-        if minor_match and increment is not None:
-            old_minor = int(minor_match.group(1))
-            new_minor = old_minor + 1
-            content = content.replace(f"MINOR = {old_minor}", f"MINOR = {new_minor}")
-            
             # If commit hash is provided, set the PATCH version
         if commit_hash is not None:
             patch_pattern = re.compile(r'PATCH = [\'"]?([^\'"]+)[\'"]?')
@@ -52,6 +47,17 @@ def increment_minor_version(commit_hash=None, increment=None):
     except Exception as e:
         print(f"Error incrementing version: {e}")
         return False
+
+def increase_version(content,key='MINOR',save=False,):
+    minor_pattern = re.compile(key+r' = (\d+)')
+    minor_match = minor_pattern.search(content)
+        
+    if minor_match :
+        old_minor = int(minor_match.group(1))
+        new_minor = old_minor + 1
+        if increment is not None:
+            content = content.replace(f"{key} = {old_minor}", f"{key} = {new_minor}")
+    return content,old_minor,new_minor
 
 if __name__ == "__main__":
     # Check if commit hash was provided as command line argument

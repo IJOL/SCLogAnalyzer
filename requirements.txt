@@ -2,3 +2,10 @@ watchdog==3.0.0
 requests==2.31.0
 pyinstaller
 discord.py
+wxPython
+Pillow
+pyzbar
+pywin32
+pynput
+psutil
+# Removed any dependencies related to image enhancement.

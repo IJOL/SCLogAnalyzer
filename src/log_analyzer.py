@@ -11,6 +11,19 @@ import signal
 #from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
+from PIL import Image  # Remove ImageEnhance import
+from pyzbar.pyzbar import decode  # For QR code detection
+import win32gui
+import win32con
+from pynput.keyboard import Controller, Key
+import win32process
+import psutil
+
+# Define constants
+CROP_WIDTH = 650
+CROP_HEIGHT = 380
+PRINT_SCREEN_KEY = "print_screen"  # Add constant for PrintScreen key
+RETURN_KEY = "return"  # Add constant for Return key
 
 # Import version information
 try:
@@ -21,7 +34,7 @@ except ImportError:
 
 def output_message(timestamp, message):
     """
-    Output a message to stdout
+    Output a message to stdout or a custom handler in GUI mode.
     
     Args:
         timestamp: Timestamp string or None
@@ -34,11 +47,74 @@ def output_message(timestamp, message):
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         formatted_msg = f"*{current_time} - {message}"
     
-    # Print to console
-    print(formatted_msg)
+    # Redirect to GUI log handler if in GUI mode
+    if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler'):
+        main.gui_log_handler(formatted_msg)
+    else:
+        print(formatted_msg)
+
+def find_window_by_title(title, class_name=None, process_name=None):
+    """Find a window by its title, class name, and process name."""
+    def enum_windows_callback(hwnd, windows):
+        if win32gui.IsWindowVisible(hwnd) and title in win32gui.GetWindowText(hwnd):
+            if class_name and win32gui.GetClassName(hwnd) != class_name:
+                return
+            if process_name:
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                try:
+                    process = psutil.Process(pid)
+                    if process.name() != process_name:
+                        return
+                except psutil.NoSuchProcess:
+                    return
+            windows.append(hwnd)
+
+    windows = []
+    win32gui.EnumWindows(enum_windows_callback, windows)
+    return windows[0] if windows else None
+
+def send_keystrokes_to_window(window_title, keystrokes, **kwargs):
+    """Send keystrokes to a specific window."""
+    try:
+        hwnd = find_window_by_title(window_title, kwargs.get('class_name'), kwargs.get('process_name'))
+        if not hwnd:
+            output_message(None, f"Window with title '{window_title}' not found.")
+            return
+
+        # Bring the window to the foreground
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(hwnd)
+        time.sleep(0.05)  # Give some time for the window to focus
+
+        # Simulate keystrokes
+        keyboard = Controller()
+        for key in keystrokes:
+            if isinstance(key, str):
+                for char in key:  # Send each character in the string
+                    keyboard.press(char)
+                    keyboard.release(char)
+                    time.sleep(0.01)  # Small delay between keystrokes
+            elif key == PRINT_SCREEN_KEY:
+                keyboard.press(Key.print_screen)
+                keyboard.release(Key.print_screen)
+                time.sleep(0.01)  # Small delay for PrintScreen key
+            elif key == RETURN_KEY:
+                keyboard.press(Key.enter)
+                keyboard.release(Key.enter)
+                time.sleep(0.01)  # Small delay for Return key
+            else:
+                keyboard.press(key)
+                keyboard.release(key)
+                time.sleep(0.01)  # Small delay between keystrokes
+    
+    except Exception as e:
+        output_message(None, f"Error sending keystrokes to window: {e}")
+        
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, config):
+        self.current_shard = None  # Initialize shard information
+        self.current_version = None  # Initialize version information
         self.log_file_path = config['log_file_path']
         self.discord_webhook_url = config['discord_webhook_url']
         self.technical_webhook_url = config.get('technical_webhook_url', False)
@@ -54,10 +130,12 @@ class LogFileHandler(FileSystemEventHandler):
         self.google_sheets_webhook = config.get('google_sheets_webhook', '')
         self.google_sheets_mapping = config.get('google_sheets_mapping', {})
         self.username = config.get('username', 'Unknown')
-        self.filter_username_pattern = config.get('filter_username_pattern', None)
         self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
         self.google_sheets_queue = queue.Queue()
         self.stop_event = threading.Event()
+        self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
+        if not os.path.exists(self.screenshots_folder):
+            os.makedirs(self.screenshots_folder)
 
         if not self.process_once:
             self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
@@ -85,6 +163,9 @@ class LogFileHandler(FileSystemEventHandler):
         if not self.process_once:
             self.send_startup_message()
         
+        # Process the latest image in the screenshots folder at startup
+#        self.process_latest_screenshot()
+
     def stop(self):
         """Stop the handler and cleanup threads"""
         self.stop_event.set()
@@ -150,6 +231,7 @@ class LogFileHandler(FileSystemEventHandler):
                     url = self.discord_webhook_url
                 else:
                     return
+                
             else:
                 return
                 
@@ -214,8 +296,84 @@ class LogFileHandler(FileSystemEventHandler):
         if event.src_path.lower() == self.log_file_path.lower():
             self.process_new_entries()
 
+    def on_created(self, event):
+        """Handle new files in monitored folders."""
+        # Skip files with the 'cropped_' prefix
+        if os.path.basename(event.src_path).startswith("cropped_"):
+            return
+
+        if event.src_path.lower().startswith(self.screenshots_folder.lower()):
+            self.process_new_screenshot(event.src_path)
+        elif event.src_path.lower() == self.log_file_path.lower():
+            self.process_new_entries()
+
+    def process_new_screenshot(self, file_path):
+        """Process a new screenshot to extract shard and version information."""
+        try:
+            # Open the image
+            image = Image.open(file_path)
+
+            # Crop the top-right corner using the defined constants
+            width, height = image.size
+            top_right = image.crop((width - CROP_WIDTH, 0, width, CROP_HEIGHT))
+
+            # Try to decode QR code
+            qr_codes = decode(top_right)
+            if qr_codes:
+                # Extract shard and version information from QR code
+                qr_data = qr_codes[0].data.decode('utf-8')
+                qr_parts = qr_data.split()
+                if len(qr_parts) >= 4:
+                    self.current_shard = qr_parts[1]  # Second value as shard
+                    self.current_version = qr_parts[3]  # Fourth value as version
+                    output_message(None, f"Shard updated: {self.current_shard}, Version updated: {self.current_version}")
+                else:
+                    output_message(None, "QR code does not contain sufficient information.")
+            else:
+                output_message(None, "No QR code detected in the screenshot.")
+
+            # Optionally send shard info to Discord or Google Sheets
+            if self.current_shard:
+                self.send_discord_message({"shard_info": self.current_shard, "version_info": self.current_version}, pattern_name="shard_info")
+
+        except Exception as e:
+            output_message(None, f"Error processing screenshot {file_path}: {e}")
+
+    def process_latest_screenshot(self):
+        """
+        Find and process the latest image in the screenshots folder.
+        """
+        try:
+            if not os.path.exists(self.screenshots_folder):
+                return
+
+            # Get all files in the screenshots folder
+            files = [
+                os.path.join(self.screenshots_folder, f)
+                for f in os.listdir(self.screenshots_folder)
+                if os.path.isfile(os.path.join(self.screenshots_folder, f)) and not f.startswith("cropped_")
+            ]
+
+            if not files:
+                return
+
+            # Find the latest file by modification time
+            latest_file = max(files, key=os.path.getmtime)
+            output_message(None, f"Processing latest screenshot: {latest_file}")
+            self.process_new_screenshot(latest_file)
+
+        except Exception as e:
+            output_message(None, f"Error processing latest screenshot: {e}")
+
     def process_new_entries(self):
         try:
+            current_file_size = os.path.getsize(self.log_file_path)
+            
+            # Detect log truncation
+            if self.last_position > current_file_size:
+                output_message(None, "Log file truncated. Resetting position to the beginning.")
+                self.last_position = 0
+
             with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as file:
                 # Move to the last read position
                 file.seek(self.last_position)
@@ -229,6 +387,9 @@ class LogFileHandler(FileSystemEventHandler):
                 # Process each new entry
                 for entry in new_entries:
                     self.parse_log_entry(entry)
+        except FileNotFoundError:
+            output_message(None, "Log file not found. Waiting for it to be created...")
+            time.sleep(1)  # Wait briefly for the file to reappear
         except PermissionError:
             output_message(None, "Unable to read log file. Make sure it's not locked by another process.")
         except Exception as e:
@@ -250,20 +411,17 @@ class LogFileHandler(FileSystemEventHandler):
         # First check for mode changes
         if self.detect_mode_change(entry, send_message):
             return
-            
-        # Try filter_username_pattern first if defined
-        if self.filter_username_pattern and self.filter_username_pattern in self.regex_patterns:
-            success, _ = self.detect_and_emit_generic(entry, self.filter_username_pattern, send_message)
+
+        # Process patterns in google_sheets_mapping first
+        processed_patterns = set()
+        for pattern_name in self.google_sheets_mapping.keys():
+            success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
             if success:
-                return
-            
-        # Try commodity activity next
-        if self.detect_commodity_activity(entry, send_message):
-            return
-            
-        # Try generic detection for any other configured patterns
+                processed_patterns.add(pattern_name)
+
+        # Process remaining patterns not in google_sheets_mapping
         for pattern_name in self.regex_patterns.keys():
-            if pattern_name not in ['timestamp', 'zone', 'commodity'] and pattern_name != self.filter_username_pattern:
+            if pattern_name not in processed_patterns:
                 success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
                 if success:
                     return
@@ -294,6 +452,8 @@ class LogFileHandler(FileSystemEventHandler):
                 mode_data['username'] = self.username
                 mode_data['status'] = 'entered'
                 mode_data['old_mode'] = old_mode or 'None'
+                mode_data['shard'] = self.current_shard or 'Unknown'  # Add shard information
+                mode_data['version'] = self.current_version or 'Unknown'  # Add version information
                 
                 # Output message
                 output_message(timestamp, f"Mode changed: '{old_mode or 'None'}' → '{new_mode}'")
@@ -301,6 +461,16 @@ class LogFileHandler(FileSystemEventHandler):
                 # Send to Discord if enabled
                 if send_message and self.use_discord and 'mode_change' in self.discord_messages:
                     self.send_discord_message(mode_data, pattern_name='mode_change')
+                
+                # Only send keystrokes if send_message is True
+                if new_mode == "SC_Default" and send_message:
+                    output_message(timestamp, "Mode changed to SC_Default. Sending keystrokes to Star Citizen window.")
+                    send_keystrokes_to_window("Star Citizen", [
+                                                    "º", "r_DisplaySessionInfo 1", RETURN_KEY,
+                                                    "º", PRINT_SCREEN_KEY, 
+                                                    "º", "r_DisplaySessionInfo 0", RETURN_KEY, 
+                                                    "º"],
+                                                class_name="CryENGINE", process_name="StarCitizen.exe")
                 
                 return True
         
@@ -317,6 +487,8 @@ class LogFileHandler(FileSystemEventHandler):
                 mode_data['mode'] = self.current_mode
                 mode_data['username'] = self.username
                 mode_data['status'] = 'exited'
+                mode_data['shard'] = self.current_shard or 'Unknown'  # Add shard information
+                mode_data['version'] = self.current_version or 'Unknown'  # Add version information
                 
                 # Output message
                 output_message(timestamp, f"Exited mode: '{self.current_mode}'")
@@ -340,7 +512,9 @@ class LogFileHandler(FileSystemEventHandler):
                 'mode': self.current_mode,
                 'username': self.username,
                 'status': 'exited',
-                'reason': 'Channel Disconnected'
+                'reason': 'Channel Disconnected',
+                'shard': self.current_shard or 'Unknown',  # Add shard information
+                'version': self.current_version or 'Unknown'  # Add version information
             }
             
             # Output message
@@ -387,17 +561,6 @@ class LogFileHandler(FileSystemEventHandler):
 
         data = self.detect_generic(entry, self.regex_patterns[pattern_name])
         if data:
-            # Apply username filter if this is the pattern we want to filter
-            if pattern_name == self.filter_username_pattern:
-                # Extract victim and killer names for case-insensitive matching
-                victim = data.get('victim', '').lower()
-                killer = data.get('killer', '').lower()
-                username_lower = self.username.lower()
-                
-                # Check if either victim or killer matches the username (case-insensitive)
-                if not (victim == username_lower or killer == username_lower):
-                    return False, None
-
             # Extract player and action information
             data['player'] = data.get('player') or data.get('owner') or data.get('entity') or 'Unknown'
             data['action'] = pattern_name.replace('_', ' ').title()
@@ -410,6 +573,9 @@ class LogFileHandler(FileSystemEventHandler):
             else:
                 data['current_mode'] = 'None'
                 
+            data['shard'] = self.current_shard or 'Unknown'  # Add shard information
+            data['version'] = self.current_version or 'Unknown'  # Add version information
+            
             output_message_format = self.messages.get(pattern_name)
             if not output_message_format is None:
                 output_message(timestamp, output_message_format.format(**data))
@@ -417,61 +583,11 @@ class LogFileHandler(FileSystemEventHandler):
                 self.send_discord_message(data, pattern_name=pattern_name)
             
             # Send to Google Sheets if pattern is configured
-            if pattern_name in self.google_sheets_mapping:
+            if pattern_name in self.google_sheets_mapping and send_message:
                 self.update_google_sheets(data, pattern_name)
             
             return True, data
         return False, None
-
-    def detect_commodity_activity(self, entry, send_message=True):
-        # Check if required pattern exists
-        if 'commodity' not in self.regex_patterns:
-            output_message(None, "Missing 'commodity' pattern in configuration")
-            return False
-            
-        commodity_data = self.detect_generic(entry, self.regex_patterns['commodity'])
-        if not commodity_data:
-            return False
-            
-        # Validate required fields
-        required_fields = ['owner', 'commodity', 'zone', 'timestamp']
-        missing_fields = [field for field in required_fields if not commodity_data.get(field)]
-        
-        if missing_fields:
-            output_message(None, f"Missing required fields in commodity data: {', '.join(missing_fields)}")
-            return False
-
-        # All validation passed, proceed with processing
-        data = {field: commodity_data[field] for field in required_fields}
-        
-        # Add current mode to data if active
-        if self.current_mode:
-            data['current_mode'] = self.current_mode
-        else:
-            data['current_mode'] = 'None'
-            
-        message = self.messages.get("commodity_activity")
-        if not message:
-            output_message(None, "Missing 'commodity_activity' message template")
-            return False
-            
-        output_message(data['timestamp'], message.format(**data))
-        if send_message:
-            self.send_discord_message(data, pattern_name='commodity_activity')
-        
-        # Update actor state
-        self.actor_state[data['owner']] = {
-            'commodity': data['commodity'],
-            'zone': data['zone'],
-            'timestamp': data['timestamp']
-        }
-        
-        # Send technical information for important players
-        if data['owner'] in self.important_players:
-            technical_message = f"commodity,{data['timestamp']},{data['owner']},{data['commodity']},{data['zone']}"
-            self.send_discord_message(technical_message, technical=True)
-        
-        return True
 
 DEFAULT_CONFIG_TEMPLATE = "config.json.template"
 
@@ -486,10 +602,13 @@ def prompt_for_config_values(template):
             config[key] = prompt_for_config_values(value)
     return config
 
-def emit_default_config(config_path):
+def emit_default_config(config_path, in_gui=False):
     with open(get_template_path(), 'r', encoding='utf-8') as template_file:
         template_config = json.load(template_file)
-    config = prompt_for_config_values(template_config)
+    if not in_gui:
+        config = prompt_for_config_values(template_config)
+    else:
+        config = template_config
     config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
     
  
@@ -621,6 +740,7 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
     # Create an observer
     observer = Observer()
     observer.schedule(event_handler, path=os.path.dirname(config['log_file_path']), recursive=False)
+    observer.schedule(event_handler, path=event_handler.screenshots_folder, recursive=False)  # Monitor screenshots folder
     
     # Store references for signal handler
     signal_handler.event_handler = event_handler
