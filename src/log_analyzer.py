@@ -87,8 +87,11 @@ def capture_window_screenshot(hwnd, output_path):
     try:
         # Get the window's rectangle
         left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-        width = right - left
-        height = bottom - top
+
+        # Define the top-right 200x200 region
+        width = 200
+        height = 200
+        left = right - width
 
         # Use mss to capture the screen region
         with mss.mss() as sct:
@@ -139,7 +142,7 @@ def send_keystrokes_to_window(window_title, keystrokes, screenshots_folder, **kw
                     time.sleep(0.05)  # Small delay between characters
             else:
                 keyboard.tap(key)
-            time.sleep(0.1)  # Small delay between keystrokes
+            time.sleep(0.05)  # Small delay between keystrokes
 
     except Exception as e:
         output_message(None, f"Error sending keystrokes to window: {e}")
@@ -371,27 +374,51 @@ class LogFileHandler(FileSystemEventHandler):
                 # Ensure the image is fully loaded
                 image.load()
 
-                # Crop a fixed 200x200 pixel area from the top-right corner
+                # Check the image size
                 width, height = image.size
-                top_right = image.crop((width - 200, 0, width, 200))
+                if width == 200 and height == 200:
+                    # If the image already has the correct size, skip cropping
+                    top_right = image
+                else:
+                    # Otherwise, crop a fixed 200x200 pixel area from the top-right corner
+                    top_right = image.crop((width - 200, 0, width, 200))
 
                 # Convert to grayscale for QR code detection
                 top_right = top_right.convert("L")  # Convert to grayscale
 
-                # Dynamically determine the dark threshold by sampling 20 random lines
-                pixels = top_right.load()
-                sampled_lines = random.sample(range(top_right.height), min(20, top_right.height))
-                sampled_values = [pixels[x, y] for y in sampled_lines for x in range(top_right.width)]
-                min_darkness = min(sampled_values)
-                max_darkness = max(sampled_values)
-                dark_threshold = (min_darkness + max_darkness) // 2  # Use the midpoint as the threshold
+                # Use the central 50x50 pixels for threshold calculation
+                central_x_start = (top_right.width - 50) // 2
+                central_y_start = (top_right.height - 50) // 2
+                central_region = top_right.crop((
+                    central_x_start,
+                    central_y_start,
+                    central_x_start + 50,
+                    central_y_start + 50
+                ))
+
+                # Calculate the simple mean of the central region
+                pixels = central_region.load()
+                pixel_values = [pixels[x, y] for x in range(central_region.width) for y in range(central_region.height)]
+                dark_threshold = sum(pixel_values) // len(pixel_values)
+
+                # Output the threshold value
+                output_message(None, f"Darkness threshold: {dark_threshold}")
 
                 # Darken only the pixels that are already dark
+                pixels = top_right.load()
                 for x in range(top_right.width):
                     for y in range(top_right.height):
                         current_pixel = pixels[x, y]
                         if current_pixel < dark_threshold:  # Only darken pixels below the threshold
-                            pixels[x, y] = max(0, current_pixel - 50)  # Darken by reducing brightness
+                            pixels[x, y] = max(0, current_pixel - 150)  # Darken by reducing brightness
+
+                # Save the cropped image
+                cropped_path = os.path.join(
+                    os.path.dirname(file_path),
+                    f"cropped_{os.path.basename(file_path)}"
+                )
+                top_right.save(cropped_path, format="JPEG", quality=85)
+                output_message(None, f"Cropped image saved to {cropped_path}")
 
                 # Try to decode QR code
                 qr_codes = decode(top_right)
@@ -406,13 +433,7 @@ class LogFileHandler(FileSystemEventHandler):
                     else:
                         output_message(None, "QR code does not contain sufficient information.")
                 else:
-                    # Save the cropped image if no QR code is detected
-                    cropped_path = os.path.join(
-                        os.path.dirname(file_path),
-                        f"cropped_{os.path.basename(file_path)}"
-                    )
-                    top_right.save(cropped_path, format="JPEG", quality=85)
-                    output_message(None, f"No QR code detected. Cropped image saved to {cropped_path}")
+                    output_message(None, "No QR code detected.")
 
                 # Optionally send shard info to Discord or Google Sheets
                 if self.current_shard:
