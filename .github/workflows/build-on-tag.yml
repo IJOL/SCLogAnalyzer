@@ -100,4 +100,4 @@ jobs:
           artifacts: scloganalyzer-bot-${{ github.ref_name }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}-bot
-          name: Docker Image Release ${{ github.ref_name }}
+          name: StatsBoardBot Docker Image Release ${{ github.ref_name }}
