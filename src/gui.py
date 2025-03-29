@@ -30,11 +30,13 @@ class RedirectText:
         
     def write(self, string):
         """Write to both stdout and text control"""
-        self.stdout.write(string)
+        if self.stdout:
+            self.stdout.write(string)
         wx.CallAfter(self.text_ctrl.AppendText, string)
         
     def flush(self):
-        self.stdout.flush()
+        if self.stdout:
+            self.stdout.flush()
 
 class KeyValueGrid(wx.Panel):
     """A reusable grid for editing key-value pairs."""
@@ -157,9 +159,6 @@ class KeyValueGrid(wx.Panel):
 
     def _refresh_grid(self):
         """Perform the actual grid refresh."""
-        # Safely destroy all child widgets in the grid
-        # for child in self.grid.GetChildren():
-        #     child.GetWindow().Destroy() if child.GetWindow() else None
         data=self.get_data()  # Save the data before clearing the grid
 
         self.grid.Clear(True)  # Clear the grid layout
@@ -172,8 +171,6 @@ class KeyValueGrid(wx.Panel):
         # Rebuild the controls list and recreate rows
         new_controls = []
         for key,value in data.items():
-            # Extract the key and value before destroying the old widgets
-            # Add a new row with the extracted key and value
             self.add_row(key, value)
 
         self.Layout()
@@ -419,18 +416,23 @@ class LogAnalyzerFrame(wx.Frame):
         self.process_all_check = wx.CheckBox(panel, label="Process Entire Log")
         self.discord_check = wx.CheckBox(panel, label="Use Discord")
         self.googlesheet_check = wx.CheckBox(panel, label="Use Google Sheets")
-        
+        self.autoshard_check = wx.CheckBox(panel, label="Auto Shard")  # Add Auto Shard checkbox
+
         options_sizer.Add(self.process_all_check, 0, wx.ALL, 5)
         options_sizer.Add(self.discord_check, 0, wx.ALL, 5)
         options_sizer.Add(self.googlesheet_check, 0, wx.ALL, 5)
+        options_sizer.Add(self.autoshard_check, 0, wx.ALL, 5)  # Add to options sizer
         
         # Create action buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.process_button = wx.Button(panel, label="Process Log Once")
         self.monitor_button = wx.Button(panel, label="Start Monitoring")
+        self.autoshard_button = wx.Button(panel, label="Auto Shard")  # Add Auto Shard button
+        self.autoshard_button.Enable(False)  # Initially disable the button
         
         button_sizer.Add(self.process_button, 0, wx.ALL, 5)
         button_sizer.Add(self.monitor_button, 0, wx.ALL, 5)
+        button_sizer.Add(self.autoshard_button, 0, wx.ALL, 5)  # Add to button sizer
         
         # Create log output area
         log_label = wx.StaticText(panel, label="Log Output:")
@@ -462,6 +464,7 @@ class LogAnalyzerFrame(wx.Frame):
         browse_button.Bind(wx.EVT_BUTTON, self.on_browse)
         self.process_button.Bind(wx.EVT_BUTTON, self.on_process)
         self.monitor_button.Bind(wx.EVT_BUTTON, self.on_monitor)
+        self.autoshard_button.Bind(wx.EVT_BUTTON, self.on_autoshard)  # Bind Auto Shard button event
         self.Bind(wx.EVT_CLOSE, self.on_close)
 
         # Add a menu bar with a Config menu
@@ -486,7 +489,9 @@ class LogAnalyzerFrame(wx.Frame):
         # Check if the app is started with Windows
         if STARTUP_COMMAND_FLAG in sys.argv:
             self.Hide()
-            self.start_monitoring()
+        # Start monitoring by default when GUI is launched
+        wx.CallAfter(self.start_monitoring)
+        wx.CallAfter(self.update_monitoring_buttons, True)
 
         self.save_timer = wx.Timer(self)  # Timer to delay saving window info
         self.Bind(wx.EVT_TIMER, self.on_save_timer, self.save_timer)
@@ -497,6 +502,24 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Bind close event to save window position
         self.Bind(wx.EVT_CLOSE, self.on_close)
+
+    def update_monitoring_buttons(self, started):
+        """
+        Update the state of the monitoring and process buttons.
+
+        Args:
+            started (bool): True if monitoring has started, False otherwise.
+        """
+        if self.monitoring:  # Check the actual monitoring state
+            self.monitor_button.SetLabel("Stop Monitoring")
+            self.process_button.Enable(False)
+            self.autoshard_button.Enable(True)  # Enable Auto Shard button
+            self.SetStatusText("Monitoring active")
+        else:
+            self.monitor_button.SetLabel("Start Monitoring")
+            self.process_button.Enable(True)
+            self.autoshard_button.Enable(False)  # Disable Auto Shard button
+            self.SetStatusText("Monitoring stopped")
         
     def ensure_default_config(self):
         """Ensure the default configuration file exists."""
@@ -532,12 +555,10 @@ class LogAnalyzerFrame(wx.Frame):
                 self.log_text.AppendText(f"Error loading config: {e}\n")
     
     def on_browse(self, event):
-        """Handle browse button click event"""
+        """Handle browse button click event."""
         if self.monitoring:
             self.stop_monitoring()
-            self.monitor_button.SetLabel("Start Monitoring")
-            self.process_button.Enable(True)
-            self.SetStatusText("Monitoring stopped")
+            self.update_monitoring_buttons(started=False)  # Use the new method
             self.monitoring = False
         
         with wx.FileDialog(self, "Select log file", wildcard=LOG_FILE_WILDCARD,
@@ -567,12 +588,13 @@ class LogAnalyzerFrame(wx.Frame):
         process_all = self.process_all_check.GetValue()
         use_discord = self.discord_check.GetValue()
         use_googlesheet = self.googlesheet_check.GetValue()
+        autoshard = self.autoshard_check.GetValue()  # Get Auto Shard value
         
-        thread = threading.Thread(target=self.run_process_log, args=(log_file, process_all, use_discord, use_googlesheet))
+        thread = threading.Thread(target=self.run_process_log, args=(log_file, process_all, use_discord, use_googlesheet, autoshard))
         thread.daemon = True
         thread.start()
     
-    def run_process_log(self, log_file, process_all, use_discord, use_googlesheet):
+    def run_process_log(self, log_file, process_all, use_discord, use_googlesheet, autoshard):
         """Run log analysis in thread"""
         try:
             # Call main with process_once=True
@@ -581,7 +603,8 @@ class LogAnalyzerFrame(wx.Frame):
                 use_discord=use_discord,
                 process_once=True,
                 use_googlesheet=use_googlesheet,
-                log_file_path=log_file
+                log_file_path=log_file,
+                autoshard=autoshard  # Pass Auto Shard to main
             )
             wx.CallAfter(self.SetStatusText, "Processing completed")
         except Exception as e:
@@ -592,38 +615,36 @@ class LogAnalyzerFrame(wx.Frame):
             wx.CallAfter(self.monitor_button.Enable, True)
     
     def on_monitor(self, event):
-        """Handle start/stop monitoring button click event"""
+        """Handle start/stop monitoring button click event."""
         if not self or not self.IsShown():
             return  # Prevent actions if the frame is destroyed
         if self.monitoring:
             self.stop_monitoring()
-            self.monitor_button.SetLabel("Start Monitoring")
-            self.process_button.Enable(True)
-            self.SetStatusText("Monitoring stopped")
-            self.monitoring = False
+            self.update_monitoring_buttons(started=False)
         else:
             self.start_monitoring()
-            self.monitor_button.SetLabel("Stop Monitoring")
-            self.process_button.Enable(False)
-            self.SetStatusText("Monitoring active")
-            self.monitoring = True
+            self.update_monitoring_buttons(started=True)
     
     def start_monitoring(self):
-        """Start log file monitoring"""
+        """Start log file monitoring."""
+        if self.monitoring:  # Prevent starting monitoring if already active
+            return
         self.log_text.Clear()
+        self.monitoring = True  # Update monitoring state here
         
         log_file = self.file_path.GetValue()
         process_all = self.process_all_check.GetValue()
         use_discord = self.discord_check.GetValue()
         use_googlesheet = self.googlesheet_check.GetValue()
+        autoshard = self.autoshard_check.GetValue()  # Get Auto Shard value
         
         # Run in a separate thread to keep UI responsive
-        thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet))
+        thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet, autoshard))
         thread.daemon = True
         thread.start()
-    
-    def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet):
-        """Run monitoring in thread"""
+
+    def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet, autoshard):
+        """Run monitoring in thread."""
         try:
             # Call main without process_once
             result = log_analyzer.main(
@@ -631,24 +652,29 @@ class LogAnalyzerFrame(wx.Frame):
                 use_discord=use_discord,
                 process_once=False,
                 use_googlesheet=use_googlesheet,
-                log_file_path=log_file
+                log_file_path=log_file,
+                autoshard=autoshard  # Pass Auto Shard to main
             )
 
             if result:
                 self.event_handler, self.observer = result
+                # Trigger startup actions explicitly after monitoring starts
+                if self.event_handler:
+                    self.event_handler.send_startup_keystrokes()
         except Exception as e:
             wx.CallAfter(self.log_text.AppendText, f"Error starting monitoring: {e}\n")
-            wx.CallAfter(self.monitor_button.SetLabel, "Start Monitoring")
-            wx.CallAfter(self.process_button.Enable, True)
-            wx.CallAfter(self.SetStatusText, "Error during monitoring")
+            wx.CallAfter(self.update_monitoring_buttons, False)  # Use the new method
             self.monitoring = False
     
     def stop_monitoring(self):
-        """Stop log file monitoring"""
+        """Stop log file monitoring."""
+        if not self.monitoring:  # Prevent stopping monitoring if not active
+            return
         if self.event_handler and self.observer:
             log_analyzer.stop_monitor(self.event_handler, self.observer)
             self.event_handler = None
             self.observer = None
+        self.monitoring = False  # Ensure monitoring state is updated
     
     def append_log_message(self, message):
         """Append a log message to the GUI log output area."""
@@ -747,6 +773,16 @@ class LogAnalyzerFrame(wx.Frame):
             self.save_window_info()
             self.save_timer.Stop()
 
+    def on_autoshard(self, event):
+        """Handle Auto Shard button click."""
+        if self.event_handler:
+            try:
+                self.event_handler.send_keystrokes_to_sc()  # Call the method to send keystrokes
+                self.log_text.AppendText("Auto Shard keystrokes sent.\n")
+            except Exception as e:
+                self.log_text.AppendText(f"Error sending Auto Shard keystrokes: {e}\n")
+        else:
+            self.log_text.AppendText("No event handler available for Auto Shard.\n")
     def on_close(self, event):
         """Handle window close event."""
         self.save_window_info()

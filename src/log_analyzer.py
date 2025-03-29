@@ -8,6 +8,7 @@ import traceback
 import threading
 import queue
 import signal
+import logging  # Add logging for error handling
 #from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
@@ -21,6 +22,9 @@ import psutil
 import win32ui
 import mss  # Add mss for GPU-rendered window capturing
 import random  # Import random for sampling lines
+
+# Configure logging
+logging.basicConfig(level=logging.ERROR, filename='error.log', filemode='a', format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define constants
 CROP_WIDTH = 650
@@ -111,6 +115,10 @@ def capture_window_screenshot(hwnd, output_path):
 
     except Exception as e:
         output_message(None, f"Error capturing screenshot: {e}")
+        output_message(None, "Stack trace:\n{}".format(traceback.format_exc()))
+        logging.error("Error capturing screenshot: %s", str(e))
+        logging.error("Stack trace:\n%s", traceback.format_exc())
+        raise  # Re-raise the exception to propagate it for further debugging
 
 def send_keystrokes_to_window(window_title, keystrokes, screenshots_folder, **kwargs):
     """Send keystrokes to a specific window and capture a screenshot if PRINT_SCREEN_KEY is triggered."""
@@ -133,7 +141,6 @@ def send_keystrokes_to_window(window_title, keystrokes, screenshots_folder, **kw
                 timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
                 screenshot_path = os.path.join(screenshots_folder, f"screenshot_{timestamp}.jpg")
                 capture_window_screenshot(hwnd, screenshot_path)
-                output_message(None, f"Screenshot saved to {screenshot_path}")
             elif key == RETURN_KEY:
                 keyboard.tap(Key.enter)
             elif isinstance(key, str):
@@ -172,6 +179,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
         if not os.path.exists(self.screenshots_folder):
             os.makedirs(self.screenshots_folder)
+        self.autoshard = config.get('autoshard', False)  # Add autoshard attribute
 
         if not self.process_once:
             self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
@@ -216,9 +224,11 @@ class LogFileHandler(FileSystemEventHandler):
 
     def send_startup_keystrokes(self):
         """Send predefined keystrokes to the Star Citizen window at startup."""
-        if self.current_mode == "SC_Default" and not self.process_once:
+        if self.current_mode == "SC_Default" and not self.process_once and self.autoshard:  # Use self.autoshard
             output_message(None, "Startup detected with mode SC_Default. Sending keystrokes to Star Citizen window.")
             self.send_keystrokes_to_sc()
+
+
 
     def stop(self):
         """Stop the handler and cleanup threads"""
@@ -412,13 +422,6 @@ class LogFileHandler(FileSystemEventHandler):
                         if current_pixel < dark_threshold:  # Only darken pixels below the threshold
                             pixels[x, y] = max(0, current_pixel - 150)  # Darken by reducing brightness
 
-                # Save the cropped image
-                cropped_path = os.path.join(
-                    os.path.dirname(file_path),
-                    f"cropped_{os.path.basename(file_path)}"
-                )
-                top_right.save(cropped_path, format="JPEG", quality=85)
-                output_message(None, f"Cropped image saved to {cropped_path}")
 
                 # Try to decode QR code
                 qr_codes = decode(top_right)
@@ -434,6 +437,15 @@ class LogFileHandler(FileSystemEventHandler):
                         output_message(None, "QR code does not contain sufficient information.")
                 else:
                     output_message(None, "No QR code detected.")
+                    
+                # Save the cropped image only if debug mode is enabled
+                if getattr(main, 'debug_mode', False) or not qr_codes:
+                    cropped_path = os.path.join(
+                        os.path.dirname(file_path),
+                        f"cropped_{os.path.basename(file_path)}"
+                    )
+                    top_right.save(cropped_path, format="JPEG", quality=85)
+                    output_message(None, f"Debug mode: Cropped image saved to {cropped_path}")
 
                 # Optionally send shard info to Discord or Google Sheets
                 if self.current_shard:
@@ -503,6 +515,8 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, "Unable to read log file. Make sure it's not locked by another process.")
         except Exception as e:
             output_message(None, f"Error reading log file: {e}")
+            logging.error("An error occurred: %s", str(e))
+            logging.error("Stack trace:\n%s", traceback.format_exc())
 
     def process_entire_log(self):
         try:
@@ -515,6 +529,8 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, "Unable to read log file. Make sure it's not locked by another process.")
         except Exception as e:
             output_message(None, f"Error reading log file: {e}\n{traceback.format_exc()}")
+            logging.error("An error occurred: %s", str(e))
+            logging.error("Stack trace:\n%s", traceback.format_exc())
 
     def parse_log_entry(self, entry, send_message=True):
         # First check for mode changes
@@ -572,7 +588,7 @@ class LogFileHandler(FileSystemEventHandler):
                     self.send_discord_message(mode_data, pattern_name='mode_change')
                 
                 # Only send keystrokes if send_message is True
-                if new_mode == "SC_Default" and send_message:
+                if new_mode == "SC_Default" and send_message and self.autoshard:
                     output_message(timestamp, "Mode changed to SC_Default. Sending keystrokes to Star Citizen window.")
                     self.send_keystrokes_to_sc()
                 
@@ -772,131 +788,143 @@ def stop_monitor(event_handler, observer):
     event_handler.stop()
     output_message(None, "Monitor stopped successfully")
 
-def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None):
-    app_path = get_application_path()
-    config_path = os.path.join(app_path, "config.json")
-    
-    output_message(None, f"Loading config from: {config_path}")
-    
-    if not os.path.exists(config_path):
-        output_message(None, f"Config file not found, creating default at: {config_path}")
-        emit_default_config(config_path)
-    
-    with open(config_path, 'r', encoding='utf-8') as config_file:
-        config = json.load(config_file)
-        output_message(None, f"Config loaded successfully from: {config_path}")
-    
-    # If a custom log file path is provided, use it (for GUI)
-    if log_file_path:
-        config['log_file_path'] = log_file_path
-    # If log_file_path is relative, make it relative to the application path
-    elif not os.path.isabs(config['log_file_path']):
-        config['log_file_path'] = os.path.join(app_path, config['log_file_path'])
-
-    # Ensure the file exists
-    if not os.path.exists(config['log_file_path']):
-        output_message(None, f"Log file not found at {config['log_file_path']}")
-        return
-
-    # Determine if Discord should be used based on the webhook URL and command-line parameter
-    discord_webhook_url = config.get('discord_webhook_url')
-    if use_discord is None:
-        if not bool(config.get('use_discord', True)):
-            config['use_discord'] = False
-        else:
-            config['use_discord'] = is_valid_url(discord_webhook_url)
-    else:
-        config['use_discord'] = use_discord
-
-    # Determine if Google Sheets should be used based on the webhook URL and command-line parameter
-    google_sheets_webhook = config.get('google_sheets_webhook')
-    if use_googlesheet is None:
-        if not bool(config.get('use_googlesheet', True)):
-            config['use_googlesheet'] = False
-        else:
-            config['use_googlesheet'] = is_valid_url(google_sheets_webhook)
-    else:
-        config['use_googlesheet'] = use_googlesheet
-
-
-    # Override config values with command-line parameters if provided
-    if not process_all:
-        # Reverse logic: -p flag forces process_all to False
-        config['process_all'] = True
-    else:
-        # Use the config value if -p flag not present
-        config['process_all'] = bool(config.get('process_all', True))
-        
-    config['process_once'] = process_once or bool(config.get('process_once', False))
-
-    # Create a file handler
-    event_handler = LogFileHandler(config)
-    
-    if event_handler.process_once:
-        output_message(None, "Processing log file once and exiting...")
-        event_handler.process_entire_log()
-        return event_handler
-
-    # Log monitoring status just before starting the observer
-    output_message(None, f"Monitoring log file: {config['log_file_path']}")
-    output_message(None, f"Sending updates to {'Discord webhook' if event_handler.use_discord else 'stdout'}")
-
-    # Create an observer
-    observer = Observer()
-    observer.schedule(event_handler, path=os.path.dirname(config['log_file_path']), recursive=False)
-    observer.schedule(event_handler, path=event_handler.screenshots_folder, recursive=False)  # Monitor screenshots folder
-    
-    # Store references for signal handler
-    signal_handler.event_handler = event_handler
-    signal_handler.observer = observer
-    
-    # If in GUI mode, start the observer in a separate thread and return immediately
-    if hasattr(main, 'in_gui') and main.in_gui:
-        observer_thread = threading.Thread(target=observer.start)
-        observer_thread.daemon = True
-        observer_thread.start()
-        return event_handler, observer
-    
-    # Register signal handlers if not in a GUI environment
-    if not hasattr(main, 'in_gui') or not main.in_gui:
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-    
+def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None, autoshard=None):
     try:
-        # Start the observer
-        observer.start()
+        app_path = get_application_path()
+        config_path = os.path.join(app_path, "config.json")
+        
+        output_message(None, f"Loading config from: {config_path}")
+        
+        if not os.path.exists(config_path):
+            output_message(None, f"Config file not found, creating default at: {config_path}")
+            emit_default_config(config_path)
+        
+        with open(config_path, 'r', encoding='utf-8') as config_file:
+            config = json.load(config_file)
+            output_message(None, f"Config loaded successfully from: {config_path}")
+        
+        # If a custom log file path is provided, use it (for GUI)
+        if log_file_path:
+            config['log_file_path'] = log_file_path
+        # If log_file_path is relative, make it relative to the application path
+        elif not os.path.isabs(config['log_file_path']):
+            config['log_file_path'] = os.path.join(app_path, config['log_file_path'])
 
-        # Ensure monitoring is started before generating screenshots
-        output_message(None, "Monitoring started successfully.")
+        # Ensure the file exists
+        if not os.path.exists(config['log_file_path']):
+            output_message(None, f"Log file not found at {config['log_file_path']}")
+            return
 
-        # Call the startup keystrokes method after monitoring starts
-        if event_handler:
-            event_handler.send_startup_keystrokes()
+        # Determine if Discord should be used based on the webhook URL and command-line parameter
+        discord_webhook_url = config.get('discord_webhook_url')
+        if use_discord is None:
+            if not bool(config.get('use_discord', True)):
+                config['use_discord'] = False
+            else:
+                config['use_discord'] = is_valid_url(discord_webhook_url)
+        else:
+            config['use_discord'] = use_discord
 
-        # Keep the script running until stop event is set
-        while not event_handler.stop_event.is_set():
-            time.sleep(1)
-    except KeyboardInterrupt:
-        output_message(None, "Monitoring stopped by user.")
-        stop_monitor(event_handler, observer)
+        # Determine if Google Sheets should be used based on the webhook URL and command-line parameter
+        google_sheets_webhook = config.get('google_sheets_webhook')
+        if use_googlesheet is None:
+            if not bool(config.get('use_googlesheet', True)):
+                config['use_googlesheet'] = False
+            else:
+                config['use_googlesheet'] = is_valid_url(google_sheets_webhook)
+        else:
+            config['use_googlesheet'] = use_googlesheet
+
+        # Set autoshard default: True for CLI, False for GUI
+        if autoshard is None:
+            autoshard = not hasattr(main, 'in_gui') or not main.in_gui
+        config['autoshard'] = autoshard  # Add autoshard to the config
+
+        # Override config values with command-line parameters if provided
+        if not process_all:
+            # Reverse logic: -p flag forces process_all to False
+            config['process_all'] = True
+        else:
+            # Use the config value if -p flag not present
+            config['process_all'] = bool(config.get('process_all', True))
+            
+        config['process_once'] = process_once or bool(config.get('process_once', False))
+
+        # Create a file handler
+        event_handler = LogFileHandler(config)
+        
+        if event_handler.process_once:
+            output_message(None, "Processing log file once and exiting...")
+            event_handler.process_entire_log()
+            return event_handler
+
+        # Log monitoring status just before starting the observer
+        output_message(None, f"Monitoring log file: {config['log_file_path']}")
+        output_message(None, f"Sending updates to {'Discord webhook' if event_handler.use_discord else 'stdout'}")
+
+        # Create an observer
+        observer = Observer()
+        observer.schedule(event_handler, path=os.path.dirname(config['log_file_path']), recursive=False)
+        observer.schedule(event_handler, path=event_handler.screenshots_folder, recursive=False)  # Monitor screenshots folder
+        
+        # Store references for signal handler
+        signal_handler.event_handler = event_handler
+        signal_handler.observer = observer
+        
+        # If in GUI mode, start the observer in a separate thread and return immediately
+        if hasattr(main, 'in_gui') and main.in_gui:
+            observer_thread = threading.Thread(target=observer.start)
+            observer_thread.daemon = True
+            observer_thread.start()
+            return event_handler, observer
+        
+        # Register signal handlers if not in a GUI environment
+        if not hasattr(main, 'in_gui') or not main.in_gui:
+            signal.signal(signal.SIGINT, signal_handler)
+            signal.signal(signal.SIGTERM, signal_handler)
+        
+        try:
+            # Start the observer
+            observer.start()
+
+            # Ensure monitoring is started before generating screenshots
+            output_message(None, "Monitoring started successfully.")
+
+            # Call the startup keystrokes method only if autoshard is True
+            if event_handler and event_handler.autoshard:
+                output_message(None, "Sending startup keystrokes to Star Citizen window...")
+                event_handler.send_startup_keystrokes()
+
+            # Keep the script running until stop event is set
+            while not event_handler.stop_event.is_set():
+                time.sleep(1)
+        except KeyboardInterrupt:
+            output_message(None, "Monitoring stopped by user.")
+            stop_monitor(event_handler, observer)
+        except Exception as e:
+            output_message(None, f"Unexpected error: {e}")
+            stop_monitor(event_handler, observer)
+        finally:
+            # Wait for the observer thread to finish
+            observer.join()
+            return event_handler
     except Exception as e:
-        output_message(None, f"Unexpected error: {e}")
-        stop_monitor(event_handler, observer)
-    finally:
-        # Wait for the observer thread to finish
-        observer.join()
-        return event_handler
+        logging.error("An error occurred: %s", str(e))
+        logging.error("Stack trace:\n%s", traceback.format_exc())
+        raise
 
 if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
         print(f"SC Log Analyzer v{get_version()}")
-        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng]")
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng] [--debug | -d] [--autoshard | -a]")
         print("Options:")
         print("  --process-all, -p    Skip processing entire log file (overrides config)")
         print("  --no-discord, -nd    Do not send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
         print("  --no-googlesheet, -ng    Do not send output to Google Sheets webhook")
+        print("  --debug, -d          Enable debug mode (e.g., save cropped images)")
+        print("  --autoshard, -a      Automatically send startup keystrokes to Star Citizen window")
         print(f"Version: {get_version()}")
         sys.exit(0)
     
@@ -904,7 +932,12 @@ if __name__ == "__main__":
     use_discord = not ('--no-discord' in sys.argv or '-nd' in sys.argv)
     process_once = '--process-once' in sys.argv or '-o' in sys.argv
     use_googlesheet = not ('--no-googlesheet' in sys.argv or '-ng' in sys.argv)
-    
+    debug_mode = '--debug' in sys.argv or '-d' in sys.argv
+    autoshard = '--autoshard' in sys.argv or '-a' in sys.argv
+
+    # Set debug mode globally
+    main.debug_mode = debug_mode
+
     # Show version info on startup
     print(f"SC Log Analyzer v{get_version()} starting...")
-    main(process_all, use_discord, process_once, use_googlesheet)
+    main(process_all, use_discord, process_once, use_googlesheet, autoshard=autoshard)
