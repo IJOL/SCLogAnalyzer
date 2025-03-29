@@ -25,7 +25,10 @@ jobs:
           .\venv\Scripts\activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+      - name: Debug environment
+        run: |
+          dir venv\Lib\site-packages\pyzbar
+          
       - name: Build executables
         run: |
           .\venv\Scripts\activate
