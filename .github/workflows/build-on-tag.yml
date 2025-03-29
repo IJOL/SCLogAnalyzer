@@ -97,7 +97,7 @@ jobs:
         if: startsWith(github.ref_name, 'test-') == false
         uses: ncipollo/release-action@v1
         with:
-          artifacts: scloganalyzer-bot.tar.gz
+          artifacts: scloganalyzer-bot-${{ github.ref_name }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}-bot
           name: Docker Image Release ${{ github.ref_name }}
