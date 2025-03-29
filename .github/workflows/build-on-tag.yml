@@ -55,22 +55,29 @@ jobs:
           $tag_name = "${{ github.ref_name }}"
           Compress-Archive -Path dist/SCLogAnalyzer.exe -DestinationPath dist/SCLogAnalyzer-${tag_name}.zip -Update
 
+      - name: Check if release already exists
+        id: check_release
+        run: |
+          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }} \
+          | jq -e .id > /dev/null || echo "not_found"
+
       - name: Publish log_analyzer release
-        if: startsWith(github.ref_name, 'test-') == false
+        if: startsWith(github.ref_name, 'test-') == false && steps.check_release.outputs.result != 'not_found'
         uses: ncipollo/release-action@v1
         with:
           artifacts: dist/log_analyzer-${{ github.ref_name }}.zip
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}-cli
           name: log_analyzer Release ${{ github.ref_name }}
 
       - name: Publish SCLogAnalyzer release
-        if: startsWith(github.ref_name, 'test-') == false
+        if: startsWith(github.ref_name, 'test-') == false && steps.check_release.outputs.result != 'not_found'
         uses: ncipollo/release-action@v1
         with:
           artifacts: dist/SCLogAnalyzer-${{ github.ref_name }}.zip
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}-gui
           name: SCLogAnalyzer Release ${{ github.ref_name }}
 
   docker-build:
@@ -99,5 +106,5 @@ jobs:
         with:
           artifacts: scloganalyzer-bot.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}-bot
           name: Docker Image Release ${{ github.ref_name }}
