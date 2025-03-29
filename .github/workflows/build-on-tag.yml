@@ -68,7 +68,7 @@ jobs:
         with:
           artifacts: dist/log_analyzer-${{ github.ref_name }}.zip
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}-cli
+          tag: ${{ github.ref_name }}
           name: log_analyzer Release ${{ github.ref_name }}
 
       - name: Publish SCLogAnalyzer release
