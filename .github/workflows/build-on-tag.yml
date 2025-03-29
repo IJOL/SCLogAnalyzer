@@ -28,12 +28,12 @@ jobs:
       - name: Debug environment
         run: |
           dir venv\Lib\site-packages\pyzbar
-          
+
       - name: Build executables
         run: |
           .\venv\Scripts\activate
           pyinstaller --onefile --console --clean --add-data "src/config.json.template;." --name log_analyzer src/log_analyzer.py
-          pyinstaller --onefile --windowed --clean --add-data "src/config.json.template;." --add-binary "venv\Lib\site-packages\pyzbar\libiconv.dll;." --add-binary "venv\Lib\site-packages\pyzbar\libzbar64.dll;." --name SCLogAnalyzer src/gui.py
+          pyinstaller --onefile --windowed --clean --add-data "src/config.json.template;." --add-binary "venv\Lib\site-packages\pyzbar\libiconv.dll;." --add-binary "venv\Lib\site-packages\pyzbar\libzbar-64.dll;." --name SCLogAnalyzer src/gui.py
 
       - name: Archive Windows Executable Artifacts
         uses: actions/upload-artifact@v4
