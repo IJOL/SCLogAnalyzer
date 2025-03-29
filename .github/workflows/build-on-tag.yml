@@ -45,23 +45,12 @@ jobs:
       - name: Compress log_analyzer executable into a zip
         run: |
           $tag_name = "${{ github.ref_name }}"
-          zip -j dist/log_analyzer-${tag_name}.zip dist/log_analyzer.exe
+          Compress-Archive -Path 'dist\log_analyzer.exe'-DestinationPath dist/log_analyzer-${tag_name}.zip -Update
 
       - name: Compress SCLogAnalyzer executable into a zip
         run: |
           $tag_name = "${{ github.ref_name }}"
-          zip -j dist/SCLogAnalyzer-${tag_name}.zip dist/SCLogAnalyzer.exe
-
-      - name: Build Docker image
-        run: |
-          docker build -t scloganalyzer-bot .
-          docker save scloganalyzer-bot | gzip > scloganalyzer-bot.tar.gz
-
-      - name: Upload Docker image
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image
-          path: scloganalyzer-bot.tar.gz
+          Compress-Archive -Path dist/SCLogAnalyzer.exe -DestinationPath dist/SCLogAnalyzer-${tag_name}.zip -Update
 
       - name: Publish log_analyzer release
         if: startsWith(github.ref_name, 'test-') == false
@@ -80,6 +69,26 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}
           name: SCLogAnalyzer Release ${{ github.ref_name }}
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Docker image
+        run: |
+          tag_name="${{ github.ref_name }}"
+          docker build -t scloganalyzer-bot-${tag_name} .
+          docker save scloganalyzer-bot-${tag_name} | gzip > scloganalyzer-bot-${tag_name}.tar.gz
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v3
+        with:
+          name: docker-image
+          path: scloganalyzer-bot-${{ github.ref_name }}.tar.gz
 
       - name: Publish Docker tar.gz release
         if: startsWith(github.ref_name, 'test-') == false
