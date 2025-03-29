@@ -88,7 +88,7 @@ jobs:
           docker save scloganalyzer-bot-${tag_name} | gzip > scloganalyzer-bot-${tag_name}.tar.gz
 
       - name: Upload Docker image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: docker-image
           path: scloganalyzer-bot-${{ github.ref_name }}.tar.gz
