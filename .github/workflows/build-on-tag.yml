@@ -1,0 +1,88 @@
+name: Build and Publish on Tag
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          .\venv\Scripts\activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build executables
+        run: |
+          .\venv\Scripts\activate
+          pyinstaller --onefile --console --clean --add-data "src/config.json.template;." --name log_analyzer src/log_analyzer.py
+          pyinstaller --onefile --windowed --clean --add-data "src/config.json.template;." --add-binary "venv\Lib\site-packages\pyzbar\libiconv.dll;." --add-binary "venv\Lib\site-packages\pyzbar\libzbar64.dll;." --name SCLogAnalyzer src/gui.py
+
+      - name: Archive Windows Executable Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            dist/*.exe
+
+      - name: Compress log_analyzer executable into a zip
+        run: |
+          $tag_name = "${{ github.ref_name }}"
+          zip -j dist/log_analyzer-${tag_name}.zip dist/log_analyzer.exe
+
+      - name: Compress SCLogAnalyzer executable into a zip
+        run: |
+          $tag_name = "${{ github.ref_name }}"
+          zip -j dist/SCLogAnalyzer-${tag_name}.zip dist/SCLogAnalyzer.exe
+
+      - name: Build Docker image
+        run: |
+          docker build -t scloganalyzer-bot .
+          docker save scloganalyzer-bot | gzip > scloganalyzer-bot.tar.gz
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: scloganalyzer-bot.tar.gz
+
+      - name: Publish log_analyzer release
+        if: startsWith(github.ref_name, 'test-') == false
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: dist/log_analyzer-${{ github.ref_name }}.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          name: log_analyzer Release ${{ github.ref_name }}
+
+      - name: Publish SCLogAnalyzer release
+        if: startsWith(github.ref_name, 'test-') == false
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: dist/SCLogAnalyzer-${{ github.ref_name }}.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          name: SCLogAnalyzer Release ${{ github.ref_name }}
+
+      - name: Publish Docker tar.gz release
+        if: startsWith(github.ref_name, 'test-') == false
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: scloganalyzer-bot.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          name: Docker Image Release ${{ github.ref_name }}
