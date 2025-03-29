@@ -44,7 +44,7 @@ pyinstaller --onefile --console --clean --add-data "src/config.json.template;." 
 pyinstaller --onefile --console --clean --add-data "src/bot/config.json.template;." --name StatusBoardBot src/bot/bot.py
 
 :: Build executable for SCLogAnalyzer GUI app
-pyinstaller --onefile --windowed --clean --add-data "src/config.json.template;." --name SCLogAnalyzer src/gui.py
+pyinstaller --onefile --windowed --clean --add-data "src/config.json.template;." --add-binary "venv\Lib\site-packages\pyzbar\libiconv.dll;." --add-binary "venv\Lib\site-packages\pyzbar\libzbar-64.dll;." --name SCLogAnalyzer src/gui.py
 
 :: Update ZIP files with new executables
 powershell -Command "Compress-Archive -Path 'dist\log_analyzer.exe', 'dist\readme' -DestinationPath 'dist\log_analyzer.zip' -Update"
