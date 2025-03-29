@@ -6,10 +6,9 @@ WORKDIR /app
 
 # Copy the project files into the container
 COPY src .
-COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r bot/requirements.txt
 
 # Set the default command to run bot.py
 CMD ["python", "bot/bot.py"]
