@@ -28,9 +28,6 @@ jobs:
           .\venv\Scripts\activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Debug environment
-        run: |
-          dir venv\Lib\site-packages\pyzbar
 
       - name: Build executables
         run: |
@@ -45,14 +42,10 @@ jobs:
           path: |
             dist/*.exe
 
-      - name: Compress log_analyzer executable into a zip
+      - name: Compress executables into a zip
         run: |
           $tag_name = "${{ github.ref_name }}"
           Compress-Archive -Path 'dist\log_analyzer.exe'-DestinationPath dist/log_analyzer-${tag_name}.zip -Update
-
-      - name: Compress SCLogAnalyzer executable into a zip
-        run: |
-          $tag_name = "${{ github.ref_name }}"
           Compress-Archive -Path dist/SCLogAnalyzer.exe -DestinationPath dist/SCLogAnalyzer-${tag_name}.zip -Update
 
       - name: Publish log_analyzer release
@@ -106,18 +99,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Delete all releases except the latest
+      - name: Delete all releases except the latest three
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          latest_release=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.id')
           releases=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             https://api.github.com/repos/${{ github.repository }}/releases | jq -r '.[].id')
 
-          for release_id in $releases; do
-            if [ "$release_id" != "$latest_release" ]; then
-              curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
-                https://api.github.com/repos/${{ github.repository }}/releases/$release_id
-            fi
+          # Keep the last 3 release IDs
+          releases_to_delete=$(echo "$releases" | tail -n +4)
+
+          for release_id in $releases_to_delete; do
+            curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+              https://api.github.com/repos/${{ github.repository }}/releases/$release_id
           done
