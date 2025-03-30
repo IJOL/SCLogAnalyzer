@@ -101,3 +101,23 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}-bot
           name: StatsBoardBot Docker Image Release ${{ github.ref_name }}
+
+  cleanup-releases:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete all releases except the latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest_release=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.id')
+          releases=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/releases | jq -r '.[].id')
+
+          for release_id in $releases; do
+            if [ "$release_id" != "$latest_release" ]; then
+              curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+                https://api.github.com/repos/${{ github.repository }}/releases/$release_id
+            fi
+          done
