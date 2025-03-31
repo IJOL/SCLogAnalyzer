@@ -131,7 +131,6 @@ class LogAnalyzerFrame(wx.Frame):
         # Add menu items
         menu_bar = wx.MenuBar()
         config_menu = wx.Menu()
-        self.process_all_check = config_menu.AppendCheckItem(wx.ID_ANY, "Process Entire Log")
         self.discord_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Discord")
         self.googlesheet_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Google Sheets")
         config_menu.AppendSeparator()
@@ -140,7 +139,6 @@ class LogAnalyzerFrame(wx.Frame):
         self.SetMenuBar(menu_bar)
 
         # Bind menu events
-        self.Bind(wx.EVT_MENU, self.on_toggle_check, self.process_all_check)
         self.Bind(wx.EVT_MENU, self.on_toggle_check, self.discord_check)
         self.Bind(wx.EVT_MENU, self.on_toggle_check, self.googlesheet_check)
         self.Bind(wx.EVT_MENU, self.on_edit_config, edit_config_item)  # Bind the new menu item
@@ -220,7 +218,6 @@ class LogAnalyzerFrame(wx.Frame):
                     self.default_log_file_path = os.path.join(app_path, self.default_log_file_path)
                 
                 # Set checkbox defaults from config
-                self.process_all_check.Check(config.get('process_all', True))
                 self.discord_check.Check(config.get('use_discord', True))  # Default to True
                 self.googlesheet_check.Check(config.get('use_googlesheet', True))  # Default to True
                 
@@ -248,7 +245,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.monitor_button.Enable(False)
         
         # Run log analyzer in a separate thread to keep UI responsive
-        process_all = self.process_all_check.IsChecked()
+        process_all = True  # Always process the entire log
         use_discord = self.discord_check.IsChecked()
         use_googlesheet = self.googlesheet_check.IsChecked()
         autoshard = False  # Auto Shard is not used in this context
@@ -302,7 +299,7 @@ class LogAnalyzerFrame(wx.Frame):
             self.monitoring = False
             return
 
-        process_all = self.process_all_check.IsChecked()
+        process_all = True  # Always process the entire log
         use_discord = self.discord_check.IsChecked()
         use_googlesheet = self.googlesheet_check.IsChecked()
         autoshard = False  # Auto Shard is not used in this context
