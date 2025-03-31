@@ -56,7 +56,8 @@ def output_message(timestamp, message):
         formatted_msg = f"*{current_time} - {message}"
     
     # Redirect to GUI log handler if in GUI mode
-    if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler'):
+    if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler') and callable(main.gui_log_handler):
+        # Call the GUI log handler with the formatted message
         main.gui_log_handler(formatted_msg)
     else:
         print(formatted_msg)
