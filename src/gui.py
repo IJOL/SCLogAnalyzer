@@ -9,8 +9,10 @@ from watchdog.observers.polling import PollingObserver as Observer
 import wx.adv  # Import wx.adv for taskbar icon support
 import json  # For handling JSON files
 import winreg  # Import for Windows registry manipulation
-import wx.lib.newevent  # For custom events
+import wx.grid  # Import wx.grid for displaying tabular data
+import requests  # For HTTP requests
 from config_utils import emit_default_config, get_application_path
+from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog  # Import reusable components
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -22,361 +24,6 @@ DEFAULT_WINDOW_POSITION = (50, 50)
 DEFAULT_WINDOW_SIZE = (800, 600)
 LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
 TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
-
-class RedirectText:
-    """Class to redirect stdout to a text control"""
-    def __init__(self, text_ctrl):
-        self.text_ctrl = text_ctrl
-        self.stdout = sys.stdout
-        
-    def write(self, string):
-        """Write to both stdout and text control"""
-        if self.stdout:
-            self.stdout.write(string)
-        wx.CallAfter(self.text_ctrl.AppendText, string)
-        
-    def flush(self):
-        if self.stdout:
-            self.stdout.flush()
-
-class KeyValueGrid(wx.Panel):
-    """A reusable grid for editing key-value pairs."""
-    def __init__(self, parent, title, data, key_choices=None):
-        super().__init__(parent)
-        self.data = data
-        self.key_choices = key_choices  # List of available keys for selection
-
-        # Create main sizer
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        # Add title
-        title_label = wx.StaticText(self, label=title)
-        main_sizer.Add(title_label, 0, wx.ALL, 5)
-
-        # Create grid
-        self.grid = wx.FlexGridSizer(cols=3, hgap=5, vgap=5)
-        self.grid.AddGrowableCol(1, 1)  # Make value column expandable
-
-        # Add headers
-        self.grid.Add(wx.StaticText(self, label="Key"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.grid.Add(wx.StaticText(self, label="Value"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.grid.Add(wx.StaticText(self, label="Actions"), 0, wx.ALIGN_CENTER_VERTICAL)
-
-        # Populate grid with data
-        self.controls = []
-        for key, value in self.data.items():
-            self.add_row(key, value)
-
-        main_sizer.Add(self.grid, 1, wx.EXPAND | wx.ALL, 5)
-
-        # Add buttons at the bottom
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        add_button = wx.Button(self, label="+", size=(40, 40))
-        add_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
-        button_sizer.Add(add_button, 0, wx.ALL, 5)
-        main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT)
-
-        self.SetSizer(main_sizer)
-
-        # Bind events
-        add_button.Bind(wx.EVT_BUTTON, self.on_add)
-
-    def add_row(self, key="", value=""):
-        """Add a row to the grid."""
-        if self.key_choices:
-            key_ctrl = wx.Choice(self, choices=self.key_choices)
-            if key in self.key_choices:
-                key_ctrl.SetStringSelection(key)
-        else:
-            key_ctrl = wx.TextCtrl(self, value=key)
-
-        # Use a multiline TextCtrl for the value field
-        value_ctrl = wx.TextCtrl(self, value=value, style=wx.TE_MULTILINE)
-        value_ctrl.SetMinSize((200, 50))  # Set a minimum size for better usability
-
-        delete_button = wx.Button(self, label="-", size=(40, 40))
-        delete_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
-        move_up_button = wx.Button(self, label="↑", size=(40, 40))
-        move_up_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
-        move_down_button = wx.Button(self, label="↓", size=(40, 40))
-        move_down_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
-
-        self.grid.Add(key_ctrl, 0, wx.EXPAND)
-        self.grid.Add(value_ctrl, 1, wx.EXPAND)
-        action_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        action_sizer.Add(delete_button, 0, wx.ALL, 2)
-        action_sizer.Add(move_up_button, 0, wx.ALL, 2)
-        action_sizer.Add(move_down_button, 0, wx.ALL, 2)
-        self.grid.Add(action_sizer, 0, wx.ALIGN_CENTER)
-
-        self.controls.append((key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
-
-        # Bind button events
-        delete_button.Bind(wx.EVT_BUTTON, lambda event: self.on_delete(key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
-        move_up_button.Bind(wx.EVT_BUTTON, lambda event: self.on_move_up(key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
-        move_down_button.Bind(wx.EVT_BUTTON, lambda event: self.on_move_down(key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
-
-        self.Layout()
-
-    def on_add(self, event):
-        """Handle add button click."""
-        # Add a new row with empty inputs for key and value
-        self.add_row("", "")
-
-    def on_delete(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button):
-        """Handle delete button click."""
-        wx.CallAfter(self._delete_row, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button)
-
-    def _delete_row(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button):
-        """Perform the actual deletion of a row."""
-        key_ctrl.Destroy()
-        value_ctrl.Destroy()
-        delete_button.Destroy()
-        move_up_button.Destroy()
-        move_down_button.Destroy()
-        self.controls.remove((key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
-        self.refresh_grid()
-
-    def on_move_up(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button):
-        """Move the row up."""
-        wx.CallAfter(self._move_row, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button, -1)
-
-    def on_move_down(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button):
-        """Move the row down."""
-        wx.CallAfter(self._move_row, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button, 1)
-
-    def _move_row(self, key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button, direction):
-        """Perform the actual row movement."""
-        index = self.controls.index((key_ctrl, value_ctrl, delete_button, move_up_button, move_down_button))
-        new_index = index + direction
-        if 0 <= new_index < len(self.controls):
-            # Swap the rows
-            self.controls[index], self.controls[new_index] = self.controls[new_index], self.controls[index]
-            self.refresh_grid()
-
-    def refresh_grid(self):
-        """Refresh the grid to reflect the updated order."""
-        wx.CallAfter(self._refresh_grid)
-
-    def _refresh_grid(self):
-        """Perform the actual grid refresh."""
-        data=self.get_data()  # Save the data before clearing the grid
-
-        self.grid.Clear(True)  # Clear the grid layout
-        self.controls = []
-        # Re-add headers
-        self.grid.Add(wx.StaticText(self, label="Key"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.grid.Add(wx.StaticText(self, label="Value"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.grid.Add(wx.StaticText(self, label="Actions"), 0, wx.ALIGN_CENTER_VERTICAL)
-
-        # Rebuild the controls list and recreate rows
-        new_controls = []
-        for key,value in data.items():
-            self.add_row(key, value)
-
-        self.Layout()
-
-    def get_data(self):
-        """Retrieve the data from the grid."""
-        return {
-            (key_ctrl.GetStringSelection() if isinstance(key_ctrl, wx.Choice) else key_ctrl.GetValue()): value_ctrl.GetValue()
-            for key_ctrl, value_ctrl, _, _, _ in self.controls
-        }
-
-class ConfigDialog(wx.Frame):
-    """Resizable, non-modal dialog for editing configuration options."""
-    def __init__(self, parent, config_path):
-        super().__init__(parent, title="Edit Configuration", size=(600, 400))
-        self.config_path = config_path
-        self.config_data = {}
-
-        # Load the configuration file
-        self.load_config()
-
-        # Create main sizer
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        # Create notebook
-        notebook = wx.Notebook(self)
-
-        # Add tabs using the helper method
-        self.general_controls = {}
-        self.add_general_tab(notebook, "General Config", self.config_data)
-        self.regex_patterns_grid = self.add_tab(notebook, "Regex Patterns", "regex_patterns")
-        regex_keys = list(self.config_data.get("regex_patterns", {}).keys())
-        regex_keys.append("mode_change")  # Add the fixed option
-        self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
-        self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
-        self.sheets_mapping_grid = self.add_tab(notebook, "Google Sheets Mapping", "google_sheets_mapping", regex_keys)
-
-        main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
-
-        # Add startup configuration section
-        startup_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.startup_label = wx.StaticText(self, label="Startup: Checking...")
-        self.startup_button = wx.Button(self, label="Toggle Startup")
-        startup_sizer.Add(self.startup_label, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-        startup_sizer.Add(self.startup_button, 0, wx.ALL, 5)
-        main_sizer.Add(startup_sizer, 0, wx.EXPAND | wx.ALL, 5)
-
-        # Add Accept, Save, and Cancel buttons
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        accept_button = wx.Button(self, label="Accept")
-        save_button = wx.Button(self, label="Save")
-        cancel_button = wx.Button(self, label="Cancel")
-        button_sizer.Add(accept_button, 0, wx.ALL, 5)
-        button_sizer.Add(save_button, 0, wx.ALL, 5)
-        button_sizer.Add(cancel_button, 0, wx.ALL, 5)
-        main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER, 10)
-
-        self.SetSizer(main_sizer)
-
-        # Bind events
-        accept_button.Bind(wx.EVT_BUTTON, self.on_accept)
-        save_button.Bind(wx.EVT_BUTTON, self.on_save)
-        cancel_button.Bind(wx.EVT_BUTTON, self.on_close)
-        self.startup_button.Bind(wx.EVT_BUTTON, self.on_toggle_startup)
-
-        # Check startup status
-        self.check_startup_status()
-
-    def check_startup_status(self):
-        """Check if the application is set to run on Windows startup."""
-        try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_READ)
-            value, _ = winreg.QueryValueEx(key, STARTUP_APP_NAME)
-            winreg.CloseKey(key)
-            if value:
-                self.startup_label.SetLabel("Startup: Enabled")
-                self.startup_button.SetLabel("Disable Startup")
-        except FileNotFoundError:
-            self.startup_label.SetLabel("Startup: Disabled")
-            self.startup_button.SetLabel("Enable Startup")
-        except Exception as e:
-            self.startup_label.SetLabel(f"Startup: Error ({e})")
-            self.startup_button.Disable()
-
-    def on_toggle_startup(self, event):
-        """Toggle the startup entry in the Windows registry."""
-        try:
-            app_path = sys.executable  # Path to the Python executable or bundled EXE
-            startup_command = f'"{app_path}" {STARTUP_COMMAND_FLAG}'
-
-            if self.startup_button.GetLabel() == "Enable Startup":
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_SET_VALUE)
-                winreg.SetValueEx(key, STARTUP_APP_NAME, 0, winreg.REG_SZ, startup_command)
-                winreg.CloseKey(key)
-                wx.MessageBox("Startup enabled successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
-            else:
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_SET_VALUE)
-                winreg.DeleteValue(key, STARTUP_APP_NAME)
-                winreg.CloseKey(key)
-                wx.MessageBox("Startup disabled successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
-
-            # Refresh the startup status
-            self.check_startup_status()
-        except FileNotFoundError:
-            wx.MessageBox("Startup entry not found.", "Info", wx.OK | wx.ICON_INFORMATION)
-        except Exception as e:
-            wx.MessageBox(f"Failed to toggle startup: {e}", "Error", wx.OK | wx.ICON_ERROR)
-
-    def add_tab(self, notebook, title, config_key, key_choices=None):
-        """Helper method to add a tab with a KeyValueGrid."""
-        panel = wx.ScrolledWindow(notebook)
-        panel.SetScrollRate(5, 5)
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        grid = KeyValueGrid(panel, title, self.config_data.get(config_key, {}), key_choices)
-        sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 5)
-        panel.SetSizer(sizer)
-        notebook.AddPage(panel, title)
-        return grid
-
-    def add_general_tab(self, notebook, title, config_data):
-        """Helper method to add the general configuration tab."""
-        panel = wx.Panel(notebook)
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        for key, value in config_data.items():
-            if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
-                label = wx.StaticText(panel, label=key)
-                if isinstance(value, bool):
-                    control = wx.CheckBox(panel)
-                    control.SetValue(value)
-                else:
-                    control = wx.TextCtrl(panel, value=str(value))
-                self.general_controls[key] = control
-                row_sizer = wx.BoxSizer(wx.HORIZONTAL)
-                row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-                row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
-
-                # Add a "Browse" button for the "log_file_path" key
-                if key == "log_file_path":
-                    browse_button = wx.Button(panel, label="Browse...")
-                    row_sizer.Add(browse_button, 0, wx.ALL, 5)
-                    browse_button.Bind(wx.EVT_BUTTON, lambda event: self.on_browse_log_file(control))
-
-                sizer.Add(row_sizer, 0, wx.EXPAND)
-        panel.SetSizer(sizer)
-        notebook.AddPage(panel, title)
-
-    def on_browse_log_file(self, control):
-        """Handle the Browse button click for log_file_path."""
-        with wx.FileDialog(self, "Select log file", wildcard=LOG_FILE_WILDCARD,
-                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as file_dialog:
-            if file_dialog.ShowModal() == wx.ID_CANCEL:
-                return
-            control.SetValue(file_dialog.GetPath())
-
-    def load_config(self):
-        """Load configuration from the JSON file."""
-        if os.path.exists(self.config_path):
-            with open(self.config_path, 'r', encoding='utf-8') as config_file:
-                self.config_data = json.load(config_file)
-
-    def save_config(self):
-        """Save configuration to the JSON file."""
-        # Save general config values
-        for key, control in self.general_controls.items():
-            if isinstance(control, wx.CheckBox):
-                self.config_data[key] = control.GetValue()
-            else:
-                value = control.GetValue()
-                try:
-                    # Try to convert to int or float if applicable
-                    if value.isdigit():
-                        value = int(value)
-                    else:
-                        value = float(value)
-                except ValueError:
-                    pass
-                self.config_data[key] = value
-
-        # Save grid data
-        self.config_data["regex_patterns"] = self.regex_patterns_grid.get_data()
-        self.config_data["messages"] = self.messages_grid.get_data()
-        self.config_data["discord"] = self.discord_grid.get_data()
-        self.config_data["google_sheets_mapping"] = self.sheets_mapping_grid.get_data()
-
-    def save_to_file(self):
-        """Save the current configuration to the JSON file."""
-        with open(self.config_path, 'w', encoding='utf-8') as config_file:
-            json.dump(self.config_data, config_file, indent=4)
-
-    def on_accept(self, event):
-        """Handle the Accept button click."""
-        self.save_config()
-        self.Destroy()
-
-    def on_save(self, event):
-        """Handle the Save button click."""
-        self.save_config()
-        self.save_to_file()
-        wx.MessageBox("Configuration saved successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
-        self.Destroy()
-        
-
-    def on_close(self, event):
-        """Handle the Cancel button click."""
-        self.Destroy()
 
 class LogAnalyzerFrame(wx.Frame):
     def __init__(self):
@@ -398,87 +45,113 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Create main panel
         panel = wx.Panel(self)
-        
-        # Create main vertical sizer
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        # Create log file selection controls
-        file_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        file_label = wx.StaticText(panel, label="Log File:")
-        self.file_path = wx.TextCtrl(panel, size=(400, -1))
-        browse_button = wx.Button(panel, label="Browse...")
-        
-        file_sizer.Add(file_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-        file_sizer.Add(self.file_path, 1, wx.ALL | wx.EXPAND, 5)
-        file_sizer.Add(browse_button, 0, wx.ALL, 5)
-        
-        # Create option checkboxes
-        options_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.process_all_check = wx.CheckBox(panel, label="Process Entire Log")
-        self.discord_check = wx.CheckBox(panel, label="Use Discord")
-        self.googlesheet_check = wx.CheckBox(panel, label="Use Google Sheets")
-        self.autoshard_check = wx.CheckBox(panel, label="Auto Shard")  # Add Auto Shard checkbox
 
-        options_sizer.Add(self.process_all_check, 0, wx.ALL, 5)
-        options_sizer.Add(self.discord_check, 0, wx.ALL, 5)
-        options_sizer.Add(self.googlesheet_check, 0, wx.ALL, 5)
-        options_sizer.Add(self.autoshard_check, 0, wx.ALL, 5)  # Add to options sizer
-        
-        # Create action buttons
+        # Create main horizontal sizer to place notebook
+        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Create notebook for log output and Google Sheets data
+        notebook = wx.Notebook(panel)
+        self.log_page = wx.Panel(notebook)
+        notebook.AddPage(self.log_page, "Main Log")
+
+        # Create a vertical sizer for the log page
+        log_page_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Add a horizontal sizer for buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.process_button = wx.Button(panel, label="Process Log Once")
-        self.monitor_button = wx.Button(panel, label="Start Monitoring")
-        self.autoshard_button = wx.Button(panel, label="Auto Shard")  # Add Auto Shard button
-        self.autoshard_button.Enable(False)  # Initially disable the button
-        
-        button_sizer.Add(self.process_button, 0, wx.ALL, 5)
-        button_sizer.Add(self.monitor_button, 0, wx.ALL, 5)
-        button_sizer.Add(self.autoshard_button, 0, wx.ALL, 5)  # Add to button sizer
-        
-        # Create log output area
-        log_label = wx.StaticText(panel, label="Log Output:")
-        self.log_text = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL)
 
-        # Set font to a monospaced font for better log readability
-        font = wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
-        self.log_text.SetFont(font)
+        # Style buttons with icons and custom fonts
+        self.process_log_button = wx.Button(self.log_page, label=" Process Log")
+        self.process_log_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_FILE_OPEN, wx.ART_BUTTON, (16, 16)))
+        self.process_log_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
 
-        # Set black background and green text
-        self.log_text.SetBackgroundColour(wx.Colour(0, 0, 0))  # Black background
+        self.autoshard_button = wx.Button(self.log_page, label=" Auto Shard")
+        self.autoshard_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_TIP, wx.ART_BUTTON, (16, 16)))
+        self.autoshard_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+
+        self.monitor_button = wx.Button(self.log_page, label=" Start Monitoring")
+        self.monitor_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_EXECUTABLE_FILE, wx.ART_BUTTON, (16, 16)))
+        self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+
+        # Add buttons to the horizontal button sizer
+        button_sizer.Add(self.process_log_button, 0, wx.ALL, 2)
+        button_sizer.Add(self.autoshard_button, 0, wx.ALL, 2)
+        button_sizer.Add(self.monitor_button, 0, wx.ALL, 2)
+
+        # Add the button sizer to the log page sizer
+        log_page_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 2)
+
+        # Add the log text area with fixed-width font and rich text support
+        self.log_text = wx.TextCtrl(
+            self.log_page,
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL | wx.TE_RICH2
+        )
+        fixed_font = wx.Font(
+            10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL
+        )
+        self.log_text.SetFont(fixed_font)
         self.log_text.SetForegroundColour(wx.Colour(0, 255, 0))  # Green text
-        
-        # Add all controls to main sizer
-        main_sizer.Add(file_sizer, 0, wx.EXPAND | wx.ALL, 5)
-        main_sizer.Add(options_sizer, 0, wx.EXPAND | wx.ALL, 5)
-        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 5)
-        main_sizer.Add(log_label, 0, wx.ALL, 5)
-        main_sizer.Add(self.log_text, 1, wx.EXPAND | wx.ALL, 5)
-        
-        # Set the main sizer
-        panel.SetSizer(main_sizer)
-        
-        # Status bar
-        self.CreateStatusBar()
-        self.SetStatusText("Ready")
-        
-        # Bind events
-        browse_button.Bind(wx.EVT_BUTTON, self.on_browse)
-        self.process_button.Bind(wx.EVT_BUTTON, self.on_process)
-        self.monitor_button.Bind(wx.EVT_BUTTON, self.on_monitor)
-        self.autoshard_button.Bind(wx.EVT_BUTTON, self.on_autoshard)  # Bind Auto Shard button event
-        self.Bind(wx.EVT_CLOSE, self.on_close)
+        self.log_text.SetBackgroundColour(wx.Colour(0, 0, 0))  # Black background
+        log_page_sizer.Add(self.log_text, 1, wx.EXPAND | wx.ALL, 2)
 
-        # Add a menu bar with a Config menu
+        # Set the sizer for the log page
+        self.log_page.SetSizer(log_page_sizer)
+
+        # Add a new page for Google Sheets data
+        self.sheets_page = wx.Panel(notebook)
+        notebook.AddPage(self.sheets_page, "Google Sheets")
+
+        # Create a vertical sizer for the sheets page
+        sheets_page_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Add a refresh button
+        self.refresh_button = wx.Button(self.sheets_page, label="Refresh")
+        sheets_page_sizer.Add(self.refresh_button, 0, wx.ALL | wx.ALIGN_LEFT, 5)
+
+        # Add a grid to display the JSON data
+        self.sheets_grid = wx.grid.Grid(self.sheets_page)
+        self.sheets_grid.CreateGrid(0, 0)  # Start with an empty grid
+        sheets_page_sizer.Add(self.sheets_grid, 1, wx.EXPAND | wx.ALL, 2)
+
+        # Set the sizer for the sheets page
+        self.sheets_page.SetSizer(sheets_page_sizer)
+
+        # Add notebook to the main sizer
+        main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 2)
+
+        # Set the sizer for the main panel
+        panel.SetSizer(main_sizer)
+
+        # Bind buttons
+        self.process_log_button.Bind(wx.EVT_BUTTON, self.on_process_log)
+        self.autoshard_button.Bind(wx.EVT_BUTTON, self.on_autoshard)
+        self.monitor_button.Bind(wx.EVT_BUTTON, self.on_monitor)
+        self.refresh_button.Bind(wx.EVT_BUTTON, self.on_refresh_sheets)
+
+        # Add menu items
         menu_bar = wx.MenuBar()
         config_menu = wx.Menu()
-        edit_config_item = config_menu.Append(wx.ID_ANY, "Edit Config...")
+        self.process_all_check = config_menu.AppendCheckItem(wx.ID_ANY, "Process Entire Log")
+        self.discord_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Discord")
+        self.googlesheet_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Google Sheets")
+        config_menu.AppendSeparator()
+        edit_config_item = config_menu.Append(wx.ID_ANY, "Edit Configuration")  # Add menu item for config dialog
         menu_bar.Append(config_menu, "Config")
         self.SetMenuBar(menu_bar)
 
         # Bind menu events
-        self.Bind(wx.EVT_MENU, self.on_edit_config, edit_config_item)
+        self.Bind(wx.EVT_MENU, self.on_toggle_check, self.process_all_check)
+        self.Bind(wx.EVT_MENU, self.on_toggle_check, self.discord_check)
+        self.Bind(wx.EVT_MENU, self.on_toggle_check, self.googlesheet_check)
+        self.Bind(wx.EVT_MENU, self.on_edit_config, edit_config_item)  # Bind the new menu item
+
+        # Status bar
+        self.CreateStatusBar()
+        self.SetStatusText("Ready")
         
         # Try to get the default log file path from config
+        self.default_log_file_path = None
+        self.google_sheets_webhook = None
         self.load_default_config()
         
         # Set up stdout redirection
@@ -513,12 +186,12 @@ class LogAnalyzerFrame(wx.Frame):
         """
         if self.monitoring:  # Check the actual monitoring state
             self.monitor_button.SetLabel("Stop Monitoring")
-            self.process_button.Enable(False)
+            self.process_log_button.Enable(False)
             self.autoshard_button.Enable(True)  # Enable Auto Shard button
             self.SetStatusText("Monitoring active")
         else:
             self.monitor_button.SetLabel("Start Monitoring")
-            self.process_button.Enable(True)
+            self.process_log_button.Enable(True)
             self.autoshard_button.Enable(False)  # Disable Auto Shard button
             self.SetStatusText("Monitoring stopped")
         
@@ -531,46 +204,36 @@ class LogAnalyzerFrame(wx.Frame):
             emit_default_config(config_path, in_gui=True)
 
     def load_default_config(self):
-        """Load default log file path from config"""
+        """Load default log file path and Google Sheets webhook from config."""
         app_path = get_application_path()
         config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         
         if os.path.exists(config_path):
             try:
-                import json
                 with open(config_path, 'r', encoding='utf-8') as config_file:
                     config = json.load(config_file)
                     
-                log_file_path = config.get('log_file_path', '')
-                if not os.path.isabs(log_file_path):
-                    log_file_path = os.path.join(app_path, log_file_path)
-                
-                self.file_path.SetValue(log_file_path)
+                self.default_log_file_path = config.get('log_file_path', '')
+                self.google_sheets_webhook = config.get('google_sheets_webhook', '')
+
+                if not os.path.isabs(self.default_log_file_path):
+                    self.default_log_file_path = os.path.join(app_path, self.default_log_file_path)
                 
                 # Set checkbox defaults from config
-                self.process_all_check.SetValue(config.get('process_all', True))
-                self.discord_check.SetValue(config.get('use_discord', True))  # Default to True
-                self.googlesheet_check.SetValue(config.get('use_googlesheet', True))  # Default to True
+                self.process_all_check.Check(config.get('process_all', True))
+                self.discord_check.Check(config.get('use_discord', True))  # Default to True
+                self.googlesheet_check.Check(config.get('use_googlesheet', True))  # Default to True
                 
             except Exception as e:
                 self.log_text.AppendText(f"Error loading config: {e}\n")
     
-    def on_browse(self, event):
-        """Handle browse button click event."""
-        if self.monitoring:
-            self.stop_monitoring()
-            self.update_monitoring_buttons(started=False)  # Use the new method
-            self.monitoring = False
-        
-        with wx.FileDialog(self, "Select log file", wildcard=LOG_FILE_WILDCARD,
-                          style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as file_dialog:
-            if file_dialog.ShowModal() == wx.ID_CANCEL:
-                return
-            
-            self.file_path.SetValue(file_dialog.GetPath())
-    
-    def on_process(self, event):
-        """Handle process once button click event"""
+    def on_process_log(self, event):
+        """Open the process log dialog."""
+        dialog = ProcessDialog(self)
+        dialog.ShowModal()
+
+    def run_process_log(self, log_file):
+        """Run log processing."""
         if not self or not self.IsShown():
             return  # Prevent actions if the frame is destroyed
         if self.monitoring:
@@ -581,21 +244,20 @@ class LogAnalyzerFrame(wx.Frame):
         self.SetStatusText("Processing log file...")
         
         # Disable buttons during processing
-        self.process_button.Enable(False)
+        self.process_log_button.Enable(False)
         self.monitor_button.Enable(False)
         
         # Run log analyzer in a separate thread to keep UI responsive
-        log_file = self.file_path.GetValue()
-        process_all = self.process_all_check.GetValue()
-        use_discord = self.discord_check.GetValue()
-        use_googlesheet = self.googlesheet_check.GetValue()
-        autoshard = self.autoshard_check.GetValue()  # Get Auto Shard value
+        process_all = self.process_all_check.IsChecked()
+        use_discord = self.discord_check.IsChecked()
+        use_googlesheet = self.googlesheet_check.IsChecked()
+        autoshard = False  # Auto Shard is not used in this context
         
-        thread = threading.Thread(target=self.run_process_log, args=(log_file, process_all, use_discord, use_googlesheet, autoshard))
+        thread = threading.Thread(target=self.run_process_log_thread, args=(log_file, process_all, use_discord, use_googlesheet, autoshard))
         thread.daemon = True
         thread.start()
-    
-    def run_process_log(self, log_file, process_all, use_discord, use_googlesheet, autoshard):
+
+    def run_process_log_thread(self, log_file, process_all, use_discord, use_googlesheet, autoshard):
         """Run log analysis in thread"""
         try:
             # Call main with process_once=True
@@ -612,7 +274,7 @@ class LogAnalyzerFrame(wx.Frame):
             wx.CallAfter(self.log_text.AppendText, f"Error processing log: {e}\n")
             wx.CallAfter(self.SetStatusText, "Error during processing")
         finally:
-            wx.CallAfter(self.process_button.Enable, True)
+            wx.CallAfter(self.process_log_button.Enable, True)
             wx.CallAfter(self.monitor_button.Enable, True)
     
     def on_monitor(self, event):
@@ -633,11 +295,17 @@ class LogAnalyzerFrame(wx.Frame):
         self.log_text.Clear()
         self.monitoring = True  # Update monitoring state here
         
-        log_file = self.file_path.GetValue()
-        process_all = self.process_all_check.GetValue()
-        use_discord = self.discord_check.GetValue()
-        use_googlesheet = self.googlesheet_check.GetValue()
-        autoshard = self.autoshard_check.GetValue()  # Get Auto Shard value
+        # Use the default log file path from the configuration
+        log_file = self.default_log_file_path
+        if not log_file:
+            wx.MessageBox("Log file path is not set in the configuration.", "Error", wx.OK | wx.ICON_ERROR)
+            self.monitoring = False
+            return
+
+        process_all = self.process_all_check.IsChecked()
+        use_discord = self.discord_check.IsChecked()
+        use_googlesheet = self.googlesheet_check.IsChecked()
+        autoshard = False  # Auto Shard is not used in this context
         
         # Run in a separate thread to keep UI responsive
         thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet, autoshard))
@@ -681,26 +349,6 @@ class LogAnalyzerFrame(wx.Frame):
         """Append a log message to the GUI log output area."""
         if self.log_text and self.log_text.IsShownOnScreen():
             wx.CallAfter(self.log_text.AppendText, message + "\n")
-
-    def on_edit_config(self, event):
-        """Open the configuration dialog."""
-        app_path = get_application_path()
-        config_path = os.path.join(app_path, CONFIG_FILE_NAME)
-        if not hasattr(self, 'config_dialog') or not self.config_dialog:
-            self.config_dialog = ConfigDialog(self, config_path)
-        
-        # Ensure the config dialog is within the main window boundaries
-        main_window_position = self.GetPosition()
-        main_window_size = self.GetSize()
-        config_dialog_size = self.config_dialog.GetSize()
-        
-        new_x = max(main_window_position.x, min(main_window_position.x + main_window_size.x - config_dialog_size.x, self.config_dialog.GetPosition().x))
-        new_y = max(main_window_position.y, min(main_window_position.y + main_window_size.y - config_dialog_size.y, self.config_dialog.GetPosition().y))
-        
-        self.config_dialog.SetPosition(wx.Point(new_x, new_y))
-        
-        self.config_dialog.Show()
-        self.config_dialog.Raise()
 
     def save_window_info(self):
         """Save the window's current position, size, and state to the Windows registry."""
@@ -784,6 +432,99 @@ class LogAnalyzerFrame(wx.Frame):
                 self.log_text.AppendText(f"Error sending Auto Shard keystrokes: {e}\n")
         else:
             self.log_text.AppendText("No event handler available for Auto Shard.\n")
+
+    def on_toggle_check(self, event):
+        """Handle checkbox menu item toggle."""
+        menu_item = self.FindItemById(event.GetId())
+        if menu_item:
+            menu_item.Check(not menu_item.IsChecked())
+
+    def on_edit_config(self, event):
+        """Open the configuration dialog."""
+        app_path = get_application_path()
+        config_path = os.path.join(app_path, CONFIG_FILE_NAME)
+        if not hasattr(self, 'config_dialog') or not self.config_dialog:
+            self.config_dialog = ConfigDialog(self, config_path)
+        
+        # Ensure the config dialog is within the main window boundaries
+        main_window_position = self.GetPosition()
+        main_window_size = self.GetSize()
+        config_dialog_size = self.config_dialog.GetSize()
+        
+        new_x = max(main_window_position.x, min(main_window_position.x + main_window_size.x - config_dialog_size.x, self.config_dialog.GetPosition().x))
+        new_y = max(main_window_position.y, min(main_window_position.y + main_window_size.y - config_dialog_size.y, self.config_dialog.GetPosition().y))
+        
+        self.config_dialog.SetPosition(wx.Point(new_x, new_y))
+        
+        self.config_dialog.Show()
+        self.config_dialog.Raise()
+
+    def on_refresh_sheets(self, event):
+        """Refresh the Google Sheets data and update the grid."""
+        try:
+            # Fetch JSON data from Google Sheets
+            json_data = self.fetch_google_sheets_data()
+
+            # Update the grid with the new data
+            self.update_sheets_grid(json_data)
+        except Exception as e:
+            wx.MessageBox(f"Failed to refresh Google Sheets data: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
+    def fetch_google_sheets_data(self):
+        """Fetch JSON data from Google Sheets using the webhook URL."""
+        if not self.google_sheets_webhook:
+            wx.MessageBox("Google Sheets webhook URL is not configured.", "Error", wx.OK | wx.ICON_ERROR)
+            return []
+
+        try:
+            response = requests.get(self.google_sheets_webhook)
+            if response.status_code != 200:
+                wx.MessageBox(f"Failed to fetch data from Google Sheets. HTTP Status: {response.status_code}", "Error", wx.OK | wx.ICON_ERROR)
+                return []
+
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                wx.MessageBox("The response data is empty or not in the expected format.", "Error", wx.OK | wx.ICON_ERROR)
+                return []
+
+            return data
+        except requests.RequestException as e:
+            wx.MessageBox(f"Error fetching data from Google Sheets: {e}", "Error", wx.OK | wx.ICON_ERROR)
+            return []
+        except json.JSONDecodeError:
+            wx.MessageBox("Failed to decode JSON response from Google Sheets.", "Error", wx.OK | wx.ICON_ERROR)
+            return []
+
+    def update_sheets_grid(self, json_data):
+        """Update the grid with the given JSON data."""
+        if not json_data:
+            self.sheets_grid.ClearGrid()
+            return
+
+        # Get the keys from the first dictionary as column headers
+        headers = list(json_data[0].keys())
+
+        # Resize the grid to fit the data
+        self.sheets_grid.ClearGrid()
+        if self.sheets_grid.GetNumberRows() > 0:
+            self.sheets_grid.DeleteRows(0, self.sheets_grid.GetNumberRows())
+        if self.sheets_grid.GetNumberCols() > 0:
+            self.sheets_grid.DeleteCols(0, self.sheets_grid.GetNumberCols())
+        self.sheets_grid.AppendCols(len(headers))
+        self.sheets_grid.AppendRows(len(json_data))
+
+        # Set column headers
+        for col, header in enumerate(headers):
+            self.sheets_grid.SetColLabelValue(col, header)
+
+        # Populate the grid with data
+        for row, entry in enumerate(json_data):
+            for col, header in enumerate(headers):
+                self.sheets_grid.SetCellValue(row, col, str(entry[header]))
+
+        # Auto-size columns
+        self.sheets_grid.AutoSizeColumns()
+
     def on_close(self, event):
         """Handle window close event."""
         self.save_window_info()
