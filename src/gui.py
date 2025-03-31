@@ -174,6 +174,7 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Bind close event to save window position
         self.Bind(wx.EVT_CLOSE, self.on_close)
+        wx.CallAfter(self.on_refresh_sheets)
 
     def update_monitoring_buttons(self, started):
         """
@@ -244,13 +245,8 @@ class LogAnalyzerFrame(wx.Frame):
         self.process_log_button.Enable(False)
         self.monitor_button.Enable(False)
         
-        # Run log analyzer in a separate thread to keep UI responsive
-        process_all = True  # Always process the entire log
-        use_discord = self.discord_check.IsChecked()
-        use_googlesheet = self.googlesheet_check.IsChecked()
-        autoshard = False  # Auto Shard is not used in this context
         
-        thread = threading.Thread(target=self.run_process_log_thread, args=(log_file, process_all, use_discord, use_googlesheet, autoshard))
+        thread = threading.Thread(target=self.run_process_log_thread, args=(log_file, True, False, False, False))
         thread.daemon = True
         thread.start()
 
@@ -456,7 +452,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.config_dialog.Show()
         self.config_dialog.Raise()
 
-    def on_refresh_sheets(self, event):
+    def on_refresh_sheets(self, event=None):
         """Refresh the Google Sheets data and update the grid."""
         try:
             # Fetch JSON data from Google Sheets
