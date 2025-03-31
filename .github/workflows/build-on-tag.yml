@@ -45,7 +45,7 @@ jobs:
       - name: Compress executables into a zip
         run: |
           $tag_name = "${{ github.ref_name }}"
-          Compress-Archive -Path 'dist\log_analyzer.exe'-DestinationPath dist/log_analyzer-${tag_name}.zip -Update
+          Compress-Archive -Path dist/log_analyzer.exe -DestinationPath dist/log_analyzer-${tag_name}.zip -Update
           Compress-Archive -Path dist/SCLogAnalyzer.exe -DestinationPath dist/SCLogAnalyzer-${tag_name}.zip -Update
 
       - name: Publish log_analyzer release
