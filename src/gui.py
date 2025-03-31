@@ -10,6 +10,7 @@ import wx.adv  # Import wx.adv for taskbar icon support
 import json  # For handling JSON files
 import winreg  # Import for Windows registry manipulation
 import wx.lib.newevent  # For custom events
+from config_utils import emit_default_config, get_application_path
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -523,15 +524,15 @@ class LogAnalyzerFrame(wx.Frame):
         
     def ensure_default_config(self):
         """Ensure the default configuration file exists."""
-        app_path = log_analyzer.get_application_path()
+        app_path = get_application_path()
         config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         
         if not os.path.exists(config_path):
-            log_analyzer.emit_default_config(config_path, in_gui=True)
+            emit_default_config(config_path, in_gui=True)
 
     def load_default_config(self):
         """Load default log file path from config"""
-        app_path = log_analyzer.get_application_path()
+        app_path = get_application_path()
         config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         
         if os.path.exists(config_path):
@@ -683,7 +684,7 @@ class LogAnalyzerFrame(wx.Frame):
 
     def on_edit_config(self, event):
         """Open the configuration dialog."""
-        app_path = log_analyzer.get_application_path()
+        app_path = get_application_path()
         config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         if not hasattr(self, 'config_dialog') or not self.config_dialog:
             self.config_dialog = ConfigDialog(self, config_path)
