@@ -652,6 +652,12 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
         app_path = get_application_path()
         config_path = os.path.join(app_path, "config.json")
         
+        # Log tool name and executable version
+        tool_name = "SC Log Analyzer"
+        version = get_version()
+        output_message(None, f"Starting {tool_name} {version}")
+        logging.info(f"{tool_name} {version} started")
+
         output_message(None, f"Loading config from: {config_path}")
         
         if not os.path.exists(config_path):
