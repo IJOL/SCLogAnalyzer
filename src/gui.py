@@ -12,7 +12,10 @@ import winreg  # Import for Windows registry manipulation
 import wx.grid  # Import wx.grid for displaying tabular data
 import requests  # For HTTP requests
 from config_utils import emit_default_config, get_application_path
-from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog  # Import reusable components
+from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper  # Import reusable components
+from PIL import Image
+import mss
+from pyzbar.pyzbar import decode
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -46,8 +49,22 @@ class LogAnalyzerFrame(wx.Frame):
         # Create main panel
         panel = wx.Panel(self)
 
-        # Create main horizontal sizer to place notebook
-        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        # Create main vertical sizer
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Add dynamic labels for username, shard, and version
+        bold_font = wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+        self.username_label = wx.StaticText(panel, label="Username: Loading...")
+        self.username_label.SetFont(bold_font)
+        self.shard_label = wx.StaticText(panel, label="Shard: Loading...")
+        self.shard_label.SetFont(bold_font)
+        self.version_label = wx.StaticText(panel, label="Version: Loading...")
+        self.version_label.SetFont(bold_font)
+        label_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        label_sizer.Add(self.username_label, 1, wx.ALL | wx.EXPAND, 5)
+        label_sizer.Add(self.shard_label, 1, wx.ALL | wx.EXPAND, 5)
+        label_sizer.Add(self.version_label, 1, wx.ALL | wx.EXPAND, 5)
+        main_sizer.Add(label_sizer, 0, wx.EXPAND)
 
         # Create notebook for log output and Google Sheets data
         notebook = wx.Notebook(panel)
@@ -136,12 +153,18 @@ class LogAnalyzerFrame(wx.Frame):
         config_menu.AppendSeparator()
         edit_config_item = config_menu.Append(wx.ID_ANY, "Edit Configuration")  # Add menu item for config dialog
         menu_bar.Append(config_menu, "Config")
+
+        # Add Help menu with About item
+        help_menu = wx.Menu()
+        about_item = help_menu.Append(wx.ID_ABOUT, "About")
+        menu_bar.Append(help_menu, "Help")
         self.SetMenuBar(menu_bar)
 
         # Bind menu events
         self.Bind(wx.EVT_MENU, self.on_toggle_check, self.discord_check)
         self.Bind(wx.EVT_MENU, self.on_toggle_check, self.googlesheet_check)
         self.Bind(wx.EVT_MENU, self.on_edit_config, edit_config_item)  # Bind the new menu item
+        self.Bind(wx.EVT_MENU, self.on_about, about_item)  # Bind About menu item
 
         # Status bar
         self.CreateStatusBar()
@@ -174,7 +197,32 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Bind close event to save window position
         self.Bind(wx.EVT_CLOSE, self.on_close)
-        wx.CallAfter(self.on_refresh_sheets)
+        wx.CallAfter(self.update_dynamic_labels)  # Update labels dynamically
+
+    def update_dynamic_labels(self):
+        """Update the username, shard, and version labels dynamically."""
+        try:
+            if self.event_handler:
+                username = getattr(self.event_handler, "username", "Unknown")
+                shard = getattr(self.event_handler, "current_shard", "Unknown")
+                version = getattr(self.event_handler, "current_version", "Unknown")
+            else:
+                username, shard, version = "Unknown", "Unknown", "Unknown"
+
+            self.username_label.SetLabel(f"Username: {username}")
+            self.shard_label.SetLabel(f"Shard: {shard}")
+            self.version_label.SetLabel(f"Version: {version}")
+        except Exception as e:
+            self.log_text.AppendText(f"Error updating labels: {e}\n")
+
+    def on_shard_version_update(self, *args, **kwargs):
+        """Handle shard and version updates."""
+        wx.CallAfter(self.update_dynamic_labels)
+
+    def on_about(self, event):
+        """Show the About dialog."""
+        from gui_module import AboutDialog  # Import AboutDialog from gui_module
+        AboutDialog(self).ShowModal()
 
     def update_monitoring_buttons(self, started):
         """
@@ -246,11 +294,11 @@ class LogAnalyzerFrame(wx.Frame):
         self.monitor_button.Enable(False)
         
         
-        thread = threading.Thread(target=self.run_process_log_thread, args=(log_file, True, False, False, False))
+        thread = threading.Thread(target=self.run_process_log_thread, args=(log_file, True, False, False))
         thread.daemon = True
         thread.start()
 
-    def run_process_log_thread(self, log_file, process_all, use_discord, use_googlesheet, autoshard):
+    def run_process_log_thread(self, log_file, process_all, use_discord, use_googlesheet):
         """Run log analysis in thread"""
         try:
             # Call main with process_once=True
@@ -259,8 +307,7 @@ class LogAnalyzerFrame(wx.Frame):
                 use_discord=use_discord,
                 process_once=True,
                 use_googlesheet=use_googlesheet,
-                log_file_path=log_file,
-                autoshard=autoshard  # Pass Auto Shard to main
+                log_file_path=log_file
             )
             wx.CallAfter(self.SetStatusText, "Processing completed")
         except Exception as e:
@@ -298,14 +345,13 @@ class LogAnalyzerFrame(wx.Frame):
         process_all = True  # Always process the entire log
         use_discord = self.discord_check.IsChecked()
         use_googlesheet = self.googlesheet_check.IsChecked()
-        autoshard = False  # Auto Shard is not used in this context
         
         # Run in a separate thread to keep UI responsive
-        thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet, autoshard))
+        thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet))
         thread.daemon = True
         thread.start()
 
-    def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet, autoshard):
+    def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet):
         """Run monitoring in thread."""
         try:
             # Call main without process_once
@@ -314,15 +360,15 @@ class LogAnalyzerFrame(wx.Frame):
                 use_discord=use_discord,
                 process_once=False,
                 use_googlesheet=use_googlesheet,
-                log_file_path=log_file,
-                autoshard=autoshard  # Pass Auto Shard to main
+                log_file_path=log_file
             )
 
             if result:
                 self.event_handler, self.observer = result
-                # Trigger startup actions explicitly after monitoring starts
-                if self.event_handler:
-                    self.event_handler.send_startup_keystrokes()
+
+                # Subscribe to shard and version updates
+                self.event_handler.on_shard_version_update.subscribe(self.on_shard_version_update)
+                self.update_dynamic_labels()  # Update labels after starting monitoring
         except Exception as e:
             wx.CallAfter(self.log_text.AppendText, f"Error starting monitoring: {e}\n")
             wx.CallAfter(self.update_monitoring_buttons, False)  # Use the new method
@@ -417,14 +463,26 @@ class LogAnalyzerFrame(wx.Frame):
 
     def on_autoshard(self, event):
         """Handle Auto Shard button click."""
-        if self.event_handler:
-            try:
-                self.event_handler.send_keystrokes_to_sc()  # Call the method to send keystrokes
-                self.log_text.AppendText("Auto Shard keystrokes sent.\n")
-            except Exception as e:
-                self.log_text.AppendText(f"Error sending Auto Shard keystrokes: {e}\n")
-        else:
-            self.log_text.AppendText("No event handler available for Auto Shard.\n")
+        try:
+            self.send_keystrokes_to_sc()  # Call the method to send keystrokes
+            self.log_text.AppendText("Auto Shard keystrokes sent.\n")
+        except Exception as e:
+            self.log_text.AppendText(f"Error sending Auto Shard keystrokes: {e}\n")
+
+    def send_keystrokes_to_sc(self):
+        """Send predefined keystrokes to the Star Citizen window."""
+        WindowsHelper.send_keystrokes_to_window(
+            "Star Citizen",
+            [
+                "º", "r_DisplaySessionInfo 1", WindowsHelper.RETURN_KEY,
+                "º", WindowsHelper.PRINT_SCREEN_KEY,
+                "º", "r_DisplaySessionInfo 0", WindowsHelper.RETURN_KEY,
+                "º"
+            ],
+            screenshots_folder=os.path.join(get_application_path(), "ScreenShots"),
+            class_name="CryENGINE",
+            process_name="StarCitizen.exe"
+        )
 
     def on_toggle_check(self, event):
         """Handle checkbox menu item toggle."""
@@ -454,14 +512,25 @@ class LogAnalyzerFrame(wx.Frame):
 
     def on_refresh_sheets(self, event=None):
         """Refresh the Google Sheets data and update the grid."""
-        try:
-            # Fetch JSON data from Google Sheets
-            json_data = self.fetch_google_sheets_data()
+        def fetch_and_update():
+            try:
+                # Fetch JSON data from Google Sheets
+                json_data = self.fetch_google_sheets_data()
 
-            # Update the grid with the new data
-            self.update_sheets_grid(json_data)
-        except Exception as e:
-            wx.MessageBox(f"Failed to refresh Google Sheets data: {e}", "Error", wx.OK | wx.ICON_ERROR)
+                # Update the grid with the new data
+                wx.CallAfter(self.update_sheets_grid, json_data)
+            except Exception as e:
+                wx.CallAfter(
+                    wx.MessageBox,
+                    f"Failed to refresh Google Sheets data: {e}",
+                    "Error",
+                    wx.OK | wx.ICON_ERROR
+                )
+
+        # Run the fetch and update logic in a separate thread
+        thread = threading.Thread(target=fetch_and_update)
+        thread.daemon = True
+        thread.start()
 
     def fetch_google_sheets_data(self):
         """Fetch JSON data from Google Sheets using the webhook URL."""
