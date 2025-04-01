@@ -64,7 +64,7 @@ jobs:
         with:
           artifacts: dist/SCLogAnalyzer-${{ github.ref_name }}.zip
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}-gui
+          tag: ${{ github.ref_name }}
           name: SCLogAnalyzer Release ${{ github.ref_name }}
 
   docker-build:
@@ -93,7 +93,7 @@ jobs:
         with:
           artifacts: scloganalyzer-bot-${{ github.ref_name }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}-bot
+          tag: ${{ github.ref_name }}
           name: StatsBoardBot Docker Image Release ${{ github.ref_name }}
 
   cleanup-releases:
