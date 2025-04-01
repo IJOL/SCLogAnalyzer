@@ -2,6 +2,15 @@ import wx
 import os
 import json
 from config_utils import get_application_path  # Ensure this is imported if needed
+import win32gui
+from pynput.keyboard import Controller, Key
+from PIL import Image
+import mss
+import time
+import win32con  # Required for window constants like SW_RESTORE
+import win32process  # Required for process-related functions
+import psutil  # Required for process management
+from version import get_version  # Import get_version to fetch the version dynamically
 
 class RedirectText:
     """Class to redirect stdout to a text control."""
@@ -165,6 +174,8 @@ class ConfigDialog(wx.Frame):
         panel = wx.Panel(notebook)
         sizer = wx.BoxSizer(wx.VERTICAL)
         for key, value in config_data.items():
+            if key == "username":
+                continue  # Skip username-related logic
             if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
                 label = wx.StaticText(panel, label=key)
                 control = wx.CheckBox(panel) if isinstance(value, bool) else wx.TextCtrl(panel, value=str(value))
@@ -182,6 +193,7 @@ class ConfigDialog(wx.Frame):
         if os.path.exists(self.config_path):
             with open(self.config_path, 'r', encoding='utf-8') as config_file:
                 self.config_data = json.load(config_file)
+                self.config_data.pop("username", None)  # Remove username if it exists
 
     def save_config(self):
         """Save configuration to the JSON file."""
@@ -265,3 +277,112 @@ class ProcessDialog(wx.Dialog):
     def on_cancel(self, event):
         """Handle cancel button click."""
         self.Destroy()
+
+
+class AboutDialog(wx.Dialog):
+    """A styled About dialog."""
+    def __init__(self, parent):
+        super().__init__(parent, title="About SC Log Analyzer", size=(400, 300))
+
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Add application name
+        app_name = wx.StaticText(panel, label="SC Log Analyzer")
+        app_name.SetFont(wx.Font(14, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        sizer.Add(app_name, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+
+        # Add version dynamically
+        version = wx.StaticText(panel, label=f"Version: {get_version()}")
+        sizer.Add(version, 0, wx.ALL | wx.ALIGN_CENTER, 5)
+
+        # Add description
+        description = wx.StaticText(panel, label="A tool for analyzing Star Citizen logs.")
+        description.Wrap(350)
+        sizer.Add(description, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+
+        # Update credits to reflect the correct author
+        credits = wx.StaticText(panel, label="Developed by IJOL.")
+        credits.Wrap(350)
+        sizer.Add(credits, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+
+        # Add close button
+        close_button = wx.Button(panel, label="Close")
+        close_button.Bind(wx.EVT_BUTTON, lambda event: self.Close())
+        sizer.Add(close_button, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+
+        panel.SetSizer(sizer)
+
+
+class WindowsHelper:
+    PRINT_SCREEN_KEY = "print_screen"
+    RETURN_KEY = "return"
+
+    @staticmethod
+    def find_window_by_title(title, class_name=None, process_name=None):
+        """Find a window by its title, class name, and process name."""
+        def enum_windows_callback(hwnd, windows):
+            if win32gui.IsWindowVisible(hwnd) and title in win32gui.GetWindowText(hwnd):
+                if class_name and win32gui.GetClassName(hwnd) != class_name:
+                    return
+                if process_name:
+                    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                    try:
+                        process = psutil.Process(pid)
+                        if process.name() != process_name:
+                            return
+                    except psutil.NoSuchProcess:
+                        return
+                windows.append(hwnd)
+
+        windows = []
+        win32gui.EnumWindows(enum_windows_callback, windows)
+        return windows[0] if windows else None
+
+    @staticmethod
+    def capture_window_screenshot(hwnd, output_path):
+        """Capture a screenshot of a specific window using its handle."""
+        try:
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            width = 200
+            height = 200
+            left = right - width
+
+            with mss.mss() as sct:
+                monitor = {"top": top, "left": left, "width": width, "height": height}
+                screenshot = sct.grab(monitor)
+
+                img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
+                img.save(output_path, format="JPEG", quality=85)
+        except Exception as e:
+            raise RuntimeError(f"Error capturing screenshot: {e}")
+
+    @staticmethod
+    def send_keystrokes_to_window(window_title, keystrokes, screenshots_folder, **kwargs):
+        """Send keystrokes to a specific window and capture a screenshot if PRINT_SCREEN_KEY is triggered."""
+        try:
+            hwnd = WindowsHelper.find_window_by_title(window_title, kwargs.get('class_name'), kwargs.get('process_name'))
+            if not hwnd:
+                raise RuntimeError(f"Window with title '{window_title}' not found.")
+
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(hwnd)
+            time.sleep(0.05)
+
+            keyboard = Controller()
+            for key in keystrokes:
+                if key == WindowsHelper.PRINT_SCREEN_KEY:
+                    timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+                    screenshot_path = os.path.join(screenshots_folder, f"screenshot_{timestamp}.jpg")
+                    WindowsHelper.capture_window_screenshot(hwnd, screenshot_path)
+                elif key == WindowsHelper.RETURN_KEY:
+                    keyboard.tap(Key.enter)
+                elif isinstance(key, str):
+                    for char in key:
+                        keyboard.tap(char)
+                        time.sleep(0.01)
+                else:
+                    keyboard.tap(key)
+                time.sleep(0.05)
+        except Exception as e:
+            raise RuntimeError(f"Error sending keystrokes to window: {e}")
