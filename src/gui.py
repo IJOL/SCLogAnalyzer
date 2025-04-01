@@ -11,7 +11,7 @@ import json  # For handling JSON files
 import winreg  # Import for Windows registry manipulation
 import wx.grid  # Import wx.grid for displaying tabular data
 import requests  # For HTTP requests
-from config_utils import emit_default_config, get_application_path
+from config_utils import emit_default_config, get_application_path, renew_config  # Import renew_config
 from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper  # Import reusable components
 from PIL import Image
 import mss
@@ -32,6 +32,9 @@ class LogAnalyzerFrame(wx.Frame):
     def __init__(self):
         super().__init__(None, title="SC Log Analyzer", size=(800, 600))
         
+        # Renew the config.json before loading log_analyzer
+        renew_config()  # Use the renew_config function from config_utils
+
         # Set flag for GUI mode
         log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled
         
@@ -198,6 +201,9 @@ class LogAnalyzerFrame(wx.Frame):
         # Bind close event to save window position
         self.Bind(wx.EVT_CLOSE, self.on_close)
         wx.CallAfter(self.update_dynamic_labels)  # Update labels dynamically
+
+        # Call on_refresh_sheets to load Google Sheets data on startup
+        wx.CallAfter(self.on_refresh_sheets)
 
     def update_dynamic_labels(self):
         """Update the username, shard, and version labels dynamically."""
