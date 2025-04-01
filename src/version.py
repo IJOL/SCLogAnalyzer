@@ -2,10 +2,10 @@
 
 MAJOR = 0
 MINOR = 1
-RELEASE = 1
-PATCH = "4ce3949"
+RELEASE = 2
+PATCH = "727ae1e"
 
-VERSION = f"{MAJOR}.{MINOR}.{RELEASE}-{PATCH}"
+VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}"
 
 def get_version():
     """Return the full version string"""
