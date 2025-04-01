@@ -1,6 +1,5 @@
 {
     "log_file_path": "",
-    "username": "{?username}",
     "discord_webhook_url": "{?discord_webhook_url}",
     "google_sheets_webhook": "{?google_sheets_webhook}",
     "google_sheets_mapping": {
@@ -33,6 +32,6 @@
         "mode_change": "Game Mode changed: {mode} {status} at {timestamp}"
     },
     "discord": {
-        "player_death": "{username} :skull: **Player Death** :skull:\n{victim} was killed by {killer} using {weapon} in {zone} with {damage_type}"
+        "player_death": "{username} :skull: {killer} -> {victim} with {weapon} in {zone} with {damage_type}"
     }
 }

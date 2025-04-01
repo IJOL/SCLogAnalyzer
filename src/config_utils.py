@@ -25,6 +25,7 @@ def emit_default_config(config_path, in_gui=False, template_path=None):
         config = prompt_for_config_values(template_config)
     else:
         config = template_config
+    config.pop("username", None)  # Remove username from the default config
     config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
     with open(config_path, 'w', encoding='utf-8') as config_file:
         json.dump(config, config_file, indent=4)
