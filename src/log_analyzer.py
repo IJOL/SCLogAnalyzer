@@ -14,15 +14,8 @@ from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
 from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustment
 from pyzbar.pyzbar import decode  # For QR code detection
-import win32gui
-import win32con
-from pynput.keyboard import Controller, Key  # Import Controller and Key for keyboard interactions
-import win32process
-import psutil
-import win32ui
-import mss  # Add mss for GPU-rendered window capturing
-import random  # Import random for sampling lines
 from config_utils import emit_default_config, get_application_path, get_template_path
+from gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR, filename='error.log', filemode='a', format='%(asctime)s - %(levelname)s - %(message)s')
@@ -62,104 +55,32 @@ def output_message(timestamp, message):
     else:
         print(formatted_msg)
 
-def find_window_by_title(title, class_name=None, process_name=None):
-    """Find a window by its title, class name, and process name."""
-    def enum_windows_callback(hwnd, windows):
-        if win32gui.IsWindowVisible(hwnd) and title in win32gui.GetWindowText(hwnd):
-            if class_name and win32gui.GetClassName(hwnd) != class_name:
-                return
-            if process_name:
-                _, pid = win32process.GetWindowThreadProcessId(hwnd)
-                try:
-                    process = psutil.Process(pid)
-                    if process.name() != process_name:
-                        return
-                except psutil.NoSuchProcess:
-                    return
-            windows.append(hwnd)
+class Event:
+    """A simple event system to allow subscribers to listen for updates."""
+    def __init__(self):
+        self._subscribers = []
 
-    windows = []
-    win32gui.EnumWindows(enum_windows_callback, windows)
-    return windows[0] if windows else None
+    def subscribe(self, callback):
+        """Subscribe to the event."""
+        self._subscribers.append(callback)
 
-def capture_window_screenshot(hwnd, output_path):
-    """
-    Capture a screenshot of a specific window using its handle.
+    def unsubscribe(self, callback):
+        """Unsubscribe from the event."""
+        self._subscribers.remove(callback)
 
-    Args:
-        hwnd (int): The handle of the window to capture.
-        output_path (str): The file path to save the screenshot.
-    """
-    try:
-        # Get the window's rectangle
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-
-        # Define the top-right 200x200 region
-        width = 200
-        height = 200
-        left = right - width
-
-        # Use mss to capture the screen region
-        with mss.mss() as sct:
-            monitor = {
-                "top": top,
-                "left": left,
-                "width": width,
-                "height": height
-            }
-            screenshot = sct.grab(monitor)
-
-            # Save the screenshot as a JPG file
-            img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
-            img.save(output_path, format="JPEG", quality=85)
-
-        output_message(None, f"Screenshot saved to {output_path}")
-
-    except Exception as e:
-        output_message(None, f"Error capturing screenshot: {e}")
-        output_message(None, "Stack trace:\n{}".format(traceback.format_exc()))
-        logging.error("Error capturing screenshot: %s", str(e))
-        logging.error("Stack trace:\n%s", traceback.format_exc())
-        raise  # Re-raise the exception to propagate it for further debugging
-
-def send_keystrokes_to_window(window_title, keystrokes, screenshots_folder, **kwargs):
-    """Send keystrokes to a specific window and capture a screenshot if PRINT_SCREEN_KEY is triggered."""
-    try:
-        hwnd = find_window_by_title(window_title, kwargs.get('class_name'), kwargs.get('process_name'))
-        if not hwnd:
-            output_message(None, f"Window with title '{window_title}' not found.")
-            return
-
-        # Bring the window to the foreground
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.SetForegroundWindow(hwnd)
-        time.sleep(0.05)  # Give some time for the window to focus
-
-        # Simulate keystrokes
-        keyboard = Controller()
-        for key in keystrokes:
-            if key == PRINT_SCREEN_KEY:
-                # Capture a screenshot
-                timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-                screenshot_path = os.path.join(screenshots_folder, f"screenshot_{timestamp}.jpg")
-                capture_window_screenshot(hwnd, screenshot_path)
-            elif key == RETURN_KEY:
-                keyboard.tap(Key.enter)
-            elif isinstance(key, str):
-                for char in key:  # Send each character in the string
-                    keyboard.tap(char)
-                    time.sleep(0.05)  # Small delay between characters
-            else:
-                keyboard.tap(key)
-            time.sleep(0.05)  # Small delay between keystrokes
-
-    except Exception as e:
-        output_message(None, f"Error sending keystrokes to window: {e}")
+    def emit(self, *args, **kwargs):
+        """Emit the event to all subscribers."""
+        for callback in self._subscribers:
+            callback(*args, **kwargs)
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, config):
+        # Restore instance attributes
+        self.on_shard_version_update = Event()  # Event for shard and version updates
+        self.username = config.get('username', 'Unknown')  # Username as an instance attribute
         self.current_shard = None  # Initialize shard information
-        self.current_version = None  # Initialize version information
+        self.current_version = None  # Initialize Star Citizen version information
+        self.script_version = get_version()  # Initialize script version
         self.log_file_path = config['log_file_path']
         self.discord_webhook_url = config['discord_webhook_url']
         self.technical_webhook_url = config.get('technical_webhook_url', False)
@@ -174,14 +95,12 @@ class LogFileHandler(FileSystemEventHandler):
         self.discord_messages = config.get('discord', {})
         self.google_sheets_webhook = config.get('google_sheets_webhook', '')
         self.google_sheets_mapping = config.get('google_sheets_mapping', {})
-        self.username = config.get('username', 'Unknown')
         self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
         self.google_sheets_queue = queue.Queue()
         self.stop_event = threading.Event()
         self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
         if not os.path.exists(self.screenshots_folder):
             os.makedirs(self.screenshots_folder)
-        self.autoshard = config.get('autoshard', False)  # Add autoshard attribute
 
         if not self.process_once:
             self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
@@ -193,7 +112,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.current_mode = None
         
         # Compile mode regex patterns
-        self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
+        self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Connection Complete> map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>.*?) localAddr=(?P<local_addr>.*?) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session_id>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+)")
         self.mode_end_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected> cause=(?P<cause>\d+) reason=\"(?P<reason>.*?)\" frame=(?P<frame>\d+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>[\d\.:\w]+) localAddr=(?P<local_addr>[\d\.:\w]+) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+) \[(?P<tags>.*?)\]")
 
         # Simpler Channel Disconnected pattern for other types of disconnects
@@ -209,29 +128,7 @@ class LogFileHandler(FileSystemEventHandler):
         if not self.process_once:
             self.send_startup_message()
 
-    def send_keystrokes_to_sc(self):
-        """Send predefined keystrokes to the Star Citizen window."""
-        send_keystrokes_to_window(
-            "Star Citizen",
-            [
-                "º", "r_DisplaySessionInfo 1", RETURN_KEY,
-                "º", PRINT_SCREEN_KEY,
-                "º", "r_DisplaySessionInfo 0", RETURN_KEY,
-                "º"
-            ],
-            self.screenshots_folder,
-            class_name="CryENGINE",
-            process_name="StarCitizen.exe"
-        )
-
-    def send_startup_keystrokes(self):
-        """Send predefined keystrokes to the Star Citizen window at startup."""
-        if self.current_mode == "SC_Default" and not self.process_once and self.autoshard:  # Use self.autoshard
-            output_message(None, "Startup detected with mode SC_Default. Sending keystrokes to Star Citizen window.")
-            self.send_keystrokes_to_sc()
-
-
-
+  
     def stop(self):
         """Stop the handler and cleanup threads"""
         self.stop_event.set()
@@ -260,9 +157,9 @@ class LogFileHandler(FileSystemEventHandler):
             return 0
 
     def send_startup_message(self):
-        """Send a startup message to Discord webhook if Discord is active"""
+        """Send a startup message to Discord webhook if Discord is active."""
         if self.use_discord:
-            startup_message = f"🚀 **Startup Alert**\n**Username:** {self.username}\n**Version:** {self.version}\n**Status:** Monitoring started with Discord active"
+            startup_message = f"🚀 **Startup Alert**\n**Username:** {self.username}\n**Script Version:** {self.script_version}\n**Status:** Monitoring started with Discord active"
             self.send_discord_message(startup_message, technical=True)
 
     def send_discord_message(self, data, pattern_name=None, technical=False):
@@ -432,9 +329,17 @@ class LogFileHandler(FileSystemEventHandler):
                     qr_data = qr_codes[0].data.decode('utf-8')
                     qr_parts = qr_data.split()
                     if len(qr_parts) >= 4:
-                        self.current_shard = qr_parts[1]  # Second value as shard
-                        self.current_version = qr_parts[3]  # Fourth value as version
-                        output_message(None, f"Shard updated: {self.current_shard}, Version updated: {self.current_version}")
+                        new_shard = qr_parts[1]
+                        new_version = qr_parts[3]
+
+                        # Check if shard or version has changed
+                        if new_shard != self.current_shard or new_version != self.current_version:
+                            self.current_shard = new_shard
+                            self.current_version = new_version
+                            output_message(None, f"Shard updated: {self.current_shard}, Version updated: {self.current_version}")
+
+                            # Emit the event to notify subscribers
+                            self.on_shard_version_update.emit(self.current_shard, self.current_version)
                     else:
                         output_message(None, "QR code does not contain sufficient information.")
                 else:
@@ -555,12 +460,7 @@ class LogFileHandler(FileSystemEventHandler):
 
     def detect_mode_change(self, entry, send_message=True):
         """
-        Detect if the log entry represents a change in game mode using the new regex patterns
-        Args:
-            entry: The log entry to analyze
-            send_message: Whether to send a message on mode change
-        Returns:
-            Boolean indicating if a mode change was detected
+        Detect if the log entry represents a change in game mode using the new regex patterns.
         """
         # Check for mode start (Context Establisher Done)
         start_match = self.mode_start_regex.search(entry)
@@ -568,89 +468,90 @@ class LogFileHandler(FileSystemEventHandler):
             mode_data = start_match.groupdict()
             new_mode = mode_data.get('gamerules')
             timestamp = mode_data.get('timestamp')
-            
+
+            # Update username with the nickname from the regex match
+            self.username = mode_data.get('nickname', self.username)
+
             # If it's a different mode than the current one, update it
             if new_mode != self.current_mode:
                 old_mode = self.current_mode
                 self.current_mode = new_mode
-                
+
                 # Format the mode data for output
                 mode_data['mode'] = new_mode
-                mode_data['username'] = self.username
+                mode_data['username'] = self.username  # Include username in event data
                 mode_data['status'] = 'entered'
                 mode_data['old_mode'] = old_mode or 'None'
-                mode_data['shard'] = self.current_shard or 'Unknown'  # Add shard information
-                mode_data['version'] = self.current_version or 'Unknown'  # Add version information
-                
+                mode_data['shard'] = self.current_shard or 'Unknown'  # Use instance attribute
+                mode_data['version'] = self.current_version or 'Unknown'  # Use instance attribute
+
+                # Emit the event to notify subscribers
+                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username)
+
                 # Output message
                 output_message(timestamp, f"Mode changed: '{old_mode or 'None'}' → '{new_mode}'")
-                
+
                 # Send to Discord if enabled
                 if send_message and self.use_discord and 'mode_change' in self.discord_messages:
                     self.send_discord_message(mode_data, pattern_name='mode_change')
-                
-                # Only send keystrokes if send_message is True
-                if new_mode == "SC_Default" and send_message and self.autoshard:
-                    output_message(timestamp, "Mode changed to SC_Default. Sending keystrokes to Star Citizen window.")
-                    self.send_keystrokes_to_sc()
-                
+
                 return True
-        
+
         # Check for mode end (Channel Disconnected with gamerules)
         end_match = self.mode_end_regex.search(entry)
         if end_match:
             mode_data = end_match.groupdict()
             gamerules = mode_data.get('gamerules')
             timestamp = mode_data.get('timestamp')
-            
+
             # Only consider it an end if it matches the current mode
             if gamerules == self.current_mode:
                 # Format the mode data for output
                 mode_data['mode'] = self.current_mode
-                mode_data['username'] = self.username
+                mode_data['username'] = self.username  # Use instance attribute
                 mode_data['status'] = 'exited'
-                mode_data['shard'] = self.current_shard or 'Unknown'  # Add shard information
-                mode_data['version'] = self.current_version or 'Unknown'  # Add version information
-                
+                mode_data['shard'] = self.current_shard or 'Unknown'  # Use instance attribute
+                mode_data['version'] = self.current_version or 'Unknown'  # Use instance attribute
+
                 # Output message
                 output_message(timestamp, f"Exited mode: '{self.current_mode}'")
-                
+
                 # Reset current mode
                 self.current_mode = None
-                
+
                 # Send to Discord if enabled
                 if send_message and self.use_discord and 'mode_change' in self.discord_messages:
                     self.send_discord_message(mode_data, pattern_name='mode_change')
-                
+
                 return True
-        
+
         # Check for simple disconnects (for modes that don't have the full disconnect message)
         if self.current_mode and self.simple_disconnect_regex.search(entry):
             timestamp = self.simple_disconnect_regex.search(entry).group('timestamp')
-            
+
             # Create mode data for the message
             mode_data = {
                 'timestamp': timestamp,
                 'mode': self.current_mode,
-                'username': self.username,
+                'username': self.username,  # Use instance attribute
                 'status': 'exited',
                 'reason': 'Channel Disconnected',
-                'shard': self.current_shard or 'Unknown',  # Add shard information
-                'version': self.current_version or 'Unknown'  # Add version information
+                'shard': self.current_shard or 'Unknown',  # Use instance attribute
+                'version': self.current_version or 'Unknown'  # Use instance attribute
             }
-            
+
             # Output message
             output_message(timestamp, f"Exited mode: '{self.current_mode}'")
-            
+
             # Reset current mode
             self.current_mode = None
-            
+
             # Send to Discord if enabled
             if send_message and self.use_discord and 'mode_change' in self.discord_messages:
                 self.send_discord_message(mode_data, pattern_name='mode_change')
-            
+
             return True
-            
+
         return False
 
     def detect_generic(self, entry, pattern):
@@ -687,27 +588,27 @@ class LogFileHandler(FileSystemEventHandler):
             data['player'] = data.get('player') or data.get('owner') or data.get('entity') or 'Unknown'
             data['action'] = pattern_name.replace('_', ' ').title()
             timestamp = data.get('timestamp')
-            data['username'] = self.username
-            
+            data['username'] = self.username  # Use instance attribute
+
             # Add current mode to data if active
             if self.current_mode:
                 data['current_mode'] = self.current_mode
             else:
                 data['current_mode'] = 'None'
-                
-            data['shard'] = self.current_shard or 'Unknown'  # Add shard information
-            data['version'] = self.current_version or 'Unknown'  # Add version information
-            
+
+            data['shard'] = self.current_shard or 'Unknown'  # Use instance attribute
+            data['version'] = self.current_version or 'Unknown'  # Use instance attribute
+
             output_message_format = self.messages.get(pattern_name)
             if not output_message_format is None:
                 output_message(timestamp, output_message_format.format(**data))
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)
-            
+
             # Send to Google Sheets if pattern is configured
             if pattern_name in self.google_sheets_mapping and send_message:
                 self.update_google_sheets(data, pattern_name)
-            
+
             return True, data
         return False, None
 
@@ -746,7 +647,7 @@ def stop_monitor(event_handler, observer):
     event_handler.stop()
     output_message(None, "Monitor stopped successfully")
 
-def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None, autoshard=None):
+def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None):
     try:
         app_path = get_application_path()
         config_path = os.path.join(app_path, "config.json")
@@ -792,11 +693,6 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
                 config['use_googlesheet'] = is_valid_url(google_sheets_webhook)
         else:
             config['use_googlesheet'] = use_googlesheet
-
-        # Set autoshard default: True for CLI, False for GUI
-        if autoshard is None:
-            autoshard = not hasattr(main, 'in_gui') or not main.in_gui
-        config['autoshard'] = autoshard  # Add autoshard to the config
 
         # Override config values with command-line parameters if provided
         if not process_all:
@@ -848,11 +744,6 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
             # Ensure monitoring is started before generating screenshots
             output_message(None, "Monitoring started successfully.")
 
-            # Call the startup keystrokes method only if autoshard is True
-            if event_handler and event_handler.autoshard:
-                output_message(None, "Sending startup keystrokes to Star Citizen window...")
-                event_handler.send_startup_keystrokes()
-
             # Keep the script running until stop event is set
             while not event_handler.stop_event.is_set():
                 time.sleep(1)
@@ -875,14 +766,13 @@ if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
         print(f"SC Log Analyzer v{get_version()}")
-        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng] [--debug | -d] [--autoshard | -a]")
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng] [--debug | -d]")
         print("Options:")
         print("  --process-all, -p    Skip processing entire log file (overrides config)")
         print("  --no-discord, -nd    Do not send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
         print("  --no-googlesheet, -ng    Do not send output to Google Sheets webhook")
         print("  --debug, -d          Enable debug mode (e.g., save cropped images)")
-        print("  --autoshard, -a      Automatically send startup keystrokes to Star Citizen window")
         print(f"Version: {get_version()}")
         sys.exit(0)
     
@@ -891,11 +781,10 @@ if __name__ == "__main__":
     process_once = '--process-once' in sys.argv or '-o' in sys.argv
     use_googlesheet = not ('--no-googlesheet' in sys.argv or '-ng' in sys.argv)
     debug_mode = '--debug' in sys.argv or '-d' in sys.argv
-    autoshard = '--autoshard' in sys.argv or '-a' in sys.argv
 
     # Set debug mode globally
     main.debug_mode = debug_mode
 
     # Show version info on startup
     print(f"SC Log Analyzer v{get_version()} starting...")
-    main(process_all, use_discord, process_once, use_googlesheet, autoshard=autoshard)
+    main(process_all, use_discord, process_once, use_googlesheet)
