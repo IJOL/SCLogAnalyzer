@@ -137,7 +137,6 @@ class ConfigDialog(wx.Frame):
         regex_keys.append("mode_change")  # Add the fixed option
         self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
         self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
-        self.sheets_mapping_grid = self.add_tab(notebook, "Google Sheets Mapping", "google_sheets_mapping", regex_keys)
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -194,6 +193,7 @@ class ConfigDialog(wx.Frame):
             with open(self.config_path, 'r', encoding='utf-8') as config_file:
                 self.config_data = json.load(config_file)
                 self.config_data.pop("username", None)  # Remove username if it exists
+                self.config_data.pop("google_sheets_mapping", None)  # Remove google_sheets_mapping if it exists
 
     def save_config(self):
         """Save configuration to the JSON file."""

@@ -117,12 +117,6 @@ class LogAnalyzerFrame(wx.Frame):
         # Set the sizer for the log page
         self.log_page.SetSizer(log_page_sizer)
 
-        # Add the original Google Sheets tab using the reusable _add_tab method
-        self.sheets_grid = self._add_tab(
-            self.notebook,
-            "Stats",
-            self.on_refresh_sheets
-        )
 
         # Add notebook to the main sizer
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 2)
@@ -164,7 +158,9 @@ class LogAnalyzerFrame(wx.Frame):
         self.default_log_file_path = None
         self.google_sheets_webhook = None
         self.load_default_config()
-        
+         # Add the first Google Sheets tab using the new add_tab method
+        self.add_tab(self.google_sheets_webhook,"Stats")
+       
         # Set up stdout redirection
         sys.stdout = RedirectText(self.log_text)
 
@@ -190,18 +186,18 @@ class LogAnalyzerFrame(wx.Frame):
         wx.CallAfter(self.update_dynamic_labels)  # Update labels dynamically
 
         # Call on_refresh_sheets to load Google Sheets data on startup
-        wx.CallAfter(self.on_refresh_sheets)
-        self.add_tab(self.google_sheets_webhook, "SC Default", params={"sheet": "SC_Default", "username": lambda self: self.username})
-        self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", params={"sheet": "SC_SquadronsBattle", "username": lambda self: self.username})
+        self.add_tab(self.google_sheets_webhook, "SC Default", params={"sheet": "SC_Default", "username": lambda self: self.event_handler.username})
+        self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", params={"sheet": "EA_SquadronBattle", "username": lambda self: self.event_handler.username})
 
-    def _add_tab(self, notebook, tab_title, fetch_data_callback):
+    def _add_tab(self, notebook, tab_title, url, params=None):
         """
         Create a new tab with a grid and a refresh button.
 
         Args:
             notebook (wx.Notebook): The notebook to add the tab to.
             tab_title (str): The title of the new tab.
-            fetch_data_callback (callable): A function to fetch and update the grid data.
+            url (str): The URL to fetch JSON data from.
+            params (dict, optional): Parameters to pass to the request.
         """
         # Check if a tab with the same title already exists
         for i in range(notebook.GetPageCount()):
@@ -229,10 +225,139 @@ class LogAnalyzerFrame(wx.Frame):
         # Add the new tab to the notebook
         notebook.AddPage(new_tab, tab_title)
 
+        # Store the URL and params directly on objects
+        refresh_button.url = url
+        refresh_button.params = params
+        refresh_button.grid = grid
+
         # Bind the refresh button to fetch and update the grid
-        refresh_button.Bind(wx.EVT_BUTTON, lambda event: threading.Thread(target=fetch_data_callback, daemon=True).start())
+        refresh_button.Bind(wx.EVT_BUTTON, self.on_refresh_tab)
 
         return grid  # Return the grid for further updates
+
+    def on_refresh_tab(self, event):
+        """
+        Handle refresh button click.
+        Extracts URL and grid from the button and refreshes data.
+        """
+        button = event.GetEventObject()
+        params = button.params
+        
+        # Resolve callable parameters if necessary
+        if params:
+            resolved_params = {}
+            for key, value in params.items():
+                if callable(value):
+                    try:
+                        resolved_params[key] = value(self)
+                    except Exception as e:
+                        wx.MessageBox(f"Error resolving parameter '{key}': {e}", 
+                                    "Error", wx.OK | wx.ICON_ERROR)
+                        return
+                else:
+                    resolved_params[key] = value
+            params = resolved_params
+        
+        # Set loading state in the grid
+        self.set_grid_loading(button.grid, True)
+        
+        # Start the fetch in a separate thread
+        threading.Thread(
+            target=self.fetch_and_update, 
+            args=(button.url, params, button.grid), 
+            daemon=True
+        ).start()
+
+    def set_grid_loading(self, grid, is_loading):
+        """
+        Set the visual state of a grid to indicate loading.
+        
+        Args:
+            grid (wx.grid.Grid): The grid to update
+            is_loading (bool): Whether the grid is loading data
+        """
+        if is_loading:
+            # Clear existing data and show "Loading..." in the first cell
+            if grid.GetNumberRows() > 0:
+                grid.DeleteRows(0, grid.GetNumberRows())
+            grid.AppendRows(1)
+            if grid.GetNumberCols() == 0:
+                grid.AppendCols(1)
+            grid.SetCellValue(0, 0, "Loading data...")
+            grid.SetCellAlignment(0, 0, wx.ALIGN_CENTER, wx.ALIGN_CENTER)
+            grid.Enable(False)
+        else:
+            grid.Enable(True)
+
+    def add_tab(self, url, tab_title, params=None):
+        """
+        Add a new tab to the notebook with a grid displaying JSON data from the given URL.
+        
+        Args:
+            url (str): The URL to fetch JSON data from.
+            tab_title (str): The title of the new tab.
+            params (dict, optional): A dictionary of parameters to pass to the request.
+        """
+        if not url:
+            wx.MessageBox(f"Cannot create tab '{tab_title}': URL is not configured.", 
+                        "Error", wx.OK | wx.ICON_ERROR)
+            return None
+
+        # Create the tab with the URL and params
+        grid = self._add_tab(self.notebook, tab_title, url, params)
+
+        if grid:
+            # Trigger initial refresh
+            refresh_button = grid.GetParent().FindWindowByLabel("Refresh")
+            event = wx.CommandEvent(wx.wxEVT_BUTTON)
+            event.SetEventObject(refresh_button)
+            self.on_refresh_tab(event)
+        
+        return grid
+
+    def fetch_and_update(self, url, params, target_grid):
+        """
+        Fetch data from URL and update the target grid.
+        
+        Args:
+            url (str): URL to fetch data from
+            params (dict): Parameters for the request
+            target_grid (wx.grid.Grid): Grid to update with the data
+        """
+        try:
+            if not url:
+                wx.CallAfter(wx.MessageBox, "No URL configured for this tab.", 
+                            "Error", wx.OK | wx.ICON_ERROR)
+                return
+                
+            response = requests.get(url, params=params)
+            if response.status_code != 200:
+                wx.CallAfter(wx.MessageBox, 
+                            f"Failed to fetch data. HTTP Status: {response.status_code}", 
+                            "Error", wx.OK | wx.ICON_ERROR)
+                return
+
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                wx.CallAfter(wx.MessageBox, 
+                        "The response data is empty or not in the expected format.", 
+                        "Error", wx.OK | wx.ICON_ERROR)
+                return
+
+            # Update the grid with data
+            wx.CallAfter(self.update_sheets_grid, data, target_grid)
+        except requests.RequestException as e:
+            wx.CallAfter(wx.MessageBox, f"Network error: {e}", 
+                    "Error", wx.OK | wx.ICON_ERROR)
+        except json.JSONDecodeError:
+            wx.CallAfter(wx.MessageBox, "Failed to decode JSON response.", 
+                    "Error", wx.OK | wx.ICON_ERROR)
+        except Exception as e:
+            wx.CallAfter(wx.MessageBox, f"Unexpected error: {e}", 
+                    "Error", wx.OK | wx.ICON_ERROR)
+        finally:
+            # Clear loading state
+            wx.CallAfter(self.set_grid_loading, target_grid, False)
 
     def update_dynamic_labels(self):
         """Update the username, shard, and version labels dynamically."""
@@ -247,42 +372,22 @@ class LogAnalyzerFrame(wx.Frame):
             self.username_label.SetLabel(f"Username: {username}")
             self.shard_label.SetLabel(f"Shard: {shard}")
             self.version_label.SetLabel(f"Version: {version}")
-
-            # Refresh the grids if username is valid
-            if username != "Unknown" and self.google_sheets_webhook:
-                wx.CallAfter(self.refresh_tab_grid, "SC Default", {"sheet": "SC_Default", "username": username})
-                wx.CallAfter(self.refresh_tab_grid, "SC Squadrons Battle", {"sheet": "SC_SquadronsBattle", "username": username})
         except Exception as e:
             self.log_text.AppendText(f"Error updating labels: {e}\n")
 
-    def refresh_tab_grid(self, tab_title, params):
+    def on_shard_version_update(self, shard, version, username):
         """
-        Refresh the grid in the specified tab by fetching new data.
+        Handle updates to the shard, version, and username.
 
         Args:
-            tab_title (str): The title of the tab to refresh.
-            params (dict): Parameters to pass to the data fetch request.
+            shard (str): The updated shard name.
+            version (str): The updated version.
+            username (str): The updated username.
         """
-        for i in range(self.notebook.GetPageCount()):
-            if self.notebook.GetPageText(i) == tab_title:
-                grid = self.notebook.GetPage(i).FindWindowByLabel("grid")  # Find the grid in the tab
-                if grid:
-                    def fetch_and_update():
-                        try:
-                            response = requests.get(self.google_sheets_webhook, params=params)
-                            if response.status_code == 200:
-                                data = response.json()
-                                wx.CallAfter(self.update_sheets_grid, data, grid)
-                            else:
-                                wx.CallAfter(self.log_text.AppendText, f"Failed to fetch data for {tab_title}. HTTP Status: {response.status_code}\n")
-                        except Exception as e:
-                            wx.CallAfter(self.log_text.AppendText, f"Error refreshing grid for {tab_title}: {e}\n")
-                    threading.Thread(target=fetch_and_update, daemon=True).start()
-                break
-
-    def on_shard_version_update(self, *args, **kwargs):
-        """Handle shard and version updates."""
-        wx.CallAfter(self.update_dynamic_labels)
+        try:
+            self.update_dynamic_labels()  # Call update_dynamic_labels directly
+        except Exception as e:
+            self.log_text.AppendText(f"Error updating shard/version/username: {e}\n")
 
     def on_about(self, event):
         """Show the About dialog."""
@@ -656,42 +761,6 @@ class LogAnalyzerFrame(wx.Frame):
         # Auto-size columns only if there are valid rows and columns
         if grid.GetNumberCols() > 0 and grid.GetNumberRows() > 0:
             grid.AutoSizeColumns()
-
-    def add_tab(self, url, tab_title, params=None):
-        """
-        Add a new tab to the notebook with a grid displaying JSON data from the given URL.
-        If a tab with the same title already exists, it will not add a duplicate.
-
-        Args:
-            url (str): The URL to fetch JSON data from.
-            tab_title (str): The title of the new tab.
-            params (dict, optional): A dictionary of parameters to pass to the request. Defaults to None.
-        """
-        # Use the reusable _add_tab method
-       
-
-        def fetch_and_update():
-            try:
-                response = requests.get(url, params=params)
-                if response.status_code != 200:
-                    wx.MessageBox(f"Failed to fetch data. HTTP Status: {response.status_code}", "Error", wx.OK | wx.ICON_ERROR)
-                    return
-
-                data = response.json()
-                if not isinstance(data, list) or not data:
-                    wx.MessageBox("The response data is empty or not in the expected format.", "Error", wx.OK | wx.ICON_ERROR)
-                    return
-
-                wx.CallAfter(self.update_sheets_grid, data, grid)
-            except requests.RequestException as e:
-                wx.CallAfter(wx.MessageBox, f"Error fetching data: {e}", "Error", wx.OK | wx.ICON_ERROR)
-            except json.JSONDecodeError:
-                wx.CallAfter(wx.MessageBox, "Failed to decode JSON response.", "Error", wx.OK | wx.ICON_ERROR)
-
-        grid = self._add_tab(self.notebook, tab_title, fetch_and_update)
-
-        if grid:
-            threading.Thread(target=fetch_and_update, daemon=True).start()
 
     def on_close(self, event):
         """Handle window close event."""
