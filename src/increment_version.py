@@ -55,6 +55,8 @@ def increase_version(content,key='MINOR',save=False,):
     if minor_match :
         old_minor = int(minor_match.group(1))
         new_minor = old_minor + 1
+        if new_minor > 99:
+            new_minor = 0
         if increment is not None:
             content = content.replace(f"{key} = {old_minor}", f"{key} = {new_minor}")
     return content,old_minor,new_minor
