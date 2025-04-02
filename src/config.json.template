@@ -32,6 +32,6 @@
         "mode_change": "Game Mode changed: {mode} {status} at {timestamp}"
     },
     "discord": {
-        "player_death": "{username} :skull: {killer} -> {victim} with {weapon} in {zone} with {damage_type}"
+        "player_death": "{username} :skull: {killer} -> {victim} {mode} with {weapon} in {zone} with {damage_type}"
     }
 }
