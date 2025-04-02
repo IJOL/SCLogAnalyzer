@@ -8,14 +8,12 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Launch bot_fusionado.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/guti/bot_fusionado.py",
+            "name": "Launch gui",
+            "program": "${workspaceFolder}/src/gui.py",
             "console": "integratedTerminal",
-            "args": [
-                "${workspaceFolder}/guti/config_fusionado.json"
-            ]
+            "args": []
         },
         {
             "type": "debugpy",
