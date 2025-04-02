@@ -94,7 +94,6 @@ class LogFileHandler(FileSystemEventHandler):
         self.process_once = config.get('process_once', False)
         self.discord_messages = config.get('discord', {})
         self.google_sheets_webhook = config.get('google_sheets_webhook', '')
-        self.google_sheets_mapping = config.get('google_sheets_mapping', {})
         self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
         self.google_sheets_queue = queue.Queue()
         self.stop_event = threading.Event()
@@ -215,13 +214,13 @@ class LogFileHandler(FileSystemEventHandler):
                 try:
                     # Get queue items with timeout to check stop_event regularly
                     data, event_type = self.google_sheets_queue.get(timeout=1)
-                    queue_data.append({'data':data,'sheet': "{}-{}".format(self.google_sheets_mapping.get(event_type), self.current_mode or 'None')})
+                    queue_data.append({'data': data, 'sheet': self.current_mode or 'None'})  # Use current_mode as sheet
                     self.google_sheets_queue.task_done()
                     
                     # Get any additional items that might be in the queue
                     while not self.google_sheets_queue.empty():
                         data, event_type = self.google_sheets_queue.get_nowait()
-                        queue_data.append({'data':data,'sheet': self.google_sheets_mapping.get(event_type)})
+                        queue_data.append({'data': data, 'sheet': self.current_mode or 'None'})  # Use current_mode as sheet
                         self.google_sheets_queue.task_done()
                 except queue.Empty:
                     # No items in queue, just continue loop
@@ -444,19 +443,11 @@ class LogFileHandler(FileSystemEventHandler):
         if self.detect_mode_change(entry, send_message):
             return
 
-        # Process patterns in google_sheets_mapping first
-        processed_patterns = set()
-        for pattern_name in self.google_sheets_mapping.keys():
+        # Process patterns in regex_patterns
+        for pattern_name in self.regex_patterns.keys():
             success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
             if success:
-                processed_patterns.add(pattern_name)
-
-        # Process remaining patterns not in google_sheets_mapping
-        for pattern_name in self.regex_patterns.keys():
-            if pattern_name not in processed_patterns:
-                success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
-                if success:
-                    return
+                return
 
     def detect_mode_change(self, entry, send_message=True):
         """
@@ -592,9 +583,9 @@ class LogFileHandler(FileSystemEventHandler):
 
             # Add current mode to data if active
             if self.current_mode:
-                data['current_mode'] = self.current_mode
+                data['mode'] = self.current_mode
             else:
-                data['current_mode'] = 'None'
+                data['mode'] = 'None'
 
             data['shard'] = self.current_shard or 'Unknown'  # Use instance attribute
             data['version'] = self.current_version or 'Unknown'  # Use instance attribute
@@ -605,8 +596,8 @@ class LogFileHandler(FileSystemEventHandler):
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)
 
-            # Send to Google Sheets if pattern is configured
-            if pattern_name in self.google_sheets_mapping and send_message:
+            # Send to Google Sheets if enabled
+            if send_message:
                 self.update_google_sheets(data, pattern_name)
 
             return True, data
