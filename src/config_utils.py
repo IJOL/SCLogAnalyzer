@@ -72,9 +72,8 @@ def renew_config():
             current_config = {}
 
         # Preserve specific values
-        template_data["discord_webhook_url"] = current_config.get("discord_webhook_url", "")
-        template_data["google_sheets_webhook"] = current_config.get("google_sheets_webhook", "")
-        template_data['log_file_path'] = current_config.get("log_file_path", "")
+        for key in ["discord_webhook_url", "google_sheets_webhook", "log_file_path", "console_key"]:
+            template_data[key] = current_config.get(key, template_data.get(key, ""))
 
         # Write the renewed config back to the file
         with open(config_path, 'w', encoding='utf-8') as config_file:

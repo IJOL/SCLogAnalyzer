@@ -9,6 +9,7 @@ import mss
 import time
 import win32con  # Required for window constants like SW_RESTORE
 import win32process  # Required for process-related functions
+import win32api  # Required for sending keystrokes
 import psutil  # Required for process management
 from version import get_version  # Import get_version to fetch the version dynamically
 
@@ -184,6 +185,8 @@ class ConfigDialog(wx.Frame):
                 row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
                 row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
                 sizer.Add(row_sizer, 0, wx.EXPAND)
+
+
         panel.SetSizer(sizer)
         notebook.AddPage(panel, title)
 
@@ -317,7 +320,9 @@ class AboutDialog(wx.Dialog):
 class WindowsHelper:
     PRINT_SCREEN_KEY = "print_screen"
     RETURN_KEY = "return"
-
+    # Add a constant for the key next to "1" (backtick/tilde on US keyboards, º/ª on Spanish)
+    CONSOLE_KEY = "console_key"
+    
     @staticmethod
     def find_window_by_title(title, class_name=None, process_name=None):
         """Find a window by its title, class name, and process name."""
@@ -377,6 +382,11 @@ class WindowsHelper:
                     WindowsHelper.capture_window_screenshot(hwnd, screenshot_path)
                 elif key == WindowsHelper.RETURN_KEY:
                     keyboard.tap(Key.enter)
+                elif key == WindowsHelper.CONSOLE_KEY:
+                    # Use standard Windows API to send the key to the left of "1"
+                    win32api.keybd_event(0xC0, 0, 0, 0)  # Press the key (0xC0 is the virtual key code for backtick/tilde)
+                    time.sleep(0.05)
+                    win32api.keybd_event(0xC0, 0, win32con.KEYEVENTF_KEYUP, 0)  # Release the key
                 elif isinstance(key, str):
                     for char in key:
                         keyboard.tap(char)

@@ -158,6 +158,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.default_log_file_path = None
         self.google_sheets_webhook = None
         self.discord_webhook_url = None
+        self.console_key = "º"  # Default console key
         self.load_default_config()
         self.validate_startup_settings()  # Validate settings before proceeding
 
@@ -434,7 +435,8 @@ class LogAnalyzerFrame(wx.Frame):
                     
                 self.default_log_file_path = config.get('log_file_path', '')
                 self.google_sheets_webhook = config.get('google_sheets_webhook', '')
-                self.discord_webhook_url = config.get('discord_webhook_url', '')  # Add discord webhook check
+                self.discord_webhook_url = config.get('discord_webhook_url', '')
+                self.console_key = config.get('console_key', 'º')  # Load console key with default
 
                 if not os.path.isabs(self.default_log_file_path):
                     self.default_log_file_path = os.path.join(app_path, self.default_log_file_path)
@@ -675,10 +677,10 @@ class LogAnalyzerFrame(wx.Frame):
         WindowsHelper.send_keystrokes_to_window(
             "Star Citizen",
             [
-                "º", "r_DisplaySessionInfo 1", WindowsHelper.RETURN_KEY,
-                "º", WindowsHelper.PRINT_SCREEN_KEY,
-                "º", "r_DisplaySessionInfo 0", WindowsHelper.RETURN_KEY,
-                "º"
+                self.console_key, "r_DisplaySessionInfo 1", WindowsHelper.RETURN_KEY,
+                self.console_key, WindowsHelper.PRINT_SCREEN_KEY,
+                self.console_key, "r_DisplaySessionInfo 0", WindowsHelper.RETURN_KEY,
+                self.console_key
             ],
             screenshots_folder=screenshots_folder,
             class_name="CryENGINE",

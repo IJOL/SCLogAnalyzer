@@ -31,5 +31,6 @@
     },
     "discord": {
         "player_death": "{username} :skull: {killer} -> {victim} {mode} with {weapon} in {zone} with {damage_type}"
-    }
+    },
+    "console_key": "º"
 }
