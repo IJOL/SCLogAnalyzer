@@ -98,6 +98,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.google_sheets_queue = queue.Queue()
         self.stop_event = threading.Event()
         self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
+        self.google_sheets_mapping = config.get('google_sheets_mapping', [])
         if not os.path.exists(self.screenshots_folder):
             os.makedirs(self.screenshots_folder)
 
@@ -338,7 +339,7 @@ class LogFileHandler(FileSystemEventHandler):
                             output_message(None, f"Shard updated: {self.current_shard}, Version updated: {self.current_version}")
 
                             # Emit the event to notify subscribers
-                            self.on_shard_version_update.emit(self.current_shard, self.current_version)
+                            self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username)
                     else:
                         output_message(None, "QR code does not contain sufficient information.")
                 else:
@@ -443,11 +444,18 @@ class LogFileHandler(FileSystemEventHandler):
         if self.detect_mode_change(entry, send_message):
             return
 
-        # Process patterns in regex_patterns
-        for pattern_name in self.regex_patterns.keys():
+        # First process patterns in google_sheets_mapping
+        for pattern_name in self.google_sheets_mapping:
             success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
             if success:
                 return
+
+        # Then process patterns in regex_patterns, skipping those in google_sheets_mapping
+        for pattern_name in self.regex_patterns.keys():
+            if pattern_name not in self.google_sheets_mapping:
+                success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
+                if success:
+                    return
 
     def detect_mode_change(self, entry, send_message=True):
         """
@@ -596,8 +604,8 @@ class LogFileHandler(FileSystemEventHandler):
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)
 
-            # Send to Google Sheets if enabled
-            if send_message:
+            # Send to Google Sheets if enabled and pattern is in the mapping
+            if send_message and pattern_name in self.google_sheets_mapping:
                 self.update_google_sheets(data, pattern_name)
 
             return True, data

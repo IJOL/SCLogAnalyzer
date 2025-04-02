@@ -157,10 +157,16 @@ class LogAnalyzerFrame(wx.Frame):
         # Try to get the default log file path from config
         self.default_log_file_path = None
         self.google_sheets_webhook = None
+        self.discord_webhook_url = None
         self.load_default_config()
-         # Add the first Google Sheets tab using the new add_tab method
-        self.add_tab(self.google_sheets_webhook,"Stats")
-       
+        self.validate_startup_settings()  # Validate settings before proceeding
+
+        # Only add Google Sheets tabs if the webhook URL is valid
+        if self.google_sheets_webhook:
+            self.add_tab(self.google_sheets_webhook, "Stats")
+            self.add_tab(self.google_sheets_webhook, "SC Default", params={"sheet": "SC_Default", "username": lambda self: self.event_handler.username})
+            self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", params={"sheet": "EA_SquadronBattle", "username": lambda self: self.event_handler.username})
+
         # Set up stdout redirection
         sys.stdout = RedirectText(self.log_text)
 
@@ -184,10 +190,6 @@ class LogAnalyzerFrame(wx.Frame):
         # Bind close event to save window position
         self.Bind(wx.EVT_CLOSE, self.on_close)
         wx.CallAfter(self.update_dynamic_labels)  # Update labels dynamically
-
-        # Call on_refresh_sheets to load Google Sheets data on startup
-        self.add_tab(self.google_sheets_webhook, "SC Default", params={"sheet": "SC_Default", "username": lambda self: self.event_handler.username})
-        self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", params={"sheet": "EA_SquadronBattle", "username": lambda self: self.event_handler.username})
 
     def _add_tab(self, notebook, tab_title, url, params=None):
         """
@@ -432,6 +434,7 @@ class LogAnalyzerFrame(wx.Frame):
                     
                 self.default_log_file_path = config.get('log_file_path', '')
                 self.google_sheets_webhook = config.get('google_sheets_webhook', '')
+                self.discord_webhook_url = config.get('discord_webhook_url', '')  # Add discord webhook check
 
                 if not os.path.isabs(self.default_log_file_path):
                     self.default_log_file_path = os.path.join(app_path, self.default_log_file_path)
@@ -442,7 +445,28 @@ class LogAnalyzerFrame(wx.Frame):
                 
             except Exception as e:
                 self.log_text.AppendText(f"Error loading config: {e}\n")
-    
+
+    def validate_startup_settings(self):
+        """Validate critical settings and show the config dialog if necessary."""
+        missing_settings = []
+        if not self.default_log_file_path:
+            missing_settings.append("Log file path")
+        if not self.google_sheets_webhook:
+            missing_settings.append("Google Sheets webhook URL")
+            self.googlesheet_check.Check(False)  # Uncheck Google Sheets usage
+        if not self.discord_webhook_url:
+            missing_settings.append("Discord webhook URL")
+            self.discord_check.Check(False)  # Uncheck Discord usage
+
+        if missing_settings:
+            wx.MessageBox(
+                f"The following settings are missing or invalid: {', '.join(missing_settings)}.\n"
+                "Please configure them to start safely.",
+                "Configuration Required",
+                wx.OK | wx.ICON_WARNING
+            )
+            self.on_edit_config(None)  # Show the configuration dialog modal
+
     def on_process_log(self, event):
         """Open the process log dialog."""
         dialog = ProcessDialog(self)
@@ -641,6 +665,13 @@ class LogAnalyzerFrame(wx.Frame):
 
     def send_keystrokes_to_sc(self):
         """Send predefined keystrokes to the Star Citizen window."""
+        if not self.default_log_file_path:
+            wx.MessageBox("Log file path is not set in the configuration.", "Error", wx.OK | wx.ICON_ERROR)
+            return
+
+        # Derive the ScreenShots folder from the log file path
+        screenshots_folder = os.path.join(os.path.dirname(self.default_log_file_path), "ScreenShots")
+
         WindowsHelper.send_keystrokes_to_window(
             "Star Citizen",
             [
@@ -649,7 +680,7 @@ class LogAnalyzerFrame(wx.Frame):
                 "º", "r_DisplaySessionInfo 0", WindowsHelper.RETURN_KEY,
                 "º"
             ],
-            screenshots_folder=os.path.join(get_application_path(), "ScreenShots"),
+            screenshots_folder=screenshots_folder,
             class_name="CryENGINE",
             process_name="StarCitizen.exe"
         )

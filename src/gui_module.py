@@ -380,7 +380,7 @@ class WindowsHelper:
                 elif isinstance(key, str):
                     for char in key:
                         keyboard.tap(char)
-                        time.sleep(0.01)
+                        time.sleep(0.05)
                 else:
                     keyboard.tap(key)
                 time.sleep(0.05)
