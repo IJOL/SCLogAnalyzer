@@ -1,7 +1,7 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 2
+MINOR = 3
 RELEASE = 99
 PATCH = "0de541f"
 
