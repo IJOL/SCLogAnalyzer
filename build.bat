@@ -12,6 +12,14 @@ echo Current commit hash: %commit_hash%
 echo Incrementing version...
 python src\increment_version.py %commit_hash% %1
 echo.
+FOR /F "tokens=* USEBACKQ" %%F IN (`python -c "from src.version import get_version; print(get_version())"`) DO (
+  SET version=%%F
+)
+echo Current version: %version%
+if "%version%"=="" (
+  echo Version not found. Exiting.
+  exit /b 1
+)
 echo Building SC Log Analyzer...
 :: Only push if the parameter was provided
 IF %PUSH_CHANGES%==1 (
@@ -23,14 +31,7 @@ IF %PUSH_CHANGES%==1 (
 ) ELSE (
   echo Skipping push to remote repository. Use -p or --push parameter to push changes.
 )
-FOR /F "tokens=* USEBACKQ" %%F IN (`python -c "from src.version import get_version; print(get_version())"`) DO (
-  SET version=%%F
-)
-echo Current version: %version%
-if "%version%"=="" (
-  echo Version not found. Exiting.
-  exit /b 1
-)
+
 if "%1"=="" (
   set version=test-%version%
 )
