@@ -38,6 +38,7 @@ function doPost(e) {
 function doGet(e) {
     try {
         var sheetName = e && e.parameter && e.parameter.sheet ? e.parameter.sheet : "Resumen";
+        var usernameFilter = e && e.parameter && e.parameter.username ? e.parameter.username : null;
         var ss = SpreadsheetApp.getActiveSpreadsheet();
         var sheet = ss.getSheetByName(sheetName);
         if (!sheet) {
@@ -54,6 +55,11 @@ function doGet(e) {
             });
             return obj;
         });
+
+        // Filter by username if the parameter is provided
+        if (usernameFilter) {
+            jsonData = jsonData.filter(item => item.username && item.username === usernameFilter);
+        }
 
         return ContentService.createTextOutput(JSON.stringify(jsonData))
             .setMimeType(ContentService.MimeType.JSON);
