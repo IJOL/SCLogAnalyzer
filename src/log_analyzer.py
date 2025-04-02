@@ -112,7 +112,8 @@ class LogFileHandler(FileSystemEventHandler):
         self.current_mode = None
         
         # Compile mode regex patterns
-        self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Connection Complete> map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>.*?) localAddr=(?P<local_addr>.*?) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session_id>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+)")
+        self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
+        self.nickname_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Connection Complete> map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>.*?) localAddr=(?P<local_addr>.*?) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session_id>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+)")
         self.mode_end_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected> cause=(?P<cause>\d+) reason=\"(?P<reason>.*?)\" frame=(?P<frame>\d+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>[\d\.:\w]+) localAddr=(?P<local_addr>[\d\.:\w]+) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+) \[(?P<tags>.*?)\]")
 
         # Simpler Channel Disconnected pattern for other types of disconnects
@@ -124,9 +125,6 @@ class LogFileHandler(FileSystemEventHandler):
             # Move to the end of the file if we're not processing everything
             self.last_position = self._get_file_end_position()
             output_message(None, f"Skipping to the end of log file (position {self.last_position})")
-
-        if not self.process_once:
-            self.send_startup_message()
 
   
     def stop(self):
@@ -461,6 +459,26 @@ class LogFileHandler(FileSystemEventHandler):
         """
         Detect if the log entry represents a change in game mode using the new regex patterns.
         """
+        nickname_match = self.nickname_regex.search(entry)
+        if nickname_match:
+            nickname_data = nickname_match.groupdict()
+            new_nickname = nickname_data.get('nickname')
+            
+            # Update username if nickname is available
+            if new_nickname and new_nickname != self.username:
+                old_username = self.username
+                self.username = new_nickname
+                output_message(nickname_data.get('timestamp'), f"Username updated: '{old_username}' → '{new_nickname}'")
+                
+                # Emit the event to notify subscribers about nickname/username change
+                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username)
+                
+                # Send startup Discord message after getting the username for the first time
+                if old_username == 'Unknown' and not self.process_once:
+                    self.send_startup_message()
+
+                return True
+
         # Check for mode start (Context Establisher Done)
         start_match = self.mode_start_regex.search(entry)
         if start_match:
