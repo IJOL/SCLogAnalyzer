@@ -369,6 +369,16 @@ class WindowsHelper:
             hwnd = WindowsHelper.find_window_by_title(window_title, kwargs.get('class_name'), kwargs.get('process_name'))
             if not hwnd:
                 raise RuntimeError(f"Window with title '{window_title}' not found.")
+            keyboard_layout = win32api.GetKeyboardLayout(0)
+            layout_id = keyboard_layout & 0xFFFF                    
+            # Different virtual key codes based on keyboard layout
+            # 0x0409 = US, 0x0C0A = Spanish, 0x040C = French AZERTY
+            if layout_id == 0x040C:  # French AZERTY
+                console_vk = 0xC0  # VK_OEM_7 on French AZERTY
+            elif layout_id == 0x0C0A:  # Spanish
+                console_vk = 0xDC  # VK_OEM_5 on Spanish keyboard
+            else:
+                console_vk = 0xC0  # VK_OEM_3 on US/UK keyboards (default)
 
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             win32gui.SetForegroundWindow(hwnd)
@@ -382,11 +392,11 @@ class WindowsHelper:
                     WindowsHelper.capture_window_screenshot(hwnd, screenshot_path)
                 elif key == WindowsHelper.RETURN_KEY:
                     keyboard.tap(Key.enter)
-                elif key == WindowsHelper.CONSOLE_KEY:
+                elif key == WindowsHelper.CONSOLE_KEY:   
                     # Use standard Windows API to send the key to the left of "1"
-                    win32api.keybd_event(0xC0, 0, 0, 0)  # Press the key (0xC0 is the virtual key code for backtick/tilde)
+                    win32api.keybd_event(console_vk, 0, 0, 0)  # Press the key (0xC0 is the virtual key code for backtick/tilde)
                     time.sleep(0.05)
-                    win32api.keybd_event(0xC0, 0, win32con.KEYEVENTF_KEYUP, 0)  # Release the key
+                    win32api.keybd_event(console_vk, 0, win32con.KEYEVENTF_KEYUP, 0)  # Release the key
                 elif isinstance(key, str):
                     for char in key:
                         keyboard.tap(char)
