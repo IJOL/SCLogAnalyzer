@@ -88,10 +88,11 @@ class LogAnalyzerFrame(wx.Frame):
         self.autoshard_button = wx.Button(self.log_page, label=" Auto Shard")
         self.autoshard_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_TIP, wx.ART_BUTTON, (16, 16)))
         self.autoshard_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
-
+        self.autoshard_button.Enable(False)  # Start in disabled state
+        
         self.monitor_button = wx.Button(self.log_page, label=" Start Monitoring")
         self.monitor_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_EXECUTABLE_FILE, wx.ART_BUTTON, (16, 16)))
-        self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,wx.FONTWEIGHT_BOLD))
 
         # Add buttons to the horizontal button sizer
         button_sizer.Add(self.process_log_button, 0, wx.ALL, 2)
@@ -392,6 +393,19 @@ class LogAnalyzerFrame(wx.Frame):
         except Exception as e:
             self.log_text.AppendText(f"Error updating shard/version/username: {e}\n")
 
+    def on_mode_change(self, new_mode, old_mode):
+        """
+        Handle mode change events.
+
+        Args:
+            new_mode (str): The new mode entered.
+            old_mode (str): The previous mode exited.
+        """
+        if new_mode == "SC_Default":
+            self.autoshard_button.Enable(True)
+        else:
+            self.autoshard_button.Enable(False)
+
     def on_about(self, event):
         """Show the About dialog."""
         from gui_module import AboutDialog  # Import AboutDialog from gui_module
@@ -407,14 +421,12 @@ class LogAnalyzerFrame(wx.Frame):
         if self.monitoring:  # Check the actual monitoring state
             self.monitor_button.SetLabel("Stop Monitoring")
             self.process_log_button.Enable(False)
-            self.autoshard_button.Enable(True)  # Enable Auto Shard button
             self.SetStatusText("Monitoring active")
         else:
             self.monitor_button.SetLabel("Start Monitoring")
             self.process_log_button.Enable(True)
-            self.autoshard_button.Enable(False)  # Disable Auto Shard button
             self.SetStatusText("Monitoring stopped")
-        
+
     def ensure_default_config(self):
         """Ensure the default configuration file exists."""
         app_path = get_application_path()
@@ -564,6 +576,9 @@ class LogAnalyzerFrame(wx.Frame):
 
                 # Subscribe to shard and version updates
                 self.event_handler.on_shard_version_update.subscribe(self.on_shard_version_update)
+                # Subscribe to mode change updates
+                self.event_handler.on_mode_change.subscribe(self.on_mode_change)
+
                 self.update_dynamic_labels()  # Update labels after starting monitoring
         except Exception as e:
             wx.CallAfter(self.log_text.AppendText, f"Error starting monitoring: {e}\n")
@@ -673,14 +688,14 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Derive the ScreenShots folder from the log file path
         screenshots_folder = os.path.join(os.path.dirname(self.default_log_file_path), "ScreenShots")
-
+        ck = self.console_key if self.console_key!='' else WindowsHelper.CONSOLE_KEY
         WindowsHelper.send_keystrokes_to_window(
             "Star Citizen",
             [
-                self.console_key, "r_DisplaySessionInfo 1", WindowsHelper.RETURN_KEY,
-                self.console_key, WindowsHelper.PRINT_SCREEN_KEY,
-                self.console_key, "r_DisplaySessionInfo 0", WindowsHelper.RETURN_KEY,
-                self.console_key
+                ck , "r_DisplaySessionInfo 1", WindowsHelper.RETURN_KEY,
+                ck, WindowsHelper.PRINT_SCREEN_KEY,
+                ck, "r_DisplaySessionInfo 0", WindowsHelper.RETURN_KEY,
+                ck
             ],
             screenshots_folder=screenshots_folder,
             class_name="CryENGINE",
