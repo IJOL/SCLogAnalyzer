@@ -77,6 +77,7 @@ class LogFileHandler(FileSystemEventHandler):
     def __init__(self, config):
         # Restore instance attributes
         self.on_shard_version_update = Event()  # Event for shard and version updates
+        self.on_mode_change = Event()  # Event for mode changes
         self.username = config.get('username', 'Unknown')  # Username as an instance attribute
         self.current_shard = None  # Initialize shard information
         self.current_version = None  # Initialize Star Citizen version information
@@ -494,6 +495,9 @@ class LogFileHandler(FileSystemEventHandler):
                 old_mode = self.current_mode
                 self.current_mode = new_mode
 
+                # Emit the event to notify subscribers about mode change
+                self.on_mode_change.emit(new_mode, old_mode)
+
                 # Format the mode data for output
                 mode_data['mode'] = new_mode
                 mode_data['username'] = self.username  # Include username in event data
@@ -523,6 +527,9 @@ class LogFileHandler(FileSystemEventHandler):
 
             # Only consider it an end if it matches the current mode
             if gamerules == self.current_mode:
+                # Emit the event to notify subscribers about mode exit
+                self.on_mode_change.emit(None, self.current_mode)
+
                 # Format the mode data for output
                 mode_data['mode'] = self.current_mode
                 mode_data['username'] = self.username  # Use instance attribute
@@ -545,6 +552,9 @@ class LogFileHandler(FileSystemEventHandler):
         # Check for simple disconnects (for modes that don't have the full disconnect message)
         if self.current_mode and self.simple_disconnect_regex.search(entry):
             timestamp = self.simple_disconnect_regex.search(entry).group('timestamp')
+
+            # Emit the event to notify subscribers about mode exit
+            self.on_mode_change.emit(None, self.current_mode)
 
             # Create mode data for the message
             mode_data = {
