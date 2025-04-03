@@ -74,10 +74,15 @@ class Event:
             callback(*args, **kwargs)
 
 class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, config):
+    def __init__(self, config, **kwargs):
         # Restore instance attributes
         self.on_shard_version_update = Event()  # Event for shard and version updates
         self.on_mode_change = Event()  # Event for mode changes
+        # Handle subscriptions passed via kwargs
+        if 'on_shard_version_update' in kwargs:
+            self.on_shard_version_update.subscribe(kwargs['on_shard_version_update'])
+        if 'on_mode_change' in kwargs:
+            self.on_mode_change.subscribe(kwargs['on_mode_change'])
         self.username = config.get('username', 'Unknown')  # Username as an instance attribute
         self.current_shard = None  # Initialize shard information
         self.current_version = None  # Initialize Star Citizen version information
@@ -126,6 +131,7 @@ class LogFileHandler(FileSystemEventHandler):
             # Move to the end of the file if we're not processing everything
             self.last_position = self._get_file_end_position()
             output_message(None, f"Skipping to the end of log file (position {self.last_position})")
+
 
   
     def stop(self):
@@ -674,7 +680,18 @@ def stop_monitor(event_handler, observer):
     event_handler.stop()
     output_message(None, "Monitor stopped successfully")
 
-def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None):
+def startup(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None, **kwargs):
+    """
+    Initialize the log analyzer infrastructure and allow the caller to pass event subscriptions via kwargs.
+
+    Args:
+        process_all: Whether to process the entire log file.
+        use_discord: Whether to use Discord for notifications.
+        process_once: Whether to process the log file once and exit.
+        use_googlesheet: Whether to use Google Sheets for data storage.
+        log_file_path: Path to the log file.
+        kwargs: Additional arguments for event subscriptions or configurations.
+    """
     try:
         app_path = get_application_path()
         config_path = os.path.join(app_path, "config.json")
@@ -737,9 +754,9 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
             
         config['process_once'] = process_once or bool(config.get('process_once', False))
 
-        # Create a file handler
-        event_handler = LogFileHandler(config)
-        
+        # Create a file handler with kwargs for event subscriptions
+        event_handler = LogFileHandler(config, **kwargs)
+
         if event_handler.process_once:
             output_message(None, "Processing log file once and exiting...")
             event_handler.process_entire_log()
@@ -753,11 +770,20 @@ def main(process_all=False, use_discord=None, process_once=False, use_googleshee
         observer = Observer()
         observer.schedule(event_handler, path=os.path.dirname(config['log_file_path']), recursive=False)
         observer.schedule(event_handler, path=event_handler.screenshots_folder, recursive=False)  # Monitor screenshots folder
-        
-        # Store references for signal handler
+            # Store references for signal handler
         signal_handler.event_handler = event_handler
-        signal_handler.observer = observer
-        
+        signal_handler.observer = observer    
+        # Return the initialized handler and observer without starting processing
+        return event_handler, observer
+    except Exception as e:
+        logging.error("An error occurred: %s", str(e))
+        logging.error("Stack trace:\n%s", traceback.format_exc())
+        raise
+
+def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None):
+    try:
+        event_handler, observer = startup(process_all, use_discord, process_once, use_googlesheet, log_file_path)
+
         # If in GUI mode, start the observer in a separate thread and return immediately
         if hasattr(main, 'in_gui') and main.in_gui:
             observer_thread = threading.Thread(target=observer.start)
