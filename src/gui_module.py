@@ -144,10 +144,8 @@ class ConfigDialog(wx.Frame):
         # Add Accept, Save, and Cancel buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         accept_button = wx.Button(self, label="Accept")
-        save_button = wx.Button(self, label="Save")
         cancel_button = wx.Button(self, label="Cancel")
         button_sizer.Add(accept_button, 0, wx.ALL, 5)
-        button_sizer.Add(save_button, 0, wx.ALL, 5)
         button_sizer.Add(cancel_button, 0, wx.ALL, 5)
         main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER, 10)
 
@@ -155,7 +153,6 @@ class ConfigDialog(wx.Frame):
 
         # Bind events
         accept_button.Bind(wx.EVT_BUTTON, self.on_accept)
-        save_button.Bind(wx.EVT_BUTTON, self.on_save)
         cancel_button.Bind(wx.EVT_BUTTON, self.on_close)
 
     def add_tab(self, notebook, title, config_key, key_choices=None):
@@ -184,12 +181,21 @@ class ConfigDialog(wx.Frame):
                 row_sizer = wx.BoxSizer(wx.HORIZONTAL)
                 row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
                 row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
+                if key == "log_file_path":
+                    browse_button = wx.Button(panel, label="Browse...")
+                    browse_button.Bind(wx.EVT_BUTTON, lambda event, tc=control: self.on_browse_log_file(event, tc))
+                    row_sizer.Add(browse_button, 0, wx.ALL, 5)
                 sizer.Add(row_sizer, 0, wx.EXPAND)
-
 
         panel.SetSizer(sizer)
         notebook.AddPage(panel, title)
-
+    def on_browse_log_file(self, event, text_ctrl):
+        """Handle browse button click for log file path."""
+        with wx.FileDialog(self, "Select log file", wildcard="Log files (*.log)|*.log|All files (*.*)|*.*",
+                        style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as file_dialog:
+            if file_dialog.ShowModal() == wx.ID_CANCEL:
+                return
+            text_ctrl.SetValue(file_dialog.GetPath())
     def load_config(self):
         """Load configuration from the JSON file."""
         if os.path.exists(self.config_path):
@@ -205,16 +211,10 @@ class ConfigDialog(wx.Frame):
             self.config_data[key] = control.GetValue() if isinstance(control, wx.CheckBox) else control.GetValue()
 
     def on_accept(self, event):
-        """Handle the Accept button click."""
-        self.save_config()
-        self.Destroy()
-
-    def on_save(self, event):
         """Handle the Save button click."""
         self.save_config()
         with open(self.config_path, 'w', encoding='utf-8') as config_file:
             json.dump(self.config_data, config_file, indent=4)
-        wx.MessageBox("Configuration saved successfully.", "Info", wx.OK | wx.ICON_INFORMATION)
         self.Destroy()
 
     def on_close(self, event):
@@ -369,16 +369,6 @@ class WindowsHelper:
             hwnd = WindowsHelper.find_window_by_title(window_title, kwargs.get('class_name'), kwargs.get('process_name'))
             if not hwnd:
                 raise RuntimeError(f"Window with title '{window_title}' not found.")
-            keyboard_layout = win32api.GetKeyboardLayout(0)
-            layout_id = keyboard_layout & 0xFFFF                    
-            # Different virtual key codes based on keyboard layout
-            # 0x0409 = US, 0x0C0A = Spanish, 0x040C = French AZERTY
-            if layout_id == 0x040C:  # French AZERTY
-                console_vk = 0xC0  # VK_OEM_7 on French AZERTY
-            elif layout_id == 0x0C0A:  # Spanish
-                console_vk = 0xDC  # VK_OEM_5 on Spanish keyboard
-            else:
-                console_vk = 0xC0  # VK_OEM_3 on US/UK keyboards (default)
 
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             win32gui.SetForegroundWindow(hwnd)
@@ -394,9 +384,9 @@ class WindowsHelper:
                     keyboard.tap(Key.enter)
                 elif key == WindowsHelper.CONSOLE_KEY:   
                     # Use standard Windows API to send the key to the left of "1"
-                    win32api.keybd_event(console_vk, 0, 0, 0)  # Press the key (0xC0 is the virtual key code for backtick/tilde)
+                    win32api.keybd_event(0, 0x29 , 0, 0)  # Press the key (0xC0 is the virtual key code for backtick/tilde)
                     time.sleep(0.05)
-                    win32api.keybd_event(console_vk, 0, win32con.KEYEVENTF_KEYUP, 0)  # Release the key
+                    win32api.keybd_event( 0, 0x29 ,  win32con.KEYEVENTF_KEYUP, 0)  # Release the key
                 elif isinstance(key, str):
                     for char in key:
                         keyboard.tap(char)
