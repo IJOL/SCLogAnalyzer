@@ -24,9 +24,12 @@ def emit_default_config(config_path, in_gui=False, template_path=None):
     if not in_gui:
         config = prompt_for_config_values(template_config)
     else:
+        template_config["discord_webhook_url"] = ""
+        template_config["google_sheets_webhook"] = ""
         config = template_config
     config.pop("username", None)  # Remove username from the default config
-    config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
+    if os.path.exists(os.path.join(get_application_path(), "Game.log")):
+        config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
     with open(config_path, 'w', encoding='utf-8') as config_file:
         json.dump(config, config_file, indent=4)
     print(f"Default config emitted at {config_path}")
