@@ -31,13 +31,8 @@ TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
 class LogAnalyzerFrame(wx.Frame):
     def __init__(self):
         super().__init__(None, title="SC Log Analyzer", size=(800, 600))
-        
-        # Renew the config.json before loading log_analyzer
-        renew_config()  # Use the renew_config function from config_utils
-
-        # Set flag for GUI mode
-        log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled
-        
+               # Set flag for GUI mode
+        log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled        
         # Ensure default config exists
         self.ensure_default_config()
 
@@ -434,7 +429,10 @@ class LogAnalyzerFrame(wx.Frame):
         
         if not os.path.exists(config_path):
             emit_default_config(config_path, in_gui=True)
-
+            return True
+        else:
+            renew_config()
+            return False
     def load_default_config(self):
         """Load default log file path and Google Sheets webhook from config."""
         app_path = get_application_path()
@@ -448,11 +446,8 @@ class LogAnalyzerFrame(wx.Frame):
                 self.default_log_file_path = config.get('log_file_path', '')
                 self.google_sheets_webhook = config.get('google_sheets_webhook', '')
                 self.discord_webhook_url = config.get('discord_webhook_url', '')
-                self.console_key = config.get('console_key', 'º')  # Load console key with default
-
-                if not os.path.isabs(self.default_log_file_path):
-                    self.default_log_file_path = os.path.join(app_path, self.default_log_file_path)
-                
+                self.console_key = config.get('console_key', '')  # Load console key with default
+           
                 # Set checkbox defaults from config
                 self.discord_check.Check(config.get('use_discord', True))  # Default to True
                 self.googlesheet_check.Check(config.get('use_googlesheet', True))  # Default to True
@@ -465,6 +460,10 @@ class LogAnalyzerFrame(wx.Frame):
         missing_settings = []
         if not self.default_log_file_path:
             missing_settings.append("Log file path")
+        else:
+            if not os.path.exists(self.default_log_file_path):
+                missing_settings.append("Log file path does not exist")
+                
         if not self.google_sheets_webhook:
             missing_settings.append("Google Sheets webhook URL")
             self.googlesheet_check.Check(False)  # Uncheck Google Sheets usage
@@ -562,27 +561,28 @@ class LogAnalyzerFrame(wx.Frame):
     def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet):
         """Run monitoring in thread."""
         try:
-            # Call main without process_once
-            result = log_analyzer.main(
+            # Call startup with event subscriptions passed as kwargs
+            result = log_analyzer.startup(
                 process_all=process_all,
                 use_discord=use_discord,
                 process_once=False,
                 use_googlesheet=use_googlesheet,
-                log_file_path=log_file
+                log_file_path=log_file,
+                on_shard_version_update=self.on_shard_version_update,
+                on_mode_change=self.on_mode_change
             )
 
             if result:
                 self.event_handler, self.observer = result
-
-                # Subscribe to shard and version updates
-                self.event_handler.on_shard_version_update.subscribe(self.on_shard_version_update)
-                # Subscribe to mode change updates
-                self.event_handler.on_mode_change.subscribe(self.on_mode_change)
-
                 self.update_dynamic_labels()  # Update labels after starting monitoring
+
+                # Start the observer thread explicitly
+                if self.observer:
+                    self.observer.start()
+
         except Exception as e:
             wx.CallAfter(self.log_text.AppendText, f"Error starting monitoring: {e}\n")
-            wx.CallAfter(self.update_monitoring_buttons, False)  # Use the new method
+            wx.CallAfter(self.update_monitoring_buttons, False)
             self.monitoring = False
     
     def stop_monitoring(self):
@@ -714,6 +714,8 @@ class LogAnalyzerFrame(wx.Frame):
         config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         if not hasattr(self, 'config_dialog') or not self.config_dialog:
             self.config_dialog = ConfigDialog(self, config_path)
+            # Bind the close event to reload configuration
+            self.config_dialog.Bind(wx.EVT_WINDOW_DESTROY, self.on_config_dialog_close)
         
         # Ensure the config dialog is within the main window boundaries
         main_window_position = self.GetPosition()
@@ -725,9 +727,31 @@ class LogAnalyzerFrame(wx.Frame):
         
         self.config_dialog.SetPosition(wx.Point(new_x, new_y))
         
+        # Show the dialog non-modally
         self.config_dialog.Show()
-        self.config_dialog.Raise()
-
+    
+    def on_config_dialog_close(self, event):
+        """Handle the configuration dialog's close event."""
+        # Process the event first
+        event.Skip()
+        
+        # Reload configuration after the dialog is closed
+        self.load_default_config()
+        self.validate_startup_settings()
+        
+    def update_google_sheets_tabs(self):
+        """Update Google Sheets tabs based on current configuration."""
+        # Remove all existing Google Sheets tabs
+        for i in range(self.notebook.GetPageCount() - 1, 0, -1):  # Skip the first tab (Main Log)
+            self.notebook.DeletePage(i)
+        
+        # Only add Google Sheets tabs if the webhook URL is valid
+        if self.google_sheets_webhook and self.googlesheet_check.IsChecked():
+            self.add_tab(self.google_sheets_webhook, "Stats")
+            self.add_tab(self.google_sheets_webhook, "SC Default", 
+                        params={"sheet": "SC_Default", "username": lambda self: self.event_handler.username})
+            self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", 
+                        params={"sheet": "EA_SquadronBattle", "username": lambda self: self.event_handler.username})        
     def on_refresh_sheets(self, event=None):
         """Refresh the Google Sheets data and update the grid."""
         def fetch_and_update():
