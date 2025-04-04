@@ -175,12 +175,16 @@ class LogAnalyzerFrame(wx.Frame):
         # Create taskbar icon
         self.taskbar_icon = TaskBarIcon(self)
 
-        # Check if the app is started with Windows
+        # Check if the app is started with the --start-hidden flag
         if STARTUP_COMMAND_FLAG in sys.argv:
-            self.Hide()
+            self.Hide()  # Hide the main window at startup
+
         # Start monitoring by default when GUI is launched
         wx.CallAfter(self.start_monitoring)
         wx.CallAfter(self.update_monitoring_buttons, True)
+
+        # Check for updates at app initialization
+        wx.CallAfter(self.check_for_updates)
 
         self.save_timer = wx.Timer(self)  # Timer to delay saving window info
         self.Bind(wx.EVT_TIMER, self.on_save_timer, self.save_timer)
