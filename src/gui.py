@@ -12,7 +12,7 @@ import winreg  # Import for Windows registry manipulation
 import wx.grid  # Import wx.grid for displaying tabular data
 import requests  # For HTTP requests
 from config_utils import emit_default_config, get_application_path, renew_config  # Import renew_config
-from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper  # Import reusable components
+from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper, NumericValidator  # Import reusable components
 from PIL import Image
 import mss
 from pyzbar.pyzbar import decode
@@ -160,9 +160,7 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Only add Google Sheets tabs if the webhook URL is valid
         if self.google_sheets_webhook:
-            self.add_tab(self.google_sheets_webhook, "Stats")
-            self.add_tab(self.google_sheets_webhook, "SC Default", params={"sheet": "SC_Default", "username": lambda self: self.event_handler.username})
-            self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", params={"sheet": "EA_SquadronBattle", "username": lambda self: self.event_handler.username})
+            self.update_google_sheets_tabs()
 
         # Set up stdout redirection
         sys.stdout = RedirectText(self.log_text)
@@ -186,7 +184,8 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Bind close event to save window position
         self.Bind(wx.EVT_CLOSE, self.on_close)
-        wx.CallAfter(self.update_dynamic_labels)  # Update labels dynamically
+        wx.CallAfter(self.update_dynamic_labels) 
+
 
     def _add_tab(self, notebook, tab_title, url, params=None):
         """
@@ -233,6 +232,106 @@ class LogAnalyzerFrame(wx.Frame):
         refresh_button.Bind(wx.EVT_BUTTON, self.on_refresh_tab)
 
         return grid  # Return the grid for further updates
+
+    def add_tab(self, url, tab_title, params=None, top_panel=None):
+        """
+        Add a new tab to the notebook with a grid and optional top panel.
+
+        Args:
+            url (str): The URL to fetch JSON data from.
+            tab_title (str): The title of the new tab.
+            params (dict, optional): A dictionary of parameters to pass to the request.
+            top_panel (wx.Panel, optional): A panel to place above the grid (e.g., a form).
+        """
+        # Use _add_tab to create the base tab with a grid and refresh button
+        grid = self._add_tab(self.notebook, tab_title, url, params)
+
+        if grid and top_panel:
+            # Add the top panel to the tab's sizer
+            parent_panel = grid.GetParent()
+            parent_sizer = parent_panel.GetSizer()
+            parent_sizer.Insert(0, top_panel, 0, wx.EXPAND | wx.ALL, 5)
+            parent_panel.Layout()
+
+        # Trigger initial refresh if the grid was created
+        if grid:
+            self.execute_refresh_event(grid)
+
+        return grid
+
+    def execute_refresh_event(self, grid):
+        refresh_button = grid.GetParent().FindWindowByLabel("Refresh")
+        event = wx.CommandEvent(wx.wxEVT_BUTTON)
+        event.SetEventObject(refresh_button)
+        self.on_refresh_tab(event)
+
+    def add_form_tab(self, url, tab_title, form_fields={}, params=None):
+        """
+        Add a new tab with a form at the top and a grid at the bottom.
+
+        Args:
+            url (str): The URL to fetch data for the grid.
+            tab_title (str): The title of the new tab.
+            form_fields (dict): A dictionary where keys are field names and values are input types.
+            params (dict, optional): Parameters to pass to the request.
+        """
+        # Create the base tab first
+        grid = self._add_tab(self.notebook, tab_title, url, params)
+
+        if grid:
+            # Use the grid's parent as the correct parent for the form panel
+            parent_panel = grid.GetParent()
+            form_panel = wx.Panel(parent_panel)  # Correct parent assignment
+
+            form_sizer = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
+            form_sizer.AddGrowableCol(1, 1)
+
+            form_controls = {}
+
+            for field_name, field_type in form_fields.items():
+                label = wx.StaticText(form_panel, label=field_name)
+                if field_type == 'text':
+                    control = wx.TextCtrl(form_panel)
+                elif field_type == 'dropdown':
+                    control = wx.Choice(form_panel, choices=form_fields.get('choices', []))
+                elif field_type == 'check':
+                    control = wx.CheckBox(form_panel)
+                elif field_type == 'number':
+                    control = wx.TextCtrl(form_panel)
+                    control.SetValidator(NumericValidator(allow_float=True))
+                    control.field_type = 'number'  # Store field type for validation
+                else:
+                    raise ValueError(f"Unsupported field type: {field_type}")
+                form_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+                form_sizer.Add(control, 1, wx.EXPAND)
+                form_controls[field_name] = control
+
+            # Add the submit button aligned to the right
+            submit_button = wx.Button(form_panel, label="Submit")
+            button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+            button_sizer.AddStretchSpacer()
+            button_sizer.Add(submit_button, 0, wx.ALL, 5)
+
+            # Wrap the form and button sizer in a vertical sizer
+            vertical_sizer = wx.BoxSizer(wx.VERTICAL)
+            vertical_sizer.Add(form_sizer, 0, wx.EXPAND | wx.ALL, 5)
+            vertical_sizer.Add(button_sizer, 0, wx.EXPAND)
+
+            # Set the maximum width of the form to half of the parent
+            max_width = parent_panel.GetSize().GetWidth() // 2
+            form_panel.SetMaxSize(wx.Size(max_width, -1))
+
+            form_panel.SetSizer(vertical_sizer)
+
+            # Add the form panel to the tab's sizer
+            parent_sizer = parent_panel.GetSizer()
+            parent_sizer.Insert(0, form_panel, 0, wx.EXPAND | wx.ALL, 5)
+            parent_panel.Layout()
+
+            # Bind the submit button
+            submit_button.Bind(wx.EVT_BUTTON, lambda event: self.on_form_submit(event, url, grid, form_controls, params.get("sheet", "")))
+
+        return grid
 
     def on_refresh_tab(self, event):
         """
@@ -287,32 +386,6 @@ class LogAnalyzerFrame(wx.Frame):
             grid.Enable(False)
         else:
             grid.Enable(True)
-
-    def add_tab(self, url, tab_title, params=None):
-        """
-        Add a new tab to the notebook with a grid displaying JSON data from the given URL.
-        
-        Args:
-            url (str): The URL to fetch JSON data from.
-            tab_title (str): The title of the new tab.
-            params (dict, optional): A dictionary of parameters to pass to the request.
-        """
-        if not url:
-            wx.MessageBox(f"Cannot create tab '{tab_title}': URL is not configured.", 
-                        "Error", wx.OK | wx.ICON_ERROR)
-            return None
-
-        # Create the tab with the URL and params
-        grid = self._add_tab(self.notebook, tab_title, url, params)
-
-        if grid:
-            # Trigger initial refresh
-            refresh_button = grid.GetParent().FindWindowByLabel("Refresh")
-            event = wx.CommandEvent(wx.wxEVT_BUTTON)
-            event.SetEventObject(refresh_button)
-            self.on_refresh_tab(event)
-        
-        return grid
 
     def fetch_and_update(self, url, params, target_grid):
         """
@@ -748,10 +821,12 @@ class LogAnalyzerFrame(wx.Frame):
         # Only add Google Sheets tabs if the webhook URL is valid
         if self.google_sheets_webhook and self.googlesheet_check.IsChecked():
             self.add_tab(self.google_sheets_webhook, "Stats")
-            self.add_tab(self.google_sheets_webhook, "SC Default", 
-                        params={"sheet": "SC_Default", "username": lambda self: self.event_handler.username})
-            self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", 
-                        params={"sheet": "EA_SquadronBattle", "username": lambda self: self.event_handler.username})        
+            self.add_tab(self.google_sheets_webhook, "SC Default", params={"sheet": "SC_Default", "username": lambda self: self.event_handler.username})
+            self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", params={"sheet": "EA_SquadronBattle", "username": lambda self: self.event_handler.username})
+            self.add_form_tab(self.google_sheets_webhook, "Materials",
+                                params={"sheet": "Materials", "username": lambda self: self.event_handler.username},
+                                form_fields={"Material": "text", "Qty": "number", "committed": "check"}) # Update labels dynamically
+
     def on_refresh_sheets(self, event=None):
         """Refresh the Google Sheets data and update the grid."""
         def fetch_and_update():
@@ -833,6 +908,56 @@ class LogAnalyzerFrame(wx.Frame):
         # Auto-size columns only if there are valid rows and columns
         if grid.GetNumberCols() > 0 and grid.GetNumberRows() > 0:
             grid.AutoSizeColumns()
+
+    def on_form_submit(self, event, url, grid, form_controls, sheet):
+        """
+        Handle form submission.
+
+        Args:
+            event (wx.Event): The event object.
+            url (str): The URL to send the form data to.
+            grid (wx.grid.Grid): The grid to update after submission.
+        """
+        try:
+            # Collect form data
+            form_data = {}
+            for field, control in form_controls.items():
+                # Check numeric fields specifically
+                if hasattr(control, 'field_type') and control.field_type == 'number':
+                    try:
+                        # Convert to appropriate numeric type before adding to form_data
+                        value = control.GetValue()
+                        if '.' in value:
+                            form_data[field] = float(value)
+                        else:
+                            form_data[field] = int(value) if value else 0
+                    except ValueError:
+                        wx.MessageBox(f"'{field}' must be a valid number.", "Validation Error", wx.OK | wx.ICON_ERROR)
+                        return
+                else:
+                    form_data[field] = control.GetValue()
+            form_data["sheet"] = sheet  # Add the sheet name to the form data
+            # Use log_analyzer's update_google_sheets method to send data
+            success = self.event_handler.update_google_sheets(form_data, sheet)
+            if success:
+                wx.MessageBox("Form submitted successfully.", "Success", wx.OK | wx.ICON_INFORMATION)
+                # Clear all form fields after successful submission
+                for field, control in form_controls.items():
+                    if hasattr(control, 'field_type') and control.field_type == 'number':
+                        control.SetValue("")
+                    elif isinstance(control, wx.CheckBox):
+                        control.SetValue(False)
+                    elif isinstance(control, wx.Choice):
+                        if control.GetCount() > 0:
+                            control.SetSelection(0)
+                    else:
+                        control.SetValue("")
+                # Optionally refresh the grid
+                self.execute_refresh_event(grid)
+            else:
+                wx.MessageBox("Failed to submit form. Please check the logs for details.", "Error", wx.OK | wx.ICON_ERROR)
+        except Exception as e:
+            wx.MessageBox(f"Error submitting form: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
     def on_close(self, event):
         """Handle window close event."""
