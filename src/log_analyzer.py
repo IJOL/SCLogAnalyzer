@@ -147,7 +147,9 @@ class LogFileHandler(FileSystemEventHandler):
             "mode": self.current_mode or "None",
             "shard": self.current_shard or "Unknown",
             "username": self.username or "Unknown",
-            "version": self.current_version or "Unknown"
+            "version": self.current_version or "Unknown",
+            "script_version": self.script_version or "Unknown",
+            "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),            
         }
 
     def stop(self):
@@ -279,11 +281,12 @@ class LogFileHandler(FileSystemEventHandler):
             event_type (str): The type of event triggering the update.
         """
         if not self.use_googlesheet:
-            return
+            return False
 
         # Add state data to the payload
         data_with_state = self.add_state_data(data)
         self.google_sheets_queue.put((data_with_state, event_type))
+        return True
 
     def on_modified(self, event):
         if event.src_path.lower() == self.log_file_path.lower():
