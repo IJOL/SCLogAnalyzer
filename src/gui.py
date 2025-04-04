@@ -16,6 +16,11 @@ from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, 
 from PIL import Image
 import mss
 from pyzbar.pyzbar import decode
+import shutil  # For file operations
+import tempfile  # For temporary directories
+import subprocess
+
+from version import get_version  # For restarting the app
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -27,6 +32,8 @@ DEFAULT_WINDOW_POSITION = (50, 50)
 DEFAULT_WINDOW_SIZE = (800, 600)
 LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
 TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
+GITHUB_API_URL = "https://api.github.com/repos/IJOL/SCLogAnalyzer/releases"
+APP_EXECUTABLE = "SCLogAnalyzer.exe"  # Replace with your app's executable name
 
 class LogAnalyzerFrame(wx.Frame):
     def __init__(self):
@@ -186,6 +193,78 @@ class LogAnalyzerFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.on_close)
         wx.CallAfter(self.update_dynamic_labels) 
 
+    def check_for_updates(self):
+        """Check for updates by querying the GitHub API."""
+        try:
+            response = requests.get(GITHUB_API_URL)
+            if response.status_code != 200:
+                wx.MessageBox("Failed to check for updates.", "Error", wx.OK | wx.ICON_ERROR)
+                return
+
+            releases = response.json()
+            if not isinstance(releases, list) or not releases:
+                wx.MessageBox("No releases found.", "Error", wx.OK | wx.ICON_ERROR)
+                return
+
+            # Find the latest release named SCLogAnalyzer
+            latest_release = max(
+                (release for release in releases if release.get("name").startswith("SCLogAnalyzer")),
+                key=lambda r: r.get("published_at", ""),
+                default=None
+            )
+
+            if not latest_release:
+                wx.MessageBox("No valid release named 'SCLogAnalyzer' found.", "Error", wx.OK | wx.ICON_ERROR)
+                return
+
+            latest_version = latest_release.get("tag_name", "").split('-')[0].lstrip('v')
+            download_url = latest_release.get("assets", [{}])[0].get("browser_download_url")
+
+            if not latest_version or not download_url:
+                wx.MessageBox("Invalid release information.", "Error", wx.OK | wx.ICON_ERROR)
+                return
+
+            current_version = get_version().split('-')[0].lstrip('v')  # Remove 'v' prefix and extract version
+
+            # Compare versions numerically
+            def version_to_tuple(version):
+                return tuple(map(int, version.split('.')))
+
+            if version_to_tuple(latest_version) > version_to_tuple(current_version):
+                if wx.MessageBox(f"A new version ({latest_version}) is available. Do you want to update?",
+                                 "Update Available", wx.YES_NO | wx.ICON_QUESTION) == wx.YES:
+                    self.download_and_update(download_url)
+            else:
+                wx.MessageBox("You are already using the latest version.", "No Updates", wx.OK | wx.ICON_INFORMATION)
+        except Exception as e:
+            wx.MessageBox(f"Error checking for updates: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
+    def download_and_update(self, download_url):
+        """Download the update and replace the running application."""
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_file = os.path.join(temp_dir, "update.zip")
+                with requests.get(download_url, stream=True) as response:
+                    response.raise_for_status()
+                    with open(temp_file, "wb") as f:
+                        shutil.copyfileobj(response.raw, f)
+    
+                # Extract the update
+                update_dir = os.path.join(temp_dir, "update")
+                shutil.unpack_archive(temp_file, update_dir)
+    
+                # Move the updater script to a persistent location
+                updated_exe = os.path.join(update_dir, APP_EXECUTABLE)
+                persistent_updater_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "updater.py")
+                shutil.copyfile(updated_exe, persistent_updater_script)
+    
+            # Launch the updater script
+            subprocess.Popen([persistent_updater_script, os.path.dirname(os.path.abspath(sys.argv[0])), APP_EXECUTABLE])
+            # Exit the current application
+            self.Close()
+            sys.exit(0)
+        except Exception as e:
+            wx.MessageBox(f"Error downloading or applying the update: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
     def _add_tab(self, notebook, tab_title, url, params=None):
         """
@@ -477,7 +556,8 @@ class LogAnalyzerFrame(wx.Frame):
     def on_about(self, event):
         """Show the About dialog."""
         from gui_module import AboutDialog  # Import AboutDialog from gui_module
-        AboutDialog(self).ShowModal()
+        dialog = AboutDialog(self, update_callback=self.check_for_updates)
+        dialog.ShowModal()
 
     def update_monitoring_buttons(self, started):
         """
@@ -1030,11 +1110,54 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         if self.frame:
             wx.CallAfter(self.frame.Close)
 
+def cleanup_updater_script():
+    updater_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "updater.py")
+    if os.path.exists(updater_script):
+        try:
+            os.remove(updater_script)
+            print("Cleaned up updater.py.")
+        except Exception as e:
+            print(f"Failed to clean up updater.py: {e}")
+
 def main():
+    if os.path.basename(sys.argv[0]) == "updater.py":
+        update_application()    
+    else:
+        cleanup_updater_script()
     app = wx.App()
     frame = LogAnalyzerFrame()
     frame.Show()
     app.MainLoop()
+
+def update_application():
+
+    if len(sys.argv) < 3:
+        print("Usage: updater.py <target_dir> <app_executable>")
+        sys.exit(1)
+
+    target_dir = sys.argv[1]
+    app_executable = sys.argv[2]
+
+    # Wait for the main application to exit
+    time.sleep(5)
+
+    # Replace the original executable with the updated one
+    src_file = os.path.abspath(sys.argv[0])  # This script itself
+    dest_file = os.path.join(target_dir, app_executable)
+
+    try:
+        shutil.move(src_file, dest_file)
+        print(f"Replaced {dest_file} successfully.")
+    except Exception as e:
+        print(f"Failed to replace {dest_file}: {e}")
+        sys.exit(1)
+
+    # Restart the application
+    try:
+        os.execv(dest_file, [dest_file])
+    except Exception as e:
+        print(f"Failed to restart the application: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

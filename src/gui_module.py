@@ -284,7 +284,7 @@ class ProcessDialog(wx.Dialog):
 
 class AboutDialog(wx.Dialog):
     """A styled About dialog."""
-    def __init__(self, parent):
+    def __init__(self, parent, update_callback=None):
         super().__init__(parent, title="About SC Log Analyzer", size=(400, 300))
 
         panel = wx.Panel(self)
@@ -308,6 +308,12 @@ class AboutDialog(wx.Dialog):
         credits = wx.StaticText(panel, label="Developed by IJOL.")
         credits.Wrap(350)
         sizer.Add(credits, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+
+        # Add Check for Updates button
+        self.update_button = wx.Button(panel, label="Check for Updates")
+        if update_callback:
+            self.update_button.Bind(wx.EVT_BUTTON, lambda event: update_callback())
+        sizer.Add(self.update_button, 0, wx.ALL | wx.ALIGN_CENTER, 10)
 
         # Add close button
         close_button = wx.Button(panel, label="Close")
