@@ -144,7 +144,7 @@ class LogFileHandler(FileSystemEventHandler):
         """
         return {
             **data,
-            "current_mode": self.current_mode or "None",
+            "mode": self.current_mode or "None",
             "shard": self.current_shard or "Unknown",
             "username": self.username or "Unknown",
             "version": self.current_version or "Unknown"
@@ -530,12 +530,9 @@ class LogFileHandler(FileSystemEventHandler):
                 self.on_mode_change.emit(new_mode, old_mode)
 
                 # Format the mode data for output
-                mode_data['mode'] = new_mode
-                mode_data['username'] = self.username  # Include username in event data
                 mode_data['status'] = 'entered'
                 mode_data['old_mode'] = old_mode or 'None'
-                mode_data['shard'] = self.current_shard or 'Unknown'  # Use instance attribute
-                mode_data['version'] = self.current_version or 'Unknown'  # Use instance attribute
+                mode_data=self.add_state_data(mode_data)  # Add state data to the mode data
 
                 # Emit the event to notify subscribers
                 self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username)
@@ -562,11 +559,8 @@ class LogFileHandler(FileSystemEventHandler):
                 self.on_mode_change.emit(None, self.current_mode)
 
                 # Format the mode data for output
-                mode_data['mode'] = self.current_mode
-                mode_data['username'] = self.username  # Use instance attribute
                 mode_data['status'] = 'exited'
-                mode_data['shard'] = self.current_shard or 'Unknown'  # Use instance attribute
-                mode_data['version'] = self.current_version or 'Unknown'  # Use instance attribute
+                mode_data=self.add_state_data(mode_data)  # Add state data to the mode data
 
                 # Output message
                 output_message(timestamp, f"Exited mode: '{self.current_mode}'")
@@ -590,14 +584,10 @@ class LogFileHandler(FileSystemEventHandler):
             # Create mode data for the message
             mode_data = {
                 'timestamp': timestamp,
-                'mode': self.current_mode,
-                'username': self.username,  # Use instance attribute
                 'status': 'exited',
                 'reason': 'Channel Disconnected',
-                'shard': self.current_shard or 'Unknown',  # Use instance attribute
-                'version': self.current_version or 'Unknown'  # Use instance attribute
             }
-
+            mode_data = self.add_state_data(mode_data)  # Add state data to the mode data
             # Output message
             output_message(timestamp, f"Exited mode: '{self.current_mode}'")
 
