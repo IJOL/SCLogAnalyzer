@@ -396,3 +396,55 @@ class WindowsHelper:
                 time.sleep(0.05)
         except Exception as e:
             raise RuntimeError(f"Error sending keystrokes to window: {e}")
+
+class NumericValidator(wx.Validator):
+    """Custom numeric validator for text controls."""
+    def __init__(self, allow_float=True):
+        wx.Validator.__init__(self)
+        self.allow_float = allow_float
+        self.Bind(wx.EVT_CHAR, self.on_char)
+
+    def Clone(self):
+        return NumericValidator(self.allow_float)
+
+    def Validate(self, win):
+        text_ctrl = self.GetWindow()
+        text = text_ctrl.GetValue()
+        if not text:
+            return True  # Empty is valid
+        try:
+            if self.allow_float:
+                float(text)
+            else:
+                int(text)
+            return True
+        except ValueError:
+            return False
+
+    def on_char(self, event):
+        key = event.GetKeyCode()
+        text_ctrl = self.GetWindow()
+        current_text = text_ctrl.GetValue()
+
+        # Allow control keys (backspace, delete, arrow keys, etc.)
+        if key < wx.WXK_SPACE or key == wx.WXK_DELETE or key > 255:
+            event.Skip()
+            return
+
+        # Allow digits
+        if chr(key).isdigit():
+            event.Skip()
+            return
+
+        # Allow decimal point if float is allowed and not already in the text
+        if self.allow_float and chr(key) == '.' and '.' not in current_text:
+            event.Skip()
+            return
+
+        # Allow minus sign as first character if not already present
+        if chr(key) == '-' and current_text == '':
+            event.Skip()
+            return
+
+        # Block all other characters
+        return
