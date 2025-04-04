@@ -12,6 +12,8 @@ import win32process  # Required for process-related functions
 import win32api  # Required for sending keystrokes
 import psutil  # Required for process management
 from version import get_version  # Import get_version to fetch the version dynamically
+import winreg
+STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 class RedirectText:
     """Class to redirect stdout to a text control."""
@@ -120,6 +122,8 @@ class ConfigDialog(wx.Frame):
         super().__init__(parent, title="Edit Configuration", size=(600, 400))
         self.config_path = config_path
         self.config_data = {}
+        self.app_name = "SCLogAnalyzer"
+        self.app_path = f'"{os.path.join(get_application_path(), "SCLogAnalyzer.exe")}" --start-hidden'
 
         # Load the configuration file
         self.load_config()
@@ -141,10 +145,13 @@ class ConfigDialog(wx.Frame):
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
-        # Add Accept, Save, and Cancel buttons
+        # Add Accept, Save, Cancel, and Startup buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         accept_button = wx.Button(self, label="Accept")
         cancel_button = wx.Button(self, label="Cancel")
+        self.startup_button = wx.Button(self, label="")
+        self.update_startup_button_label()
+        button_sizer.Add(self.startup_button, 0, wx.ALL, 5)
         button_sizer.Add(accept_button, 0, wx.ALL, 5)
         button_sizer.Add(cancel_button, 0, wx.ALL, 5)
         main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER, 10)
@@ -154,6 +161,24 @@ class ConfigDialog(wx.Frame):
         # Bind events
         accept_button.Bind(wx.EVT_BUTTON, self.on_accept)
         cancel_button.Bind(wx.EVT_BUTTON, self.on_close)
+        self.startup_button.Bind(wx.EVT_BUTTON, self.on_toggle_startup)
+
+    def update_startup_button_label(self):
+        """Update the startup button label based on the current startup status."""
+        if is_app_in_startup(self.app_name):
+            self.startup_button.SetLabel("Remove from Windows Startup")
+        else:
+            self.startup_button.SetLabel("Add to Windows Startup")
+
+    def on_toggle_startup(self, event):
+        """Toggle adding/removing the app from Windows startup."""
+        if is_app_in_startup(self.app_name):
+            remove_app_from_startup(self.app_name)
+            wx.MessageBox(f"{self.app_name} removed from Windows startup.", "Info", wx.OK | wx.ICON_INFORMATION)
+        else:
+            add_app_to_startup(self.app_name, self.app_path)
+            wx.MessageBox(f"{self.app_name} added to Windows startup with '--start-hidden' parameter.", "Info", wx.OK | wx.ICON_INFORMATION)
+        self.update_startup_button_label()
 
     def add_tab(self, notebook, title, config_key, key_choices=None):
         """Helper method to add a tab with a KeyValueGrid."""
@@ -454,3 +479,36 @@ class NumericValidator(wx.Validator):
 
         # Block all other characters
         return
+
+def is_app_in_startup(app_name):
+    """Check if the app is set to run at Windows startup."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_READ) as key:
+            try:
+                value = winreg.QueryValueEx(key, app_name)
+                return True
+            except FileNotFoundError:
+                return False
+    except Exception as e:
+        print(f"Error checking startup registry key: {e}")
+        return False
+
+def add_app_to_startup(app_name, app_path):
+    """Add the app to Windows startup."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_WRITE) as key:
+            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, app_path)
+            print(f"{app_name} added to Windows startup.")
+    except Exception as e:
+        print(f"Error adding app to startup: {e}")
+
+def remove_app_from_startup(app_name):
+    """Remove the app from Windows startup."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_WRITE) as key:
+            winreg.DeleteValue(key, app_name)
+            print(f"{app_name} removed from Windows startup.")
+    except FileNotFoundError:
+        print(f"{app_name} is not in Windows startup.")
+    except Exception as e:
+        print(f"Error removing app from startup: {e}")
