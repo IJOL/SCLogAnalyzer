@@ -79,9 +79,9 @@ class LogFileHandler(FileSystemEventHandler):
         self.on_shard_version_update = Event()  # Event for shard and version updates
         self.on_mode_change = Event()  # Event for mode changes
         # Handle subscriptions passed via kwargs
-        if 'on_shard_version_update' in kwargs:
+        if 'on_shard_version_update' in kwargs and callable(kwargs['on_shard_version_update']):
             self.on_shard_version_update.subscribe(kwargs['on_shard_version_update'])
-        if 'on_mode_change' in kwargs:
+        if 'on_mode_change' in kwargs and callable(kwargs['on_mode_change']):
             self.on_mode_change.subscribe(kwargs['on_mode_change'])
         self.username = config.get('username', 'Unknown')  # Username as an instance attribute
         self.current_shard = None  # Initialize shard information
@@ -132,8 +132,24 @@ class LogFileHandler(FileSystemEventHandler):
             self.last_position = self._get_file_end_position()
             output_message(None, f"Skipping to the end of log file (position {self.last_position})")
 
+    def add_state_data(self, data):
+        """
+        Add state data (current_mode, shard, username, version) as first-level keys to the given data.
 
-  
+        Args:
+            data (dict): The data to which state information will be added.
+
+        Returns:
+            dict: The updated data with state information.
+        """
+        return {
+            **data,
+            "current_mode": self.current_mode or "None",
+            "shard": self.current_shard or "Unknown",
+            "username": self.username or "Unknown",
+            "version": self.current_version or "Unknown"
+        }
+
     def stop(self):
         """Stop the handler and cleanup threads"""
         self.stop_event.set()
@@ -220,13 +236,13 @@ class LogFileHandler(FileSystemEventHandler):
                 try:
                     # Get queue items with timeout to check stop_event regularly
                     data, event_type = self.google_sheets_queue.get(timeout=1)
-                    queue_data.append({'data': data, 'sheet': self.current_mode or 'None'})  # Use current_mode as sheet
+                    queue_data.append({'data': data, 'sheet': data.get('sheet',self.current_mode or 'None')})  # Use current_mode as sheet
                     self.google_sheets_queue.task_done()
                     
                     # Get any additional items that might be in the queue
                     while not self.google_sheets_queue.empty():
                         data, event_type = self.google_sheets_queue.get_nowait()
-                        queue_data.append({'data': data, 'sheet': self.current_mode or 'None'})  # Use current_mode as sheet
+                        queue_data.append({'data': data, 'sheet': data.get('sheet',self.current_mode or 'None')})  # Use current_mode as sheet
                         self.google_sheets_queue.task_done()
                 except queue.Empty:
                     # No items in queue, just continue loop
@@ -255,10 +271,19 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, f"Exception sending data to Google Sheets: {e}")
 
     def update_google_sheets(self, data, event_type):
-        """Add data to Google Sheets queue"""
+        """
+        Add data to Google Sheets queue, including state information.
+
+        Args:
+            data (dict): The data to send.
+            event_type (str): The type of event triggering the update.
+        """
         if not self.use_googlesheet:
             return
-        self.google_sheets_queue.put((data, event_type))
+
+        # Add state data to the payload
+        data_with_state = self.add_state_data(data)
+        self.google_sheets_queue.put((data_with_state, event_type))
 
     def on_modified(self, event):
         if event.src_path.lower() == self.log_file_path.lower():
@@ -603,13 +628,15 @@ class LogFileHandler(FileSystemEventHandler):
 
     def detect_and_emit_generic(self, entry, pattern_name, send_message=True):
         """
-        Generic detection and message emission for any configured pattern
+        Generic detection and message emission for any configured pattern.
+
         Args:
-            entry: Log entry to analyze
-            pattern_name: Name of the pattern in regex_patterns config
-            send_message: Whether to send the message or not
+            entry: Log entry to analyze.
+            pattern_name: Name of the pattern in regex_patterns config.
+            send_message: Whether to send the message or not.
+
         Returns:
-            Tuple of (bool, dict) - Success flag and matched data
+            Tuple of (bool, dict) - Success flag and matched data.
         """
         if pattern_name not in self.regex_patterns:
             output_message(None, f"Pattern {pattern_name} not found in configuration")
@@ -623,14 +650,8 @@ class LogFileHandler(FileSystemEventHandler):
             timestamp = data.get('timestamp')
             data['username'] = self.username  # Use instance attribute
 
-            # Add current mode to data if active
-            if self.current_mode:
-                data['mode'] = self.current_mode
-            else:
-                data['mode'] = 'None'
-
-            data['shard'] = self.current_shard or 'Unknown'  # Use instance attribute
-            data['version'] = self.current_version or 'Unknown'  # Use instance attribute
+            # Add state data to the detected data
+            data = self.add_state_data(data)
 
             output_message_format = self.messages.get(pattern_name)
             if not output_message_format is None:
