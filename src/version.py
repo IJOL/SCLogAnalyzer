@@ -1,10 +1,10 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 4
-RELEASE = 1
+MINOR = 5
+RELEASE = 0
 MATURITY = "alpha"  # "alpha", "beta", or "final"
-PATCH = "54a8a49"
+PATCH = "95d1913"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
