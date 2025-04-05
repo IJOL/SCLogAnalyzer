@@ -14,7 +14,7 @@
         "connected" : "<(?P<timestamp>[^>]+)> \\[CSessionManager::OnClientConnected\\] (?P<message>Connected!)",
         "quantum_jump" : "<(?P<timestamp>[^>]+)> -- Entity Trying To QT: (?P<player>.+)",
         "vehicle_destruction": "<(?P<timestamp>.*?)> \\[Notice\\] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle '(?P<vehicle>.*?)' \\[(?P<vehicle_id>\\d+)\\] in zone '(?P<zone>.*?)' \\[pos x: (?P<pos_x>[\\d\\.-]+), y: (?P<pos_y>[\\d\\.-]+), z: (?P<pos_z>[\\d\\.-]+) vel x: (?P<vel_x>[\\d\\.-]+), y: (?P<vel_y>[\\d\\.-]+), z: (?P<vel_z>[\\d\\.-]+)] driven by '(?P<driver>.*?)' \\[(?P<driver_id>\\d+)\\] advanced from destroy level (?P<destroy_level_from>\\d+) to (?P<destroy_level_to>\\d+) caused by '(?P<cause>.*?)' \\[(?P<cause_id>\\d+)\\] with '(?P<damage_type>.*?)' \\[Team_(?P<team>.*?)\\]\\[Vehicle\\]",
-        "connection_flow": "<(?P<timestamp>.*?)> \\[Notice\\] <Connection Flow> CSCCommsComponent::DoEstablishCommunicationCommon: Update bubble created for communication connection '(?P<connection_id>\\d+)' on channel '(?P<channel>\\d+)' for (?P<entity>.*?) \\[(?P<entity_id>\\d+)\\] to track their communication partner (?P<partner>(?!(ATC_|AImodule_)).*?) \\[(?P<partner_id>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Comms\\]"
+        "connection_flow": "<(?P<timestamp>.*?)> \\[Notice\\] <Connection Flow> CSCCommsComponent::DoEstablishCommunicationCommon: Update bubble created for communication connection '(?P<connection_id>\\d+)' on channel '(?P<channel>\\d+)' for (?P<entity>.*?) \\[(?P<entity_id>\\d+)\\] to track their communication partner (?P<partner>(?!(ATC_|AImodule_|Unavailable)).*?) \\[(?P<partner_id>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Comms\\]"
     },
     "important_players": [],
     "messages": {
