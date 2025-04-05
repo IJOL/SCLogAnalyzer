@@ -122,9 +122,9 @@ def add_text_to_icon(icon_path, output_path, text, text_color):
         for i, img in enumerate(images):
             draw = ImageDraw.Draw(img)
             
-            # Choose font size based on image size
+            # Choose font size based on image size - using smaller ratio for better fit
             size = min(img.width, img.height)
-            font_size = max(10, size // 4)  # Adjust font size for readability
+            font_size = max(8, size // 5)  # Smaller ratio to ensure text fits better
             
             try:
                 font = ImageFont.truetype("arial.ttf", font_size)
@@ -136,12 +136,21 @@ def add_text_to_icon(icon_path, output_path, text, text_color):
             text_width = right - left
             text_height = bottom - top
             
-            # Position text in center
-            position = ((img.width - text_width) // 2, (img.height - text_height) // 2 - top)
+            # Adjust position to ensure text is properly centered
+            # For small sizes, we might need additional adjustments
+            position_x = (img.width - text_width) // 2
+            position_y = (img.height - text_height) // 2 - (top // 2)  # Adjusted vertical alignment
+            
+            # For very small icons, move text up slightly to be more visible
+            if size <= 32:
+                position_y = max(1, position_y - 1)
             
             # Draw the text with a slight shadow for better visibility
-            draw.text((position[0]+1, position[1]+1), text, fill=(0, 0, 0, 180), font=font)
-            draw.text(position, text, fill=text_color, font=font)
+            # For small icons, we might skip the shadow to avoid blurriness
+            if size > 32:
+                draw.text((position_x+1, position_y+1), text, fill=(0, 0, 0, 180), font=font)
+            
+            draw.text((position_x, position_y), text, fill=text_color, font=font)
         
         # Save as .ico file with all the sizes
         images[0].save(
