@@ -61,18 +61,62 @@ def add_text_to_icon(icon_path, output_path, text, text_color):
         icon = Image.open(icon_path)
         
         # Convert icon to a list of images (in case it contains multiple sizes)
+        icon_images = []
         if hasattr(icon, 'n_frames') and icon.n_frames > 1:
-            images = []
             for i in range(icon.n_frames):
                 icon.seek(i)
                 img = icon.copy()
                 if img.mode != 'RGBA':
                     img = img.convert('RGBA')
-                images.append(img)
+                icon_images.append(img)
         else:
             if icon.mode != 'RGBA':
                 icon = icon.convert('RGBA')
-            images = [icon]
+            icon_images = [icon]
+        
+        # Standard sizes we want in our final icon
+        standard_sizes = [16, 32, 48, 64, 128, 256]
+        
+        # Check existing sizes and identify missing ones
+        existing_sizes = [(img.width, img.height) for img in icon_images]
+        print(f"Extracted icon sizes: {existing_sizes}")
+        
+        # Final images list with all required sizes
+        images = []
+        
+        # Process each standard size
+        for size in standard_sizes:
+            # Check if this size already exists
+            existing_img = None
+            for img in icon_images:
+                if img.width == size and img.height == size:
+                    existing_img = img
+                    break
+            
+            # If size doesn't exist, create it by resizing the closest larger image
+            if existing_img is None:
+                # Find the closest larger image to resize from
+                source_img = None
+                for img in sorted(icon_images, key=lambda x: x.width):
+                    if img.width >= size:
+                        source_img = img
+                        break
+                
+                # If no larger image, use the largest available
+                if source_img is None and icon_images:
+                    source_img = max(icon_images, key=lambda x: x.width)
+                
+                # Resize the source image to create the missing size
+                if source_img:
+                    existing_img = source_img.resize((size, size), Image.Resampling.LANCZOS)
+                    print(f"Created missing size: {size}x{size}")
+                else:
+                    # Fallback: create a new blank image
+                    existing_img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+                    print(f"Created blank image for size: {size}x{size}")
+            
+            # Add to our final list
+            images.append(existing_img)
         
         # Add text to each image
         for i, img in enumerate(images):
@@ -98,10 +142,8 @@ def add_text_to_icon(icon_path, output_path, text, text_color):
             # Draw the text with a slight shadow for better visibility
             draw.text((position[0]+1, position[1]+1), text, fill=(0, 0, 0, 180), font=font)
             draw.text(position, text, fill=text_color, font=font)
-            
-            images[i] = img
         
-        # Save as .ico file
+        # Save as .ico file with all the sizes
         images[0].save(
             output_path,
             format='ICO',
