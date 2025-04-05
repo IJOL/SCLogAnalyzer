@@ -33,6 +33,92 @@ except ImportError:
     def get_version():
         return "unknown"
 
+class MessageRateLimiter:
+    """Class to handle rate limiting of repeated messages."""
+    def __init__(self, timeout=20, max_duplicates=4, cleanup_interval=60):
+        """
+        Initialize the rate limiter.
+        
+        Args:
+            timeout: Time in seconds before allowing the same message again
+            max_duplicates: Maximum number of duplicate messages allowed within timeout period
+            cleanup_interval: Time in seconds to keep stale messages before cleanup
+        """
+        self.messages = {}  # {message_hash: (timestamp, count)}
+        self.timeout = timeout
+        self.max_duplicates = max_duplicates
+        self.cleanup_interval = cleanup_interval
+        self.last_cleanup = time.time()  # Track the last cleanup time
+
+    def should_send(self, message, message_type=None):
+        """
+        Check if a message should be sent based on rate limiting rules.
+        
+        Args:
+            message: The message content
+            message_type: Optional type identifier for the message (e.g., 'discord', 'stdout')
+            
+        Returns:
+            bool: True if message should be sent, False otherwise
+        """
+        current_time = time.time()
+        # Perform cleanup periodically
+        if current_time - self.last_cleanup > self.cleanup_interval:
+            self.cleanup_messages(current_time)
+        
+        # Create a unique key based on message content and type
+        key = f"{message_type}:{message}" if message_type else message
+        
+        # Check if this message has been seen before
+        if key in self.messages:
+            last_time, count = self.messages[key]
+            
+            # If message has been sent too many times within timeout, block it
+            if count >= self.max_duplicates and current_time - last_time < self.timeout:
+                # Update count but don't reset the timer
+                self.messages[key] = (last_time, count + 1)
+                return False
+                
+            # If timeout has passed, reset counter
+            if current_time - last_time >= self.timeout:
+                self.messages[key] = (current_time, 1)
+                return True
+                
+            # Update count and timestamp
+            self.messages[key] = (last_time, count + 1)
+        else:
+            # First time seeing this message
+            self.messages[key] = (current_time, 1)
+            
+        return True
+    
+    def cleanup_messages(self, current_time):
+        """
+        Remove stale messages from the store.
+        
+        Args:
+            current_time: The current time to compare against message timestamps.
+        """
+        stale_keys = [
+            key for key, (last_time, _) in self.messages.items()
+            if current_time - last_time > self.cleanup_interval
+        ]
+        for key in stale_keys:
+            del self.messages[key]
+        self.last_cleanup = current_time
+
+    def get_stats(self, message, message_type=None):
+        """Get statistics about a message."""
+        key = f"{message_type}:{message}" if message_type else message
+        if key in self.messages:
+            last_time, count = self.messages[key]
+            return {
+                "last_sent": last_time,
+                "count": count,
+                "blocked": count > self.max_duplicates and (time.time() - last_time < self.timeout)
+            }
+        return None
+
 def output_message(timestamp, message):
     """
     Output a message to stdout or a custom handler in GUI mode.
@@ -47,6 +133,12 @@ def output_message(timestamp, message):
     else:
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         formatted_msg = f"*{current_time} - {message}"
+    
+    # Check if rate limiter exists and if message should be sent
+    rate_limiter = getattr(main, 'rate_limiter', None)
+    if rate_limiter and not rate_limiter.should_send(formatted_msg, 'stdout'):
+        # Message is rate limited - don't output
+        return
     
     # Redirect to GUI log handler if in GUI mode
     if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler') and callable(main.gui_log_handler):
@@ -83,6 +175,10 @@ class LogFileHandler(FileSystemEventHandler):
             self.on_shard_version_update.subscribe(kwargs['on_shard_version_update'])
         if 'on_mode_change' in kwargs and callable(kwargs['on_mode_change']):
             self.on_mode_change.subscribe(kwargs['on_mode_change'])
+        self.rate_limiter = MessageRateLimiter(
+            timeout=config.get('rate_limit_timeout', 60),
+            max_duplicates=config.get('rate_limit_max_duplicates', 3)
+        )
         self.username = config.get('username', 'Unknown')  # Username as an instance attribute
         self.current_shard = None  # Initialize shard information
         self.current_version = None  # Initialize Star Citizen version information
@@ -191,9 +287,12 @@ class LogFileHandler(FileSystemEventHandler):
             return
 
         try:
+            content = None
+            url = None
+            
             if technical:
                 # Technical messages are sent as-is
-                payload = {"content": data}
+                content = data
                 url = self.technical_webhook_url or self.discord_webhook_url
             elif pattern_name and pattern_name in self.discord_messages:
                 # Get all possible player references from the data
@@ -213,14 +312,20 @@ class LogFileHandler(FileSystemEventHandler):
                     else:
                         data['alert'] = ''  # Empty string for non-important players
                         
-                    payload = {"content": self.discord_messages[pattern_name].format(**data)}
+                    content = self.discord_messages[pattern_name].format(**data)
                     url = self.discord_webhook_url
                 else:
                     return
                 
             else:
                 return
+            
+            # Check if this message should be rate limited
+            if not self.rate_limiter.should_send(content, f'discord_{pattern_name}'):
+                output_message(None, f"Rate limited Discord message for pattern: {pattern_name}")
+                return
                 
+            payload = {"content": content}
             response = requests.post(url, json=payload)
             if response.status_code not in [200, 204]:
                 output_message(None, f"Failed to send Discord message. Status code: {response.status_code}")
@@ -767,6 +872,12 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
             config['process_all'] = bool(config.get('process_all', True))
             
         config['process_once'] = process_once or bool(config.get('process_once', False))
+
+        # Create a global rate limiter for the application
+        main.rate_limiter = MessageRateLimiter(
+            timeout=config.get('rate_limit_timeout', 10),
+            max_duplicates=config.get('rate_limit_max_duplicates', 3)
+        )
 
         # Create a file handler with kwargs for event subscriptions
         event_handler = LogFileHandler(config, **kwargs)
