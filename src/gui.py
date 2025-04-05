@@ -12,7 +12,7 @@ import winreg  # Import for Windows registry manipulation
 import wx.grid  # Import wx.grid for displaying tabular data
 import requests  # For HTTP requests
 from config_utils import emit_default_config, get_application_path, renew_config  # Import renew_config
-from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper, NumericValidator  # Import reusable components
+from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper, NumericValidator, TaskBarIcon  # Import TaskBarIcon
 from PIL import Image
 import mss
 from pyzbar.pyzbar import decode
@@ -177,7 +177,7 @@ class LogAnalyzerFrame(wx.Frame):
         sys.stdout = RedirectText(self.log_text)
 
         # Create taskbar icon
-        self.taskbar_icon = TaskBarIcon(self)
+        self.taskbar_icon = TaskBarIcon(self, TASKBAR_ICON_TOOLTIP)
 
         # Check if the app is started with the --start-hidden flag
         if STARTUP_COMMAND_FLAG in sys.argv:
@@ -1041,55 +1041,6 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Destroy the window
         self.Destroy()
-
-class TaskBarIcon(wx.adv.TaskBarIcon):
-    def __init__(self, frame):
-        super().__init__()
-        self.frame = frame
-
-        # Set the icon using the custom application icon
-        icon_path = os.path.join(os.path.dirname(__file__), "SCLogAnalyzer.ico")
-        if os.path.exists(icon_path):
-            self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO), TASKBAR_ICON_TOOLTIP)
-        else:
-            # Fallback to a stock icon if the custom icon is missing
-            icon = wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16))
-            self.SetIcon(icon, TASKBAR_ICON_TOOLTIP)
-
-        # Bind events
-        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.on_left_click)
-        self.Bind(wx.adv.EVT_TASKBAR_RIGHT_DOWN, self.on_right_click)
-
-    def on_left_click(self, event):
-        """Show or hide the main window on left-click"""
-        if self.frame and self.frame.IsShown():
-            self.frame.Hide()
-        elif self.frame:
-            self.frame.Show()
-            self.frame.Raise()
-
-    def on_right_click(self, event):
-        """Show a context menu on right-click"""
-        menu = wx.Menu()
-        show_item = menu.Append(wx.ID_ANY, "Show Main Window")
-        exit_item = menu.Append(wx.ID_EXIT, "Exit")
-
-        self.Bind(wx.EVT_MENU, self.on_show, show_item)
-        self.Bind(wx.EVT_MENU, self.on_exit, exit_item)
-
-        self.PopupMenu(menu)
-        menu.Destroy()
-
-    def on_show(self, event):
-        """Show the main window"""
-        if not self.frame.IsShown():
-            self.frame.Show()
-            self.frame.Raise()
-
-    def on_exit(self, event):
-        """Exit the application"""
-        if self.frame:
-            wx.CallAfter(self.frame.Close)
 
 def cleanup_updater_script():
     updater_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "updater.py")

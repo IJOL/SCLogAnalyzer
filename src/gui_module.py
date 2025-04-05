@@ -13,6 +13,7 @@ import win32api  # Required for sending keystrokes
 import psutil  # Required for process management
 from version import get_version  # Import get_version to fetch the version dynamically
 import winreg
+import wx.adv  # Import wx.adv for taskbar icon support
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 class RedirectText:
@@ -512,3 +513,53 @@ def remove_app_from_startup(app_name):
         print(f"{app_name} is not in Windows startup.")
     except Exception as e:
         print(f"Error removing app from startup: {e}")
+
+class TaskBarIcon(wx.adv.TaskBarIcon):
+    def __init__(self, frame, tooltip="SC Log Analyzer"):
+        super().__init__()
+        self.frame = frame
+        self.tooltip = tooltip
+
+        # Set the icon using the custom application icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SCLogAnalyzer.ico")
+        if os.path.exists(icon_path):
+            self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO), self.tooltip)
+        else:
+            # Fallback to a stock icon if the custom icon is missing
+            icon = wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16))
+            self.SetIcon(icon, self.tooltip)
+
+        # Bind events
+        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.on_left_click)
+        self.Bind(wx.adv.EVT_TASKBAR_RIGHT_DOWN, self.on_right_click)
+
+    def on_left_click(self, event):
+        """Show or hide the main window on left-click"""
+        if self.frame and self.frame.IsShown():
+            self.frame.Hide()
+        elif self.frame:
+            self.frame.Show()
+            self.frame.Raise()
+
+    def on_right_click(self, event):
+        """Show a context menu on right-click"""
+        menu = wx.Menu()
+        show_item = menu.Append(wx.ID_ANY, "Show Main Window")
+        exit_item = menu.Append(wx.ID_EXIT, "Exit")
+
+        self.Bind(wx.EVT_MENU, self.on_show, show_item)
+        self.Bind(wx.EVT_MENU, self.on_exit, exit_item)
+
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def on_show(self, event):
+        """Show the main window"""
+        if not self.frame.IsShown():
+            self.frame.Show()
+            self.frame.Raise()
+
+    def on_exit(self, event):
+        """Exit the application"""
+        if self.frame:
+            wx.CallAfter(self.frame.Close)
