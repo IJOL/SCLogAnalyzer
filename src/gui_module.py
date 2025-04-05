@@ -166,9 +166,9 @@ class ConfigDialog(wx.Frame):
     def update_startup_button_label(self):
         """Update the startup button label based on the current startup status."""
         if is_app_in_startup(self.app_name):
-            self.startup_button.SetLabel("Remove from Windows Startup")
+            self.startup_button.SetLabel("Remove from Startup")
         else:
-            self.startup_button.SetLabel("Add to Windows Startup")
+            self.startup_button.SetLabel("Add to Startup")
 
     def on_toggle_startup(self, event):
         """Toggle adding/removing the app from Windows startup."""
