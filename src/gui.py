@@ -872,13 +872,22 @@ class LogAnalyzerFrame(wx.Frame):
             # Bind the close event to reload configuration
             self.config_dialog.Bind(wx.EVT_WINDOW_DESTROY, self.on_config_dialog_close)
         
-        # Ensure the config dialog is within the main window boundaries
-        main_window_position = self.GetPosition()
+        # Ensure the config dialog is within the main window's screen boundaries
+        main_window_position = self.GetScreenPosition()
         main_window_size = self.GetSize()
         config_dialog_size = self.config_dialog.GetSize()
-        
-        new_x = max(main_window_position.x, min(main_window_position.x + main_window_size.x - config_dialog_size.x, self.config_dialog.GetPosition().x))
-        new_y = max(main_window_position.y, min(main_window_position.y + main_window_size.y - config_dialog_size.y, self.config_dialog.GetPosition().y))
+
+        # Get the display geometry for the screen containing the main window
+        display_index = wx.Display.GetFromWindow(self)
+        display_geometry = wx.Display(display_index).GetGeometry()
+
+        # Calculate the new position within the display bounds
+        new_x = max(display_geometry.GetLeft(), 
+                    min(main_window_position.x + (main_window_size.x - config_dialog_size.x) // 2, 
+                        display_geometry.GetRight() - config_dialog_size.x))
+        new_y = max(display_geometry.GetTop(), 
+                    min(main_window_position.y + (main_window_size.y - config_dialog_size.y) // 2, 
+                        display_geometry.GetBottom() - config_dialog_size.y))
         
         self.config_dialog.SetPosition(wx.Point(new_x, new_y))
         
@@ -893,7 +902,12 @@ class LogAnalyzerFrame(wx.Frame):
         # Reload configuration after the dialog is closed
         self.load_default_config()
         self.validate_startup_settings()
-        
+        if self.monitoring:
+            self.stop_monitoring()
+            self.start_monitoring()
+        self.update_google_sheets_tabs()  # Update tabs after reloading config
+
+
     def update_google_sheets_tabs(self):
         """Update Google Sheets tabs based on current configuration."""
         # Remove all existing Google Sheets tabs
@@ -909,50 +923,6 @@ class LogAnalyzerFrame(wx.Frame):
                                 params={"sheet": "Materials", "username": lambda self: self.event_handler.username},
                                 form_fields={"Material": "text", "Qty": "number", "committed": "check"}) # Update labels dynamically
 
-    def on_refresh_sheets(self, event=None):
-        """Refresh the Google Sheets data and update the grid."""
-        def fetch_and_update():
-            try:
-                # Fetch JSON data from Google Sheets
-                json_data = self.fetch_google_sheets_data()
-
-                # Update the grid with the new data
-                wx.CallAfter(self.update_sheets_grid, json_data, self.sheets_grid)
-            except Exception as e:
-                wx.CallAfter(
-                    wx.MessageBox,
-                    f"Failed to refresh Google Sheets data: {e}",
-                    "Error",
-                    wx.OK | wx.ICON_ERROR
-                )
-
-        # Run the fetch and update logic in a separate thread
-        threading.Thread(target=fetch_and_update, daemon=True).start()
-
-    def fetch_google_sheets_data(self):
-        """Fetch JSON data from Google Sheets using the webhook URL."""
-        if not self.google_sheets_webhook:
-            wx.MessageBox("Google Sheets webhook URL is not configured.", "Error", wx.OK | wx.ICON_ERROR)
-            return []
-
-        try:
-            response = requests.get(self.google_sheets_webhook)
-            if response.status_code != 200:
-                wx.MessageBox(f"Failed to fetch data from Google Sheets. HTTP Status: {response.status_code}", "Error", wx.OK | wx.ICON_ERROR)
-                return []
-
-            data = response.json()
-            if not isinstance(data, list) or not data:
-                wx.MessageBox("The response data is empty or not in the expected format.", "Error", wx.OK | wx.ICON_ERROR)
-                return []
-
-            return data
-        except requests.RequestException as e:
-            wx.MessageBox(f"Error fetching data from Google Sheets: {e}", "Error", wx.OK | wx.ICON_ERROR)
-            return []
-        except json.JSONDecodeError:
-            wx.MessageBox("Failed to decode JSON response from Google Sheets.", "Error", wx.OK | wx.ICON_ERROR)
-            return []
 
     def update_sheets_grid(self, json_data, grid):
         """
