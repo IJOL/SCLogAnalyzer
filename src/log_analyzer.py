@@ -17,12 +17,14 @@ from pyzbar.pyzbar import decode  # For QR code detection
 from config_utils import emit_default_config, get_application_path, get_template_path
 from gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
 
-# Configure logging
-logging.basicConfig(level=logging.ERROR, filename='error.log', filemode='a', format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging with application path and executable name
+app_path = get_application_path()
+executable_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+error_log_path = os.path.join(app_path, f"{executable_name}.log")
+logging.basicConfig(level=logging.ERROR, filename=error_log_path, filemode='a', 
+                   format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define constants
-CROP_WIDTH = 650
-CROP_HEIGHT = 380
 PRINT_SCREEN_KEY = "print_screen"  # Add constant for PrintScreen key
 RETURN_KEY = "return"  # Add constant for Return key
 
@@ -409,7 +411,7 @@ class LogFileHandler(FileSystemEventHandler):
             self.process_new_entries()
 
     def process_new_screenshot(self, file_path):
-        """Process a new screenshot to extract shard and version information."""
+        """Process a new screenshot to extract shard and version information.""" 
         max_retries = 3
         retry_delay = 0.5  # 500 milliseconds
 
