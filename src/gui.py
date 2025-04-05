@@ -38,7 +38,11 @@ APP_EXECUTABLE = "SCLogAnalyzer.exe"  # Replace with your app's executable name
 class LogAnalyzerFrame(wx.Frame):
     def __init__(self):
         super().__init__(None, title="SC Log Analyzer", size=(800, 600))
-               # Set flag for GUI mode
+        # Set the application icon
+        icon_path = os.path.join(os.path.dirname(__file__), "SCLogAnalyzer.ico")
+        if os.path.exists(icon_path):
+            self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO))
+        # Set flag for GUI mode
         log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled        
         # Ensure default config exists
         self.ensure_default_config()
@@ -1043,9 +1047,14 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         super().__init__()
         self.frame = frame
 
-        # Set the icon using a stock icon
-        icon = wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16))
-        self.SetIcon(icon, TASKBAR_ICON_TOOLTIP)
+        # Set the icon using the custom application icon
+        icon_path = os.path.join(os.path.dirname(__file__), "SCLogAnalyzer.ico")
+        if os.path.exists(icon_path):
+            self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO), TASKBAR_ICON_TOOLTIP)
+        else:
+            # Fallback to a stock icon if the custom icon is missing
+            icon = wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16))
+            self.SetIcon(icon, TASKBAR_ICON_TOOLTIP)
 
         # Bind events
         self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.on_left_click)
