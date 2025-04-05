@@ -238,8 +238,6 @@ class LogAnalyzerFrame(wx.Frame):
                 if wx.MessageBox(f"A new version ({latest_version}) is available. Do you want to update?",
                                  "Update Available", wx.YES_NO | wx.ICON_QUESTION) == wx.YES:
                     self.download_and_update(download_url)
-            else:
-                wx.MessageBox("You are already using the latest version.", "No Updates", wx.OK | wx.ICON_INFORMATION)
         except Exception as e:
             wx.MessageBox(f"Error checking for updates: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
