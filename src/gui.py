@@ -165,7 +165,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.default_log_file_path = None
         self.google_sheets_webhook = None
         self.discord_webhook_url = None
-        self.console_key = "º"  # Default console key
+        self.console_key = ""  # Default console key
         self.load_default_config()
         self.validate_startup_settings()  # Validate settings before proceeding
 
