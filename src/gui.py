@@ -504,14 +504,11 @@ class LogAnalyzerFrame(wx.Frame):
             # Update the grid with data
             wx.CallAfter(self.update_sheets_grid, data, target_grid)
         except requests.RequestException as e:
-            wx.CallAfter(wx.MessageBox, f"Network error: {e}", 
-                    "Error", wx.OK | wx.ICON_ERROR)
+            wx.CallAfter(self.log_text.AppendText, f"Network error while fetching data: {e}\n")
         except json.JSONDecodeError:
-            wx.CallAfter(wx.MessageBox, "Failed to decode JSON response.", 
-                    "Error", wx.OK | wx.ICON_ERROR)
+            wx.CallAfter(self.log_text.AppendText, "Failed to decode JSON response from server.\n")
         except Exception as e:
-            wx.CallAfter(wx.MessageBox, f"Unexpected error: {e}", 
-                    "Error", wx.OK | wx.ICON_ERROR)
+            wx.CallAfter(self.log_text.AppendText, f"Unexpected error during data fetch: {e}\n")
         finally:
             # Clear loading state
             wx.CallAfter(self.set_grid_loading, target_grid, False)
