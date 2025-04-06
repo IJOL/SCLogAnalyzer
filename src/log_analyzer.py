@@ -37,7 +37,7 @@ except ImportError:
 
 class MessageRateLimiter:
     """Class to handle rate limiting of repeated messages."""
-    def __init__(self, timeout=20, max_duplicates=4, cleanup_interval=60):
+    def __init__(self, timeout=300, max_duplicates=1, cleanup_interval=60):
         """
         Initialize the rate limiter.
         
@@ -57,7 +57,7 @@ class MessageRateLimiter:
         Check if a message should be sent based on rate limiting rules.
         
         Args:
-            message: The message content
+            message: The message content (without timestamp)
             message_type: Optional type identifier for the message (e.g., 'discord', 'stdout')
             
         Returns:
@@ -129,18 +129,19 @@ def output_message(timestamp, message):
         timestamp: Timestamp string or None
         message: Message to output
     """
-    formatted_msg = ""
+    # Check if rate limiter exists and if message should be sent
+    # Apply rate limiting to the raw message before adding timestamp
+    rate_limiter = getattr(main, 'rate_limiter', None)
+    if rate_limiter and not rate_limiter.should_send(message, 'stdout'):
+        # Message is rate limited - don't output
+        return
+    
+    # Now format the message with timestamp
     if timestamp:
         formatted_msg = f"{timestamp} - {message}"
     else:
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         formatted_msg = f"*{current_time} - {message}"
-    
-    # Check if rate limiter exists and if message should be sent
-    rate_limiter = getattr(main, 'rate_limiter', None)
-    if rate_limiter and not rate_limiter.should_send(formatted_msg, 'stdout'):
-        # Message is rate limited - don't output
-        return
     
     # Redirect to GUI log handler if in GUI mode
     if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler') and callable(main.gui_log_handler):
@@ -178,8 +179,8 @@ class LogFileHandler(FileSystemEventHandler):
         if 'on_mode_change' in kwargs and callable(kwargs['on_mode_change']):
             self.on_mode_change.subscribe(kwargs['on_mode_change'])
         self.rate_limiter = MessageRateLimiter(
-            timeout=config.get('rate_limit_timeout', 60),
-            max_duplicates=config.get('rate_limit_max_duplicates', 3)
+            timeout=config.get('rate_limit_timeout', 300),  # Increased to 5 minutes (300 seconds)
+            max_duplicates=config.get('rate_limit_max_duplicates', 1)  # Reduced to 1 - any duplicate will be blocked
         )
         self.username = config.get('username', 'Unknown')  # Username as an instance attribute
         self.current_shard = None  # Initialize shard information
@@ -322,8 +323,9 @@ class LogFileHandler(FileSystemEventHandler):
             else:
                 return
             
-            # Check if this message should be rate limited
-            if not self.rate_limiter.should_send(content, f'discord_{pattern_name}'):
+            # Check if this message should be rate limited - using pattern_name as part of the key
+            # This allows different patterns to be rate limited separately
+            if not self.rate_limiter.should_send(f"{pattern_name}:{content}", 'discord'):
                 output_message(None, f"Rate limited Discord message for pattern: {pattern_name}")
                 return
                 
@@ -877,8 +879,8 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
 
         # Create a global rate limiter for the application
         main.rate_limiter = MessageRateLimiter(
-            timeout=config.get('rate_limit_timeout', 10),
-            max_duplicates=config.get('rate_limit_max_duplicates', 3)
+            timeout=config.get('rate_limit_timeout', 300),
+            max_duplicates=config.get('rate_limit_max_duplicates', 1)
         )
 
         # Create a file handler with kwargs for event subscriptions
