@@ -311,7 +311,7 @@ class ProcessDialog(wx.Dialog):
 class AboutDialog(wx.Dialog):
     """A styled About dialog."""
     def __init__(self, parent, update_callback=None):
-        super().__init__(parent, title="About SC Log Analyzer", size=(400, 300))
+        super().__init__(parent, title="About SC Log Analyzer", size=(400, 430))  # Slightly reduced height
 
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -330,23 +330,64 @@ class AboutDialog(wx.Dialog):
         description.Wrap(350)
         sizer.Add(description, 0, wx.ALL | wx.ALIGN_CENTER, 10)
 
+        # Add recent commits section
+        try:
+            from version import COMMIT_MESSAGES
+            if COMMIT_MESSAGES:
+                commits_label = wx.StaticText(panel, label="Recent Changes:")
+                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+                sizer.Add(commits_label, 0, wx.ALL | wx.ALIGN_LEFT, 5)
+                
+                # Create a scrolled window for commit messages with fixed height
+                commits_scrolled = wx.ScrolledWindow(panel, style=wx.VSCROLL)
+                commits_scrolled.SetScrollRate(0, 10)
+                commits_scrolled.SetMinSize((350, 120))  # Fixed height
+                
+                # Add commit messages to the scrolled window
+                commits_sizer = wx.BoxSizer(wx.VERTICAL)
+                for commit in COMMIT_MESSAGES:
+                    commit_text = wx.StaticText(commits_scrolled, label=f"• {commit}")
+                    commit_text.Wrap(330)  # Wrap text to fit in the panel
+                    commits_sizer.Add(commit_text, 0, wx.EXPAND | wx.BOTTOM, 3)
+                
+                commits_scrolled.SetSizer(commits_sizer)
+                sizer.Add(commits_scrolled, 0, wx.ALL | wx.EXPAND, 5)  # Not expanding vertically beyond min size
+        except (ImportError, AttributeError):
+            # Skip if COMMIT_MESSAGES is not available
+            pass
+
         # Update credits to reflect the correct author
         credits = wx.StaticText(panel, label="Developed by IJOL.")
         credits.Wrap(350)
         sizer.Add(credits, 0, wx.ALL | wx.ALIGN_CENTER, 10)
 
-        # Add Check for Updates button
+        # Place both buttons in the same horizontal row to save space
+        buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # Add Check for Updates button on the left
         self.update_button = wx.Button(panel, label="Check for Updates")
         if update_callback:
             self.update_button.Bind(wx.EVT_BUTTON, lambda event: update_callback())
-        sizer.Add(self.update_button, 0, wx.ALL | wx.ALIGN_CENTER, 10)
-
-        # Add close button
-        close_button = wx.Button(panel, label="Close")
+        buttons_sizer.Add(self.update_button, 0, wx.RIGHT, 10)
+        
+        # Add close button on the right
+        close_button = wx.Button(panel, wx.ID_CLOSE, label="Close")
         close_button.Bind(wx.EVT_BUTTON, lambda event: self.Close())
-        sizer.Add(close_button, 0, wx.ALL | wx.ALIGN_CENTER, 10)
-
+        buttons_sizer.Add(close_button, 0, wx.LEFT, 10)
+        
+        # Add the buttons sizer to main sizer with more compact margins
+        sizer.Add(buttons_sizer, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+        
+        # Set sizer for panel and ensure dialog has standard button look
         panel.SetSizer(sizer)
+        
+        # Bind the close event to ensure proper closing
+        self.Bind(wx.EVT_CLOSE, self.on_close)
+        
+    def on_close(self, event):
+        """Handle dialog close event."""
+        self.EndModal(wx.ID_CLOSE)
+        self.Destroy()
 
 
 class WindowsHelper:
@@ -563,3 +604,4 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         """Exit the application"""
         if self.frame:
             wx.CallAfter(self.frame.Close)
+
