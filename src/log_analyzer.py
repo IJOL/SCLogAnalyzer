@@ -479,7 +479,7 @@ class LogFileHandler(FileSystemEventHandler):
                             output_message(None, f"Shard updated: {self.current_shard}, Version updated: {self.current_version}")
 
                             # Emit the event to notify subscribers
-                            self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username)
+                            self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
                     else:
                         output_message(None, "QR code does not contain sufficient information.")
                 else:
@@ -613,7 +613,7 @@ class LogFileHandler(FileSystemEventHandler):
                 output_message(nickname_data.get('timestamp'), f"Username updated: '{old_username}' → '{new_nickname}'")
                 
                 # Emit the event to notify subscribers about nickname/username change
-                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username)
+                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
                 
                 # Send startup Discord message after getting the username for the first time
                 if old_username == 'Unknown' and not self.process_once:
@@ -645,7 +645,7 @@ class LogFileHandler(FileSystemEventHandler):
                 mode_data=self.add_state_data(mode_data)  # Add state data to the mode data
 
                 # Emit the event to notify subscribers
-                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username)
+                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
 
                 # Output message
                 output_message(timestamp, f"Mode changed: '{old_mode or 'None'}' → '{new_mode}'")

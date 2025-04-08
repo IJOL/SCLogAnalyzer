@@ -61,7 +61,7 @@ class LogAnalyzerFrame(wx.Frame):
         # Create main vertical sizer
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Add dynamic labels for username, shard, and version
+        # Add dynamic labels for username, shard, version, and mode
         bold_font = wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
         self.username_label = wx.StaticText(panel, label="Username: Loading...")
         self.username_label.SetFont(bold_font)
@@ -69,10 +69,13 @@ class LogAnalyzerFrame(wx.Frame):
         self.shard_label.SetFont(bold_font)
         self.version_label = wx.StaticText(panel, label="Version: Loading...")
         self.version_label.SetFont(bold_font)
+        self.mode_label = wx.StaticText(panel, label="Mode: Loading...")
+        self.mode_label.SetFont(bold_font)
         label_sizer = wx.BoxSizer(wx.HORIZONTAL)
         label_sizer.Add(self.username_label, 1, wx.ALL | wx.EXPAND, 5)
         label_sizer.Add(self.shard_label, 1, wx.ALL | wx.EXPAND, 5)
         label_sizer.Add(self.version_label, 1, wx.ALL | wx.EXPAND, 5)
+        label_sizer.Add(self.mode_label, 1, wx.ALL | wx.EXPAND, 5)
         main_sizer.Add(label_sizer, 0, wx.EXPAND)
 
         # Create notebook for log output and Google Sheets data
@@ -521,34 +524,37 @@ class LogAnalyzerFrame(wx.Frame):
             wx.CallAfter(self.set_grid_loading, target_grid, False)
 
     def update_dynamic_labels(self):
-        """Update the username, shard, and version labels dynamically."""
+        """Update the username, shard, version, and mode labels dynamically."""
         try:
             if self.event_handler:
                 username = getattr(self.event_handler, "username", "Unknown")
                 shard = getattr(self.event_handler, "current_shard", "Unknown")
                 version = getattr(self.event_handler, "current_version", "Unknown")
+                mode = getattr(self.event_handler, "current_mode", "None")
             else:
-                username, shard, version = "Unknown", "Unknown", "Unknown"
+                username, shard, version, mode = "Unknown", "Unknown", "Unknown", "None"
 
             self.username_label.SetLabel(f"Username: {username}")
             self.shard_label.SetLabel(f"Shard: {shard}")
             self.version_label.SetLabel(f"Version: {version}")
+            self.mode_label.SetLabel(f"Mode: {mode or 'None'}")
         except Exception as e:
             self.log_text.AppendText(f"Error updating labels: {e}\n")
 
-    def on_shard_version_update(self, shard, version, username):
+    def on_shard_version_update(self, shard, version, username, mode=None):
         """
-        Handle updates to the shard, version, and username.
+        Handle updates to the shard, version, username, and mode.
 
         Args:
             shard (str): The updated shard name.
             version (str): The updated version.
             username (str): The updated username.
+            mode (str): The current game mode.
         """
         try:
             self.update_dynamic_labels()  # Call update_dynamic_labels directly
         except Exception as e:
-            self.log_text.AppendText(f"Error updating shard/version/username: {e}\n")
+            self.log_text.AppendText(f"Error updating shard/version/username/mode: {e}\n")
 
     def on_mode_change(self, new_mode, old_mode):
         """
@@ -562,6 +568,9 @@ class LogAnalyzerFrame(wx.Frame):
             self.autoshard_button.Enable(True)
         else:
             self.autoshard_button.Enable(False)
+            
+        # Update mode label when mode changes
+        self.update_dynamic_labels()
 
     def on_about(self, event):
         """Show the About dialog."""
