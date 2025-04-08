@@ -121,32 +121,30 @@ class MessageRateLimiter:
             }
         return None
 
-def output_message(timestamp, message):
+def output_message(timestamp, message, regex_pattern=None):
     """
     Output a message to stdout or a custom handler in GUI mode.
-    
+
     Args:
-        timestamp: Timestamp string or None
-        message: Message to output
+        timestamp: Timestamp string or None.
+        message: Message to output.
+        regex_pattern: The regex pattern name that matched the message (optional).
     """
     # Check if rate limiter exists and if message should be sent
-    # Apply rate limiting to the raw message before adding timestamp
     rate_limiter = getattr(main, 'rate_limiter', None)
     if rate_limiter and not rate_limiter.should_send(message, 'stdout'):
-        # Message is rate limited - don't output
-        return
-    
-    # Now format the message with timestamp
+        return  # Message is rate-limited, do not output
+
+    # Format the message with timestamp and regex pattern
     if timestamp:
         formatted_msg = f"{timestamp} - {message}"
     else:
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         formatted_msg = f"*{current_time} - {message}"
-    
-    # Redirect to GUI log handler if in GUI mode
+
+        # Redirect to GUI log handler if in GUI mode
     if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler') and callable(main.gui_log_handler):
-        # Call the GUI log handler with the formatted message
-        main.gui_log_handler(formatted_msg)
+        main.gui_log_handler(formatted_msg, regex_pattern=regex_pattern)
     else:
         print(formatted_msg)
 
@@ -731,19 +729,19 @@ class LogFileHandler(FileSystemEventHandler):
     def detect_and_emit_generic(self, entry, pattern_name, send_message=True):
         """
         Generic detection and message emission for any configured pattern.
-
+    
         Args:
             entry: Log entry to analyze.
             pattern_name: Name of the pattern in regex_patterns config.
             send_message: Whether to send the message or not.
-
+    
         Returns:
             Tuple of (bool, dict) - Success flag and matched data.
         """
         if pattern_name not in self.regex_patterns:
             output_message(None, f"Pattern {pattern_name} not found in configuration")
             return False, None
-
+    
         data = self.detect_generic(entry, self.regex_patterns[pattern_name])
         if data:
             # Extract player and action information
@@ -751,23 +749,24 @@ class LogFileHandler(FileSystemEventHandler):
             data['action'] = pattern_name.replace('_', ' ').title()
             timestamp = data.get('timestamp')
             data['username'] = self.username  # Use instance attribute
-
+    
             # Add state data to the detected data
             data = self.add_state_data(data)
-
+    
             output_message_format = self.messages.get(pattern_name)
-            if not output_message_format is None:
-                output_message(timestamp, output_message_format.format(**data))
+            if output_message_format:
+                output_message(timestamp, output_message_format.format(**data), regex_pattern=pattern_name)
+    
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)
-
+    
             # Send to Google Sheets if enabled and pattern is in the mapping
             if send_message and pattern_name in self.google_sheets_mapping:
                 self.update_google_sheets(data, pattern_name)
-
+    
             return True, data
         return False, None
-
+    
 def is_valid_url(url):
     """Validate if the given string is a correctly formatted URL"""
     regex = re.compile(

@@ -100,10 +100,16 @@ class LogAnalyzerFrame(wx.Frame):
         self.monitor_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_EXECUTABLE_FILE, wx.ART_BUTTON, (16, 16)))
         self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,wx.FONTWEIGHT_BOLD))
 
+        # Add the new Test Google Sheets button with a better icon
+        self.test_google_sheets_button = wx.Button(self.log_page, label=" Test Google Sheets")
+        self.test_google_sheets_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_LIST_VIEW, wx.ART_BUTTON, (16, 16)))
+        self.test_google_sheets_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+
         # Add buttons to the horizontal button sizer
         button_sizer.Add(self.process_log_button, 0, wx.ALL, 2)
         button_sizer.Add(self.autoshard_button, 0, wx.ALL, 2)
         button_sizer.Add(self.monitor_button, 0, wx.ALL, 2)
+        button_sizer.Add(self.test_google_sheets_button, 0, wx.ALL, 2)  # Add the test button
 
         # Add the button sizer to the log page sizer
         log_page_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 2)
@@ -135,6 +141,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.process_log_button.Bind(wx.EVT_BUTTON, self.on_process_log)
         self.autoshard_button.Bind(wx.EVT_BUTTON, self.on_autoshard)
         self.monitor_button.Bind(wx.EVT_BUTTON, self.on_monitor)
+        self.test_google_sheets_button.Bind(wx.EVT_BUTTON, self.on_test_google_sheets)
 
         # Add menu items
         menu_bar = wx.MenuBar()
@@ -589,8 +596,9 @@ class LogAnalyzerFrame(wx.Frame):
         else:
             renew_config()
             return False
+
     def load_default_config(self):
-        """Load default log file path and Google Sheets webhook from config."""
+        """Load default log file path, regex patterns, colors, and other settings from config."""
         app_path = get_application_path()
         config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         
@@ -603,7 +611,7 @@ class LogAnalyzerFrame(wx.Frame):
                 self.google_sheets_webhook = config.get('google_sheets_webhook', '')
                 self.discord_webhook_url = config.get('discord_webhook_url', '')
                 self.console_key = config.get('console_key', '')  # Load console key with default
-           
+                self.colors = config.get('colors', {})  # Load colors from config
                 # Set checkbox defaults from config
                 self.discord_check.Check(config.get('use_discord', True))  # Default to True
                 self.googlesheet_check.Check(config.get('use_googlesheet', True))  # Default to True
@@ -750,11 +758,38 @@ class LogAnalyzerFrame(wx.Frame):
             self.event_handler = None
             self.observer = None
         self.monitoring = False  # Ensure monitoring state is updated
-    
-    def append_log_message(self, message):
-        """Append a log message to the GUI log output area."""
+    def append_log_message(self, message, regex_pattern=None):
+        wx.CallAfter(self._append_log_message, message, regex_pattern)
+    def _append_log_message(self, message, regex_pattern=None):
+        """
+        Append a log message to the GUI log output area.
+
+        Args:
+            message: The log message to append.
+            regex_pattern: The regex pattern name that matched the message (optional).
+        """
         if self.log_text and self.log_text.IsShownOnScreen():
-            wx.CallAfter(self.log_text.AppendText, message + "\n")
+            # Default color
+            color = wx.Colour(255, 255, 255)  # White text
+
+            # Load colors and patterns from the configuration
+            colors = getattr(self, "colors", {})
+            if regex_pattern:
+                for color_name, pattern_names in colors.items():
+                    if regex_pattern in pattern_names:
+                        if color_name == "red":
+                            color = wx.Colour(255, 0, 0)  # Red
+                        elif color_name == "yellow":
+                            color = wx.Colour(255, 255, 0)  # Yellow
+                        elif color_name == "green":
+                            color = wx.Colour(0, 255, 0)  # Green
+                        elif color_name == "blue":
+                            color = wx.Colour(0, 0, 255)  # Blue
+                        break
+
+            # Apply the color and append the message
+            self.log_text.SetDefaultStyle(wx.TextAttr(color))
+            self.log_text.AppendText(message + "\n")
 
     def save_window_info(self):
         """Save the window's current position, size, and state to the Windows registry."""
@@ -1011,6 +1046,32 @@ class LogAnalyzerFrame(wx.Frame):
                 wx.MessageBox("Failed to submit form. Please check the logs for details.", "Error", wx.OK | wx.ICON_ERROR)
         except Exception as e:
             wx.MessageBox(f"Error submitting form: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
+    def on_test_google_sheets(self, event):
+        """Handle the Test Google Sheets button click."""
+        if not self.google_sheets_webhook:
+            wx.MessageBox("Google Sheets webhook URL is not set in the configuration.", "Error", wx.OK | wx.ICON_ERROR)
+            return
+
+        # Mock data to send
+        mock_data = {
+            "sheet": "TestSheet",
+            "log_type": "TestLog",
+            "username": "TestUser",
+            "action": "Test Action",
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "details": "This is a test entry for Google Sheets."
+        }
+
+        try:
+            # Send the mock data to Google Sheets
+            success = self.event_handler.update_google_sheets(mock_data, "SC_Default")
+            if success:
+                wx.MessageBox("Test entry sent successfully to Google Sheets.", "Success", wx.OK | wx.ICON_INFORMATION)
+            else:
+                wx.MessageBox("Failed to send test entry to Google Sheets. Check the logs for details.", "Error", wx.OK | wx.ICON_ERROR)
+        except Exception as e:
+            wx.MessageBox(f"Error sending test entry to Google Sheets: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
     def on_close(self, event):
         """Handle window close event."""

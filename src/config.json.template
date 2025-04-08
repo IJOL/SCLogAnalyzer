@@ -34,5 +34,10 @@
     "discord": {
         "player_death": "{username} :skull: {killer} -> {victim} {mode} with {weapon} in {zone} with {damage_type}"
     },
-    "console_key": "º"
+    "console_key": "",
+    "colors": {
+        "red": ["player_death"],
+        "yellow": ["actor_death","vehicle_destruction"],
+        "green": ["actor_stall"]
+    }
 }
