@@ -133,7 +133,7 @@ class StatusBoardBot(commands.Cog):
         # Add rows to the table, truncating long values
         for row in data:
             row_data = " | ".join(
-                f"{str(row.get(col, '')[:column_widths[col]]):<{column_widths[col]}}" for col in column_names
+                f"{str(row.get(col, ''))[:column_widths[col]]:<{column_widths[col]}}" for col in column_names
             )
             description += f"{row_data}\n"
     
