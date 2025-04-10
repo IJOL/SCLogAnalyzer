@@ -777,7 +777,7 @@ class LogAnalyzerFrame(wx.Frame):
             message: The log message to append.
             regex_pattern: The regex pattern name that matched the message (optional).
         """
-        if self.log_text and self.log_text.IsShownOnScreen():
+        if self.log_text:
             # Default color
             color = wx.Colour(255, 255, 255)  # White text
 
