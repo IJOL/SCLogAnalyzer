@@ -9,3 +9,4 @@ pywin32
 pynput
 mss  # Added for GPU-rendered window capturing
 psutil  # Re-added for process and system utilities
+webcolors
