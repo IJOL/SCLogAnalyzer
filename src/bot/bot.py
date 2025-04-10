@@ -108,27 +108,38 @@ class StatusBoardBot(commands.Cog):
     def generate_stats_embed(self, data):
         """Generate an embed with statistics fetched from Google Sheets."""
         embed = discord.Embed(title="Real-Time Statistics", color=discord.Color.blue())
-
-        # Extract column names and calculate column widths
-        column_names = list(data[0].keys())
-        column_widths = {col: max(len(col), max(len(str(row.get(col, ''))) for row in data)) for col in column_names}
-
+    
+        # Abbreviate column names to save space
+        column_names = {
+            "Jugador": "Player",
+            "Deaths/SB": "D/SB",
+            "Kills/SB": "K/SB",
+            "Ratio/SB": "R/SB",
+            "Deaths/Live": "D/L",
+            "Kills/Live": "K/L",
+            "Ratio/Live": "R/L"
+        }
+    
+        # Calculate column widths
+        column_widths = {col: max(len(short), max(len(str(row.get(col, ''))) for row in data)) for col, short in column_names.items()}
+    
         # Build the table header
-        header = " | ".join(f"{col:<{column_widths[col]}}" for col in column_names)
+        header = " | ".join(f"{column_names[col]:<{column_widths[col]}}" for col in column_names)
         separator = "-" * (sum(column_widths.values()) + len(column_names) * 3 - 1)
-
+    
         # Add header and separator to the embed description
         description = f"```\n{header}\n{separator}\n"
-
-        # Add rows to the table
+    
+        # Add rows to the table, truncating long values
         for row in data:
-            row_data = " | ".join(f"{str(row.get(col, '')):<{column_widths[col]}}" for col in column_names)
+            row_data = " | ".join(
+                f"{str(row.get(col, '')[:column_widths[col]]):<{column_widths[col]}}" for col in column_names
+            )
             description += f"{row_data}\n"
-
+    
         description += "```"
         embed.description = description
         return embed
-
     @update_stats_task.before_loop
     async def before_update_stats_task(self):
         """Wait until the bot is ready before starting the task."""
