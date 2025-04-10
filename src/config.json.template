@@ -36,8 +36,10 @@
     },
     "console_key": "",
     "colors": {
-        "red": ["player_death"],
+        "red,white": ["player_death"],
         "yellow": ["actor_death","vehicle_destruction"],
-        "green": ["actor_stall"]
+        "green": ["actor_stall"],
+        "blue,white" : ["connected"],
+        "orange" : ["mode_change"]
     }
 }
