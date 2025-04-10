@@ -648,7 +648,7 @@ class LogFileHandler(FileSystemEventHandler):
                 self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
 
                 # Output message
-                output_message(timestamp, f"Mode changed: '{old_mode or 'None'}' → '{new_mode}'")
+                output_message(timestamp, f"Mode changed: '{old_mode or 'None'}' → '{new_mode}'",'mode_change')
 
                 # Send to Discord if enabled
                 if send_message and self.use_discord and 'mode_change' in self.discord_messages:
