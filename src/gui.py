@@ -19,6 +19,7 @@ from pyzbar.pyzbar import decode
 import shutil  # For file operations
 import tempfile  # For temporary directories
 import subprocess
+import webcolors  # Import the webcolors library
 
 from version import get_version  # For restarting the app
 
@@ -34,6 +35,13 @@ LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
 TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
 GITHUB_API_URL = "https://api.github.com/repos/IJOL/SCLogAnalyzer/releases"
 APP_EXECUTABLE = "SCLogAnalyzer.exe"  # Replace with your app's executable name
+
+def safe_call_after(func, *args, **kwargs):
+    """Safely call wx.CallAfter, ensuring wx.App is initialized."""
+    if wx.GetApp() is not None:
+        wx.CallAfter(func, *args, **kwargs)
+    else:
+        print(f"wx.App is not initialized. Cannot call {func.__name__}.")
 
 class LogAnalyzerFrame(wx.Frame):
     def __init__(self):
@@ -493,35 +501,35 @@ class LogAnalyzerFrame(wx.Frame):
         """
         try:
             if not url:
-                wx.CallAfter(wx.MessageBox, "No URL configured for this tab.", 
-                            "Error", wx.OK | wx.ICON_ERROR)
+                safe_call_after(wx.MessageBox, "No URL configured for this tab.", 
+                                "Error", wx.OK | wx.ICON_ERROR)
                 return
                 
             response = requests.get(url, params=params)
             if response.status_code != 200:
-                wx.CallAfter(wx.MessageBox, 
-                            f"Failed to fetch data. HTTP Status: {response.status_code}", 
-                            "Error", wx.OK | wx.ICON_ERROR)
+                safe_call_after(wx.MessageBox, 
+                                f"Failed to fetch data. HTTP Status: {response.status_code}", 
+                                "Error", wx.OK | wx.ICON_ERROR)
                 return
 
             data = response.json()
             if not isinstance(data, list) or not data:
-                wx.CallAfter(wx.MessageBox, 
-                        "The response data is empty or not in the expected format.", 
-                        "Error", wx.OK | wx.ICON_ERROR)
+                safe_call_after(wx.MessageBox, 
+                                "The response data is empty or not in the expected format.", 
+                                "Error", wx.OK | wx.ICON_ERROR)
                 return
 
             # Update the grid with data
-            wx.CallAfter(self.update_sheets_grid, data, target_grid)
+            safe_call_after(self.update_sheets_grid, data, target_grid)
         except requests.RequestException as e:
-            wx.CallAfter(self.log_text.AppendText, f"Network error while fetching data: {e}\n")
+            safe_call_after(self.log_text.AppendText, f"Network error while fetching data: {e}\n")
         except json.JSONDecodeError:
-            wx.CallAfter(self.log_text.AppendText, "Failed to decode JSON response from server.\n")
+            safe_call_after(self.log_text.AppendText, "Failed to decode JSON response from server.\n")
         except Exception as e:
-            wx.CallAfter(self.log_text.AppendText, f"Unexpected error during data fetch: {e}\n")
+            safe_call_after(self.log_text.AppendText, f"Unexpected error during data fetch: {e}\n")
         finally:
             # Clear loading state
-            wx.CallAfter(self.set_grid_loading, target_grid, False)
+            safe_call_after(self.set_grid_loading, target_grid, False)
 
     def update_dynamic_labels(self):
         """Update the username, shard, version, and mode labels dynamically."""
@@ -778,26 +786,41 @@ class LogAnalyzerFrame(wx.Frame):
             regex_pattern: The regex pattern name that matched the message (optional).
         """
         if self.log_text:
-            # Default color
-            color = wx.Colour(255, 255, 255)  # White text
+            # Default colors
+            foreground_color = wx.Colour(255, 255, 255)  # White text
+            background_color = wx.Colour(0, 0, 0)  # Black background
 
             # Load colors and patterns from the configuration
             colors = getattr(self, "colors", {})
             if regex_pattern:
-                for color_name, pattern_names in colors.items():
+                for color_spec, pattern_names in colors.items():
                     if regex_pattern in pattern_names:
-                        if color_name == "red":
-                            color = wx.Colour(255, 0, 0)  # Red
-                        elif color_name == "yellow":
-                            color = wx.Colour(255, 255, 0)  # Yellow
-                        elif color_name == "green":
-                            color = wx.Colour(0, 255, 0)  # Green
-                        elif color_name == "blue":
-                            color = wx.Colour(0, 0, 255)  # Blue
+                        # Parse the color specification
+                        color_parts = color_spec.split(",")
+                        if len(color_parts) > 0:
+                            try:
+                                rgb = webcolors.name_to_rgb(color_parts[0].strip())
+                                foreground_color = wx.Colour(rgb.red, rgb.green, rgb.blue)
+                            except ValueError:
+                                try:
+                                    rgb = webcolors.hex_to_rgb(color_parts[0].strip())
+                                    foreground_color = wx.Colour(rgb.red, rgb.green, rgb.blue)
+                                except ValueError:
+                                    pass  # Ignore invalid foreground color
+                        if len(color_parts) > 1:
+                            try:
+                                rgb = webcolors.name_to_rgb(color_parts[1].strip())
+                                background_color = wx.Colour(rgb.red, rgb.green, rgb.blue)
+                            except ValueError:
+                                try:
+                                    rgb = webcolors.hex_to_rgb(color_parts[1].strip())
+                                    background_color = wx.Colour(rgb.red, rgb.green, rgb.blue)
+                                except ValueError:
+                                    pass  # Ignore invalid background color
                         break
 
-            # Apply the color and append the message
-            self.log_text.SetDefaultStyle(wx.TextAttr(color))
+            # Apply the colors and append the message
+            self.log_text.SetDefaultStyle(wx.TextAttr(foreground_color, background_color))
             self.log_text.AppendText(message + "\n")
 
     def save_window_info(self):

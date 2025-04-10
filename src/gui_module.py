@@ -80,7 +80,9 @@ class KeyValueGrid(wx.Panel):
         else:
             key_ctrl = wx.TextCtrl(self, value=key)
 
-        value_ctrl = wx.TextCtrl(self, value=value, style=wx.TE_MULTILINE)
+        # Convert list values to a comma-separated string
+        value_str = ", ".join(value) if isinstance(value, list) else value
+        value_ctrl = wx.TextCtrl(self, value=value_str, style=wx.TE_MULTILINE)
         value_ctrl.SetMinSize((200, 50))
 
         delete_button = wx.Button(self, label="-", size=(40, 40))
@@ -112,7 +114,9 @@ class KeyValueGrid(wx.Panel):
     def get_data(self):
         """Retrieve the data from the grid."""
         return {
-            (key_ctrl.GetStringSelection() if isinstance(key_ctrl, wx.Choice) else key_ctrl.GetValue()): value_ctrl.GetValue()
+            (key_ctrl.GetStringSelection() if isinstance(key_ctrl, wx.Choice) else key_ctrl.GetValue()): 
+            # Convert comma-separated strings back to lists
+            value_ctrl.GetValue().split(", ") if ", " in value_ctrl.GetValue() else value_ctrl.GetValue()
             for key_ctrl, value_ctrl, _ in self.controls
         }
 
@@ -143,6 +147,7 @@ class ConfigDialog(wx.Frame):
         regex_keys.append("mode_change")  # Add the fixed option
         self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
         self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
+        self.colors_grid = self.add_colors_tab(notebook, "Colors", self.config_data.get("colors", {}))  # Add colors tab
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -192,6 +197,20 @@ class ConfigDialog(wx.Frame):
         notebook.AddPage(panel, title)
         return grid
 
+    def add_colors_tab(self, notebook, title, colors_data):
+        """Add a tab for managing color settings."""
+        panel = wx.ScrolledWindow(notebook)
+        panel.SetScrollRate(5, 5)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Add a KeyValueGrid for colors
+        self.colors_grid = KeyValueGrid(panel, title, colors_data)
+        sizer.Add(self.colors_grid, 1, wx.EXPAND | wx.ALL, 5)
+
+        panel.SetSizer(sizer)
+        notebook.AddPage(panel, title)
+        return self.colors_grid
+
     def add_general_tab(self, notebook, title, config_data):
         """Helper method to add the general configuration tab."""
         panel = wx.Panel(notebook)
@@ -235,6 +254,9 @@ class ConfigDialog(wx.Frame):
         # Save general config values
         for key, control in self.general_controls.items():
             self.config_data[key] = control.GetValue() if isinstance(control, wx.CheckBox) else control.GetValue()
+
+        # Save colors data
+        self.config_data["colors"] = self.colors_grid.get_data()
 
     def on_accept(self, event):
         """Handle the Save button click."""
