@@ -186,6 +186,8 @@ class LogFileHandler(FileSystemEventHandler):
         self.script_version = get_version()  # Initialize script version
         self.log_file_path = config['log_file_path']
         self.discord_webhook_url = config['discord_webhook_url']
+        self.live_discord_webhook = config.get('live_discord_webhook', None)
+        self.ac_discord_webhook = config.get('ac_discord_webhook', None)
         self.technical_webhook_url = config.get('technical_webhook_url', False)
         self.regex_patterns = config['regex_patterns']
         self.messages = config.get('messages', {})
@@ -317,7 +319,14 @@ class LogFileHandler(FileSystemEventHandler):
                         data['alert'] = ''  # Empty string for non-important players
                         
                     content = self.discord_messages[pattern_name].format(**data)
-                    url = self.discord_webhook_url
+                    
+                    # Determine the correct webhook URL based on the mode and message type
+                    if self.current_mode == "SC_Default" and self.live_discord_webhook:
+                        url = self.live_discord_webhook
+                    elif self.current_mode != "SC_Default" and self.ac_discord_webhook:
+                        url = self.ac_discord_webhook
+                    else:
+                        url = self.discord_webhook_url  # Fallback to the default webhook
                 else:
                     return
                 
@@ -325,7 +334,6 @@ class LogFileHandler(FileSystemEventHandler):
                 return
             
             # Check if this message should be rate limited - using pattern_name as part of the key
-            # This allows different patterns to be rate limited separately
             if not self.rate_limiter.should_send(f"{pattern_name}:{content}", 'discord'):
                 output_message(None, f"Rate limited Discord message for pattern: {pattern_name}")
                 return
@@ -805,6 +813,45 @@ def stop_monitor(event_handler, observer):
     event_handler.stop()
     output_message(None, "Monitor stopped successfully")
 
+def fetch_dynamic_config(url):
+    """
+    Fetch dynamic configuration from the Google Sheets webhook.
+
+    Returns:
+        dict: A dictionary containing configuration values fetched from the "config" sheet.
+    """
+
+
+    try:
+        # Fetch the "config" sheet from Google Sheets
+        response = requests.get(f"{url}?sheet=Config")
+        if response.status_code == 200:
+            # Parse the response as JSON
+            rows = response.json()
+            # Convert rows into a dictionary ("key" as key, "value" as value)
+            return {row["Key"]: row["Value"] for row in rows if "Key" in row and "Value" in row}
+        else:
+            output_message(None, f"Error fetching dynamic config: {response.status_code} - {response.text}")
+    except Exception as e:
+        output_message(None, f"Exception fetching dynamic config: {e}")
+
+    return {}
+
+def merge_configs(static_config, dynamic_config):
+    """
+    Merge static configuration with dynamic configuration.
+
+    Args:
+        static_config (dict): The static configuration loaded from config.json.
+        dynamic_config (dict): The dynamic configuration fetched from Google Sheets.
+
+    Returns:
+        dict: The merged configuration.
+    """
+    merged_config = static_config.copy()
+    merged_config.update(dynamic_config)
+    return merged_config
+
 def startup(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None, **kwargs):
     """
     Initialize the log analyzer infrastructure and allow the caller to pass event subscriptions via kwargs.
@@ -836,7 +883,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         with open(config_path, 'r', encoding='utf-8') as config_file:
             config = json.load(config_file)
             output_message(None, f"Config loaded successfully from: {config_path}")
-        
+
         # If a custom log file path is provided, use it (for GUI)
         if log_file_path:
             config['log_file_path'] = log_file_path
@@ -878,6 +925,12 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
             config['process_all'] = bool(config.get('process_all', True))
             
         config['process_once'] = process_once or bool(config.get('process_once', False))
+
+        # Fetch dynamic configuration from Google Sheets
+        dynamic_config = fetch_dynamic_config(google_sheets_webhook)
+
+        # Merge static and dynamic configurations
+        config = merge_configs(config, dynamic_config)
 
         # Create a global rate limiter for the application
         main.rate_limiter = MessageRateLimiter(
