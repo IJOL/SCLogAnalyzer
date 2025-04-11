@@ -72,7 +72,7 @@ class StatusBoardBot(commands.Cog):
             message = await channel.send(embed=embed)
             self.stats_message_id = message.id
 
-    @tasks.loop(minutes=5)  # Update every 5 minutes
+    @tasks.loop(minutes=lambda self: self.config.get('update_period_minutes', 1))  # Default to 5 minutes if not configured
     async def update_stats_task(self):
         """Periodic task to update the stats embed message."""
         if not self.google_sheets_webhook or not self.stats_channel_id or not self.stats_message_id:
