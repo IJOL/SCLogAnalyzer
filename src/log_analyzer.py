@@ -839,17 +839,36 @@ def fetch_dynamic_config(url):
 
 def merge_configs(static_config, dynamic_config):
     """
-    Merge static configuration with dynamic configuration.
+    Deeply merge static configuration with dynamic configuration.
 
     Args:
         static_config (dict): The static configuration loaded from config.json.
         dynamic_config (dict): The dynamic configuration fetched from Google Sheets.
 
     Returns:
-        dict: The merged configuration.
+        dict: The deeply merged configuration.
     """
+    def set_nested_key(config, key_path, value):
+        """Set a value in a nested dictionary using a dot-separated key path."""
+        keys = key_path.split('.')
+        for key in keys[:-1]:
+            config = config.setdefault(key, {})
+        config[keys[-1]] = value
+
     merged_config = static_config.copy()
-    merged_config.update(dynamic_config)
+
+    for key, value in dynamic_config.items():
+        if '.' in key:
+            # Handle complex keys like 'regex_patterns.player_death'
+            set_nested_key(merged_config, key, value)
+        else:
+            # Simple key, overwrite or add to the top level
+            if isinstance(value, dict) and key in merged_config and isinstance(merged_config[key], dict):
+                # Recursively merge dictionaries
+                merged_config[key] = merge_configs(merged_config[key], value)
+            else:
+                merged_config[key] = value
+
     return merged_config
 
 def startup(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None, **kwargs):
