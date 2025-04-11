@@ -30,8 +30,18 @@ fi
 
 echo "Docker image artifact downloaded successfully: scloganalyzer-bot-${TAG_NAME}.tar.gz"
 
-# Load the Docker image into Docker
-docker load < "scloganalyzer-bot-${TAG_NAME}.tar.gz"
+# Load the Docker image into Docker and capture the output
+LOAD_OUTPUT=$(docker load < "scloganalyzer-bot-${TAG_NAME}.tar.gz")
+
+# Extract the image name from the output
+IMAGE_NAME=$(echo "$LOAD_OUTPUT" | grep -oP '(?<=Loaded image: ).*')
+
+if [ -z "$IMAGE_NAME" ]; then
+  echo "Failed to determine the loaded Docker image name."
+  exit 1
+fi
+
+echo "Docker image loaded successfully: $IMAGE_NAME"
 
 if [ $? -eq 0 ]; then
   echo "Docker image loaded successfully."
