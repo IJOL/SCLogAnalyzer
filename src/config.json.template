@@ -29,7 +29,8 @@
         "connected": "====================== Connected ======================",
         "quantum_jump": "{player}: Quantum jump",
         "mode_change": "Game Mode changed: {mode} {status} at {timestamp}",
-        "connection_flow" : "{partner}: in range" 
+        "connection_flow" : "{partner}: in range",
+        "startup": "🚀 **Startup Alert** {username} {script_version}"
     },
     "discord": {
         "player_death": "{username} :skull: {killer} -> {victim} {mode} with {weapon} in {zone} with {damage_type}"

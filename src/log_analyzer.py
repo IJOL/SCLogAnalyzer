@@ -279,8 +279,11 @@ class LogFileHandler(FileSystemEventHandler):
     def send_startup_message(self):
         """Send a startup message to Discord webhook if Discord is active."""
         if self.use_discord:
-            startup_message = f"🚀 **Startup Alert**\n**Username:** {self.username}\n**Script Version:** {self.script_version}\n**Status:** Monitoring started with Discord active"
-            self.send_discord_message(startup_message, technical=True)
+            # Send a startup message to Discord
+            # Use the technical webhook URL if available, otherwise use the main webhook URL
+            self.add_state_data({})
+            # startup_message = f"🚀 **Startup Alert**\n**Username:** {self.username}\n**Script Version:** {self.script_version}\n**Status:** Monitoring started with Discord active"
+            self.send_discord_message(self.add_state_data({}),"startup")
 
     def send_discord_message(self, data, pattern_name=None, technical=False):
         """Send a message to Discord via webhook or stdout"""
