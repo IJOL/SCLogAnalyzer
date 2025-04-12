@@ -57,20 +57,25 @@ class StatusBoardBot(commands.Cog):
         if not channel:
             return
         try:
-            if self.stats_message_id:
-                # Try to fetch the existing message
-                await channel.fetch_message(self.stats_message_id)
-            else:
-                # Create a new embed message if it doesn't exist
-                embed = discord.Embed(title="Real-Time Statistics", description="Loading data...", color=discord.Color.blue())
-                message = await channel.send(embed=embed)
-                self.stats_message_id = message.id
-                self.update_stats_task.start()  # Start periodic updates
-        except discord.NotFound:
-            # If the message doesn't exist, create a new one
+            # Search for an existing embed in the channel
+            async for message in channel.history(limit=100):  # Adjust limit as needed
+                if message.embeds:
+                    embed = message.embeds[0]
+                    if embed.title == "Real-Time Statistics":
+                        self.stats_message_id = message.id
+                        logger.info("Found existing stats embed message.")
+                        self.update_stats_task.start()  # Start periodic updates
+                        return
+
+            # If no existing embed is found, create a new one
             embed = discord.Embed(title="Real-Time Statistics", description="Loading data...", color=discord.Color.blue())
             message = await channel.send(embed=embed)
             self.stats_message_id = message.id
+            self.update_stats_task.start()  # Start periodic updates
+        except discord.NotFound:
+            logger.error("Channel not found or inaccessible.")
+        except Exception as e:
+            logger.exception(f"An unexpected error occurred while initializing the stats message: {e}")
 
     @tasks.loop(minutes=lambda self: self.config.get('update_period_minutes', 1))  # Default to 5 minutes if not configured
     async def update_stats_task(self):
