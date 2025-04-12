@@ -14,7 +14,7 @@ from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
 from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustment
 from pyzbar.pyzbar import decode  # For QR code detection
-from config_utils import emit_default_config, get_application_path, get_template_path, fetch_dynamic_config, merge_configs
+from config_utils import get_application_path, ConfigManager
 from gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
 
 # Configure logging with application path and executable name
@@ -167,69 +167,85 @@ class Event:
             callback(*args, **kwargs)
 
 class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, config, **kwargs):
-        # Restore instance attributes
+    def __init__(self, config_manager, **kwargs):
+        # Initialize events
         self.on_shard_version_update = Event()  # Event for shard and version updates
         self.on_mode_change = Event()  # Event for mode changes
+        
         # Handle subscriptions passed via kwargs
         if 'on_shard_version_update' in kwargs and callable(kwargs['on_shard_version_update']):
             self.on_shard_version_update.subscribe(kwargs['on_shard_version_update'])
         if 'on_mode_change' in kwargs and callable(kwargs['on_mode_change']):
             self.on_mode_change.subscribe(kwargs['on_mode_change'])
+            
+        # Store config manager
+        self.config_manager = config_manager
+        
+        # Initialize rate limiter
         self.rate_limiter = MessageRateLimiter(
-            timeout=config.get('rate_limit_timeout', 300),  # Increased to 5 minutes (300 seconds)
-            max_duplicates=config.get('rate_limit_max_duplicates', 1)  # Reduced to 1 - any duplicate will be blocked
+            timeout=config_manager.get('rate_limit_timeout', 300),
+            max_duplicates=config_manager.get('rate_limit_max_duplicates', 1)
         )
-        self.username = config.get('username', 'Unknown')  # Username as an instance attribute
-        self.current_shard = None  # Initialize shard information
-        self.current_version = None  # Initialize Star Citizen version information
-        self.script_version = get_version()  # Initialize script version
-        self.log_file_path = config['log_file_path']
-        self.discord_webhook_url = config['discord_webhook_url']
-        self.live_discord_webhook = config.get('live_discord_webhook', None)
-        self.ac_discord_webhook = config.get('ac_discord_webhook', None)
-        self.technical_webhook_url = config.get('technical_webhook_url', False)
-        self.regex_patterns = config['regex_patterns']
-        self.messages = config.get('messages', {})
-        self.important_players = config['important_players']
+        
+        # Initialize core attributes from config
+        self.username = config_manager.get('username', 'Unknown')
+        self.current_shard = None
+        self.current_version = None
+        self.script_version = get_version()
+        self.log_file_path = config_manager.get('log_file_path')
         self.last_position = 0
         self.actor_state = {}
-        self.process_all = config.get('process_all', False)
-        self.use_discord = config.get('use_discord', False) and bool(self.discord_webhook_url)
-        self.process_once = config.get('process_once', False)
-        self.discord_messages = config.get('discord', {})
-        self.google_sheets_webhook = config.get('google_sheets_webhook', '')
-        self.use_googlesheet = config.get('use_googlesheet', False) and bool(self.google_sheets_webhook)
         self.google_sheets_queue = queue.Queue()
         self.stop_event = threading.Event()
         self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
-        self.google_sheets_mapping = config.get('google_sheets_mapping', [])
+        self.current_mode = None
+        self.version = get_version()
+        
+        # Create screenshots folder if it doesn't exist
         if not os.path.exists(self.screenshots_folder):
             os.makedirs(self.screenshots_folder)
 
+        # Start Google Sheets thread if not in process_once mode
         if not self.process_once:
             self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
             self.google_sheets_thread.daemon = True
             self.google_sheets_thread.start()
-        self.version = get_version()
-        
-        # Mode tracking (new approach)
-        self.current_mode = None
         
         # Compile mode regex patterns
         self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
         self.nickname_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Connection Complete> map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>.*?) localAddr=(?P<local_addr>.*?) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session_id>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+)")
         self.mode_end_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected> cause=(?P<cause>\d+) reason=\"(?P<reason>.*?)\" frame=(?P<frame>\d+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>[\d\.:\w]+) localAddr=(?P<local_addr>[\d\.:\w]+) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+) \[(?P<tags>.*?)\]")
-
-        # Simpler Channel Disconnected pattern for other types of disconnects
         self.simple_disconnect_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected>")
 
+        # Process entire log if requested
         if self.process_all:
             self.process_entire_log()
         else:
             # Move to the end of the file if we're not processing everything
             self.last_position = self._get_file_end_position()
             output_message(None, f"Skipping to the end of log file (position {self.last_position})")
+
+    def __getattr__(self, name):
+        """
+        Dynamically retrieve attributes from the config_manager when they're not found
+        in the instance. This allows direct access to any configuration value without
+        explicitly defining it in the class.
+        
+        Args:
+            name (str): The attribute name to look for in the config_manager
+            
+        Returns:
+            The value from the config_manager
+            
+        Raises:
+            AttributeError: If the attribute doesn't exist in the config_manager either
+        """
+        try:
+            # Try to get the property from the config_manager
+            return self.config_manager.get(name)
+        except Exception as e:
+            # If that fails or if the property doesn't exist, raise AttributeError
+            raise AttributeError(f"Neither LogFileHandler nor ConfigManager has an attribute named '{name}'") from e
 
     def add_state_data(self, data):
         """
@@ -282,9 +298,6 @@ class LogFileHandler(FileSystemEventHandler):
         """Send a startup message to Discord webhook if Discord is active."""
         if self.use_discord:
             # Send a startup message to Discord
-            # Use the technical webhook URL if available, otherwise use the main webhook URL
-            self.add_state_data({})
-            # startup_message = f"🚀 **Startup Alert**\n**Username:** {self.username}\n**Script Version:** {self.script_version}\n**Status:** Monitoring started with Discord active"
             self.send_discord_message(self.add_state_data({}),"startup")
 
     def send_discord_message(self, data, pattern_name=None, technical=False):
@@ -817,7 +830,6 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
     """
     try:
         app_path = get_application_path()
-        config_path = os.path.join(app_path, "config.json")
         
         # Log tool name and executable version
         tool_name = "SC Log Analyzer"
@@ -825,72 +837,39 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         output_message(None, f"Starting {tool_name} {version}")
         logging.info(f"{tool_name} {version} started")
 
-        output_message(None, f"Loading config from: {config_path}")
+        # Initialize the ConfigManager
+        config_manager = ConfigManager()
+        output_message(None, f"Loading config from: {config_manager.config_path}")
         
-        if not os.path.exists(config_path):
-            output_message(None, f"Config file not found, creating default at: {config_path}")
-            emit_default_config(config_path)  # Pass template_path if needed
+        # Apply dynamic configuration if Google Sheets webhook is available
+        google_sheets_webhook = config_manager.get('google_sheets_webhook', '')
+        if google_sheets_webhook and is_valid_url(google_sheets_webhook):
+            config_manager.apply_dynamic_config(google_sheets_webhook)
+            output_message(None, "Applied dynamic configuration from Google Sheets")
         
-        with open(config_path, 'r', encoding='utf-8') as config_file:
-            config = json.load(config_file)
-            output_message(None, f"Config loaded successfully from: {config_path}")
+        # Override configuration with command-line parameters
+        config_manager.override_with_parameters(
+            process_all=process_all,
+            use_discord=use_discord,
+            process_once=process_once,
+            use_googlesheet=use_googlesheet,
+            log_file_path=log_file_path,
+            **kwargs
+        )
 
-        # If a custom log file path is provided, use it (for GUI)
-        if log_file_path:
-            config['log_file_path'] = log_file_path
-        # If log_file_path is relative, make it relative to the application path
-        elif not os.path.isabs(config['log_file_path']):
-            config['log_file_path'] = os.path.join(app_path, config['log_file_path'])
-
-        # Ensure the file exists
-        if not os.path.exists(config['log_file_path']):
-            output_message(None, f"Log file not found at {config['log_file_path']}")
+        # Log file path must exist
+        if not os.path.exists(config_manager.get('log_file_path')):
+            output_message(None, f"Log file not found at {config_manager.get('log_file_path')}")
             return
-
-        # Determine if Discord should be used based on the webhook URL and command-line parameter
-        discord_webhook_url = config.get('discord_webhook_url')
-        if use_discord is None:
-            if not bool(config.get('use_discord', True)):
-                config['use_discord'] = False
-            else:
-                config['use_discord'] = is_valid_url(discord_webhook_url)
-        else:
-            config['use_discord'] = use_discord
-
-        # Determine if Google Sheets should be used based on the webhook URL and command-line parameter
-        google_sheets_webhook = config.get('google_sheets_webhook')
-        if use_googlesheet is None:
-            if not bool(config.get('use_googlesheet', True)):
-                config['use_googlesheet'] = False
-            else:
-                config['use_googlesheet'] = is_valid_url(google_sheets_webhook)
-        else:
-            config['use_googlesheet'] = use_googlesheet
-
-        # Override config values with command-line parameters if provided
-        if not process_all:
-            # Reverse logic: -p flag forces process_all to False
-            config['process_all'] = True
-        else:
-            # Use the config value if -p flag not present
-            config['process_all'] = bool(config.get('process_all', True))
-            
-        config['process_once'] = process_once or bool(config.get('process_once', False))
-
-        # Fetch dynamic configuration from Google Sheets
-        dynamic_config = fetch_dynamic_config(google_sheets_webhook)
-
-        # Merge static and dynamic configurations
-        config = merge_configs(config, dynamic_config)
 
         # Create a global rate limiter for the application
         main.rate_limiter = MessageRateLimiter(
-            timeout=config.get('rate_limit_timeout', 300),
-            max_duplicates=config.get('rate_limit_max_duplicates', 1)
+            timeout=config_manager.get('rate_limit_timeout', 300),
+            max_duplicates=config_manager.get('rate_limit_max_duplicates', 1)
         )
 
         # Create a file handler with kwargs for event subscriptions
-        event_handler = LogFileHandler(config, **kwargs)
+        event_handler = LogFileHandler(config_manager, **kwargs)
 
         if event_handler.process_once:
             output_message(None, "Processing log file once and exiting...")
@@ -898,16 +877,18 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
             return event_handler
 
         # Log monitoring status just before starting the observer
-        output_message(None, f"Monitoring log file: {config['log_file_path']}")
+        output_message(None, f"Monitoring log file: {config_manager.get('log_file_path')}")
         output_message(None, f"Sending updates to {'Discord webhook' if event_handler.use_discord else 'stdout'}")
 
         # Create an observer
         observer = Observer()
-        observer.schedule(event_handler, path=os.path.dirname(config['log_file_path']), recursive=False)
+        observer.schedule(event_handler, path=os.path.dirname(config_manager.get('log_file_path')), recursive=False)
         observer.schedule(event_handler, path=event_handler.screenshots_folder, recursive=False)  # Monitor screenshots folder
-            # Store references for signal handler
+        
+        # Store references for signal handler
         signal_handler.event_handler = event_handler
         signal_handler.observer = observer    
+        
         # Return the initialized handler and observer without starting processing
         return event_handler, observer
     except Exception as e:
