@@ -24,6 +24,8 @@ class StatusBoardBot(commands.Cog):
         self.google_sheets_webhook = config.get('google_sheets_webhook', '')
         self.stats_channel_id = config.get('stats_channel_id', '1334816643339128872')
         self.stats_message_id = None  # ID of the embed message
+        self.ratio_live_message_id = None  # ID of the Ratio/Live leaderboard embed
+        self.ratio_sb_message_id = None  # ID of the Ratio/SB leaderboard embed
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -51,8 +53,90 @@ class StatusBoardBot(commands.Cog):
                 return None
         return channel
 
+    async def initialize_leaderboard_messages(self):
+        """Create or fetch the leaderboard embed messages."""
+        channel = await self.get_channel(self.stats_channel_id)
+        if not channel:
+            return
+
+        try:
+            # Search for existing leaderboard embeds in the channel
+            async for message in channel.history(limit=100):
+                if message.embeds:
+                    embed = message.embeds[0]
+                    if embed.title == "Leaderboard - Ratio/Live":
+                        self.ratio_live_message_id = message.id
+                    elif embed.title == "Leaderboard - Ratio/SB":
+                        self.ratio_sb_message_id = message.id
+
+            # Create new embeds if not found
+            if not hasattr(self, 'ratio_live_message_id'):
+                embed = discord.Embed(title="Leaderboard - Ratio/Live", description="Loading data...", color=discord.Color.green())
+                message = await channel.send(embed=embed)
+                self.ratio_live_message_id = message.id
+
+            if not hasattr(self, 'ratio_sb_message_id'):
+                embed = discord.Embed(title="Leaderboard - Ratio/SB", description="Loading data...", color=discord.Color.purple())
+                message = await channel.send(embed=embed)
+                self.ratio_sb_message_id = message.id
+
+        except Exception as e:
+            logger.exception(f"Error initializing leaderboard messages: {e}")
+
+    async def update_leaderboard_embeds(self, data):
+        """Update the leaderboard embeds with sorted data."""
+        channel = await self.get_channel(self.stats_channel_id)
+        if not channel:
+            return
+
+        try:
+            # Update Ratio/Live leaderboard
+            sorted_ratio_live = sorted(data, key=lambda x: float(x.get("Ratio/Live", 0)), reverse=True)
+            embed_live = discord.Embed(
+                title="🏆 Leaderboard - Ratio/Live",
+                description="Top players ranked by **Ratio/Live**. 🟢",
+                color=discord.Color.green()
+            )
+
+            for i, row in enumerate(sorted_ratio_live[:10], start=1):
+                player_name = row.get("Jugador", "Unknown")
+                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖️"
+                embed_live.add_field(
+                    name=f"{medal} #{i} {player_name}",
+                    value=f"{row.get('Ratio/Live', 'N/A')}",
+                    inline=False
+                )
+
+            message_live = await channel.fetch_message(self.ratio_live_message_id)
+            await message_live.edit(embed=embed_live)
+
+            # Update Ratio/SB leaderboard
+            sorted_ratio_sb = sorted(data, key=lambda x: float(x.get("Ratio/SB", 0)), reverse=True)
+            embed_sb = discord.Embed(
+                title="🏆 Leaderboard - Ratio/SB",
+                description="Top players ranked by **Ratio/SB**. 🟣",
+                color=discord.Color.purple()
+            )
+
+            for i, row in enumerate(sorted_ratio_sb[:10], start=1):
+                player_name = row.get("Jugador", "Unknown")
+                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖️"
+                embed_sb.add_field(
+                    name=f"{medal} #{i} {player_name}",
+                    value=f"{row.get('Ratio/SB', 'N/A')}",
+                    inline=False
+                )
+
+            message_sb = await channel.fetch_message(self.ratio_sb_message_id)
+            await message_sb.edit(embed=embed_sb)
+
+            logger.info("Leaderboard embeds updated successfully.")
+
+        except Exception as e:
+            logger.exception(f"Error updating leaderboard embeds: {e}")
+
     async def initialize_stats_message(self):
-        """Create or fetch the stats embed message."""
+        """Create or fetch the stats embed message and initialize leaderboards."""
         channel = await self.get_channel(self.stats_channel_id)
         if not channel:
             return
@@ -64,6 +148,7 @@ class StatusBoardBot(commands.Cog):
                     if embed.title == "Real-Time Statistics":
                         self.stats_message_id = message.id
                         logger.info("Found existing stats embed message.")
+                        await self.initialize_leaderboard_messages()
                         self.update_stats_task.start()  # Start periodic updates
                         return
 
@@ -71,15 +156,16 @@ class StatusBoardBot(commands.Cog):
             embed = discord.Embed(title="Real-Time Statistics", description="Loading data...", color=discord.Color.blue())
             message = await channel.send(embed=embed)
             self.stats_message_id = message.id
+            await self.initialize_leaderboard_messages()
             self.update_stats_task.start()  # Start periodic updates
         except discord.NotFound:
             logger.error("Channel not found or inaccessible.")
         except Exception as e:
             logger.exception(f"An unexpected error occurred while initializing the stats message: {e}")
 
-    @tasks.loop(minutes=lambda self: self.config.get('update_period_minutes', 1))  # Default to 5 minutes if not configured
+    @tasks.loop(minutes=lambda self: self.config.get('update_period_minutes', 1))
     async def update_stats_task(self):
-        """Periodic task to update the stats embed message."""
+        """Periodic task to update the stats and leaderboard embed messages."""
         if not self.google_sheets_webhook or not self.stats_channel_id or not self.stats_message_id:
             logger.warning("Cannot update stats message: incomplete configuration.")
             return
@@ -96,17 +182,19 @@ class StatusBoardBot(commands.Cog):
                 logger.warning("Data from Google Sheets is empty or in an unexpected format.")
                 return
 
-            # Generate the embed with the statistics
+            # Update the stats embed
             embed = self.generate_stats_embed(data)
-
-            # Update the embed message
             channel = await self.get_channel(self.stats_channel_id)
             if not channel:
                 return
 
             message = await channel.fetch_message(self.stats_message_id)
             await message.edit(embed=embed)
-            logger.info("Stats message updated successfully.")
+
+            # Update the leaderboard embeds
+            await self.update_leaderboard_embeds(data)
+
+            logger.info("Stats and leaderboard messages updated successfully.")
         except Exception as e:
             logger.exception(f"Error updating stats message: {e}")
 
@@ -145,6 +233,7 @@ class StatusBoardBot(commands.Cog):
         description += "```"
         embed.description = description
         return embed
+
     @update_stats_task.before_loop
     async def before_update_stats_task(self):
         """Wait until the bot is ready before starting the task."""
@@ -225,6 +314,58 @@ class StatusBoardBot(commands.Cog):
         finally:
             execution_time = time.time() - start_time
             logger.info(f"Command 'stats' executed in {execution_time:.2f} seconds.")
+
+    @commands.command(name='leaderboard')
+    async def leaderboard(self, ctx, metric: str = "Kills/SB"):
+        """Generate a leaderboard based on a specific metric."""
+        logger.info(f"Command 'leaderboard' invoked by user: {ctx.author} with metric: {metric}")
+
+        if not self.google_sheets_webhook:
+            logger.warning("Google Sheets webhook URL is not configured.")
+            await ctx.send("Google Sheets webhook URL is not configured.")
+            return
+
+        try:
+            # Fetch data from Google Sheets
+            response = requests.get(self.google_sheets_webhook)
+            if response.status_code != 200:
+                logger.error(f"Error fetching data from Google Sheets: {response.status_code}")
+                await ctx.send(f"Error fetching data from Google Sheets: {response.status_code}")
+                return
+
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                logger.warning("Data from Google Sheets is empty or in an unexpected format.")
+                await ctx.send("Data from Google Sheets is empty or in an unexpected format.")
+                return
+
+            # Validate the metric
+            if metric not in data[0]:
+                await ctx.send(f"Invalid metric: {metric}. Please choose a valid column name.")
+                return
+
+            # Sort the data by the specified metric
+            try:
+                sorted_data = sorted(data, key=lambda x: float(x.get(metric, 0)), reverse=True)
+            except ValueError:
+                await ctx.send(f"The metric '{metric}' contains non-numeric values and cannot be used for ranking.")
+                return
+
+            # Generate the leaderboard embed
+            embed = discord.Embed(title=f"Leaderboard - {metric}", color=discord.Color.gold())
+            embed.description = "Top players ranked by the selected metric."
+
+            for i, row in enumerate(sorted_data[:10], start=1):  # Show top 10 players
+                player_name = row.get("Jugador", "Unknown")
+                metric_value = row.get(metric, "N/A")
+                embed.add_field(name=f"#{i} {player_name}", value=f"{metric}: {metric_value}", inline=False)
+
+            await ctx.send(embed=embed)
+            logger.info("Leaderboard generated and sent successfully.")
+
+        except Exception as e:
+            logger.exception(f"Error generating leaderboard: {e}")
+            await ctx.send(f"Error generating leaderboard: {e}")
 
 async def main():
     app_path = os.path.dirname(os.path.abspath(__file__))
