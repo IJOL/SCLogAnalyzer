@@ -11,7 +11,7 @@ import json  # For handling JSON files
 import winreg  # Import for Windows registry manipulation
 import wx.grid  # Import wx.grid for displaying tabular data
 import requests  # For HTTP requests
-from config_utils import emit_default_config, get_application_path, renew_config  # Import renew_config
+from config_utils import get_config_manager, get_application_path  # Import the singleton getter
 from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper, NumericValidator, TaskBarIcon  # Import TaskBarIcon
 from PIL import Image
 import mss
@@ -51,19 +51,69 @@ class LogAnalyzerFrame(wx.Frame):
         icon_path = os.path.join(os.path.dirname(__file__), "SCLogAnalyzer.ico")
         if os.path.exists(icon_path):
             self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO))
+            
+        # Create main panel and UI components first
+        self._create_ui_components()
+        
+        # Now set up configuration
+        # Store config manager reference for dynamic attribute access
+        self.config_manager = get_config_manager(in_gui=True)
+        
         # Set flag for GUI mode
-        log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled        
-        # Ensure default config exists
-        self.ensure_default_config()
-
-        # Set up a custom log handler for GUI
+        log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled
+        
+        # Set up a custom log handler for GUI (do this after log_text is created)
         log_analyzer.main.gui_log_handler = self.append_log_message
         
         # Initialize variables
         self.observer = None
         self.event_handler = None
         self.monitoring = False
+        self.console_key = ""  # Default console key
         
+        # Load configuration
+        self.load_default_config()
+        
+        # Ensure default config exists
+        self.ensure_default_config()
+        
+        # Validate settings and show config dialog if needed
+        self.validate_startup_settings()
+
+        # Only add Google Sheets tabs if the webhook URL is valid
+        if self.google_sheets_webhook:
+            self.update_google_sheets_tabs()
+
+        # Set up stdout redirection
+        sys.stdout = RedirectText(self.log_text)
+
+        # Create taskbar icon
+        self.taskbar_icon = TaskBarIcon(self, TASKBAR_ICON_TOOLTIP)
+
+        # Check if the app is started with the --start-hidden flag
+        if STARTUP_COMMAND_FLAG in sys.argv:
+            self.Hide()  # Hide the main window at startup
+
+        # Start monitoring by default when GUI is launched
+        wx.CallAfter(self.start_monitoring)
+        wx.CallAfter(self.update_monitoring_buttons, True)
+
+        # Check for updates at app initialization
+        wx.CallAfter(self.check_for_updates)
+
+        self.save_timer = wx.Timer(self)  # Timer to delay saving window info
+        self.Bind(wx.EVT_TIMER, self.on_save_timer, self.save_timer)
+        self.Bind(wx.EVT_MOVE, self.on_window_move_or_resize)
+        self.Bind(wx.EVT_SIZE, self.on_window_move_or_resize)
+
+        self.restore_window_info()  # Restore window position, size, and state from the registry
+
+        # Bind close event to save window position
+        self.Bind(wx.EVT_CLOSE, self.on_close)
+        wx.CallAfter(self.update_dynamic_labels)
+        
+    def _create_ui_components(self):
+        """Create all UI components first to ensure they exist before configuration is handled."""
         # Create main panel
         panel = wx.Panel(self)
 
@@ -97,7 +147,7 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Add a horizontal sizer for buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
+        # NOTE: It's wx.FONTSTYLE_NORMAL with underscore, not wx.FONTSTYLE.NORMAL with dot
         # Style buttons with icons and custom fonts
         self.process_log_button = wx.Button(self.log_page, label=" Process Log")
         self.process_log_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_FILE_OPEN, wx.ART_BUTTON, (16, 16)))
@@ -110,7 +160,7 @@ class LogAnalyzerFrame(wx.Frame):
         
         self.monitor_button = wx.Button(self.log_page, label=" Start Monitoring")
         self.monitor_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_EXECUTABLE_FILE, wx.ART_BUTTON, (16, 16)))
-        self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,wx.FONTWEIGHT_BOLD))
+        self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
 
         # Add the new Test Google Sheets button with a better icon
         self.test_google_sheets_button = wx.Button(self.log_page, label=" Test Google Sheets")
@@ -141,7 +191,6 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Set the sizer for the log page
         self.log_page.SetSizer(log_page_sizer)
-
 
         # Add notebook to the main sizer
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 2)
@@ -179,46 +228,40 @@ class LogAnalyzerFrame(wx.Frame):
         # Status bar
         self.CreateStatusBar()
         self.SetStatusText("Ready")
+
+    def __getattr__(self, name):
+        """
+        Dynamically retrieve attributes from the config_manager when they're not found
+        in the instance. This allows direct access to any configuration value without
+        explicitly defining it in the class.
         
-        # Try to get the default log file path from config
-        self.default_log_file_path = None
-        self.google_sheets_webhook = None
-        self.discord_webhook_url = None
-        self.console_key = ""  # Default console key
-        self.load_default_config()
-        self.validate_startup_settings()  # Validate settings before proceeding
-
-        # Only add Google Sheets tabs if the webhook URL is valid
-        if self.google_sheets_webhook:
-            self.update_google_sheets_tabs()
-
-        # Set up stdout redirection
-        sys.stdout = RedirectText(self.log_text)
-
-        # Create taskbar icon
-        self.taskbar_icon = TaskBarIcon(self, TASKBAR_ICON_TOOLTIP)
-
-        # Check if the app is started with the --start-hidden flag
-        if STARTUP_COMMAND_FLAG in sys.argv:
-            self.Hide()  # Hide the main window at startup
-
-        # Start monitoring by default when GUI is launched
-        wx.CallAfter(self.start_monitoring)
-        wx.CallAfter(self.update_monitoring_buttons, True)
-
-        # Check for updates at app initialization
-        wx.CallAfter(self.check_for_updates)
-
-        self.save_timer = wx.Timer(self)  # Timer to delay saving window info
-        self.Bind(wx.EVT_TIMER, self.on_save_timer, self.save_timer)
-        self.Bind(wx.EVT_MOVE, self.on_window_move_or_resize)
-        self.Bind(wx.EVT_SIZE, self.on_window_move_or_resize)
-
-        self.restore_window_info()  # Restore window position, size, and state from the registry
-
-        # Bind close event to save window position
-        self.Bind(wx.EVT_CLOSE, self.on_close)
-        wx.CallAfter(self.update_dynamic_labels) 
+        Args:
+            name (str): The attribute name to look for in the config_manager
+            
+        Returns:
+            The value from the config_manager with appropriate defaults
+            
+        Raises:
+            AttributeError: If the attribute doesn't exist in the config_manager either
+        """
+        try:
+            # Define default values for common config attributes
+            defaults = {
+                'log_file_path': '',
+                'google_sheets_webhook': '',
+                'discord_webhook_url': '',
+                'console_key': '',
+                'colors': {},
+                'use_discord': True,
+                'use_googlesheet': True
+            }
+            
+            # Try to get the property from the config_manager with appropriate default
+            default_value = defaults.get(name, None)
+            return self.config_manager.get(name, default_value)
+        except Exception as e:
+            # If that fails or if the property doesn't exist, raise AttributeError
+            raise AttributeError(f"Neither LogAnalyzerFrame nor ConfigManager has an attribute named '{name}'") from e
 
     def check_for_updates(self):
         """Check for updates by querying the GitHub API."""
@@ -685,38 +728,36 @@ class LogAnalyzerFrame(wx.Frame):
             self.SetStatusText("Monitoring stopped")
 
     def ensure_default_config(self):
-        """Ensure the default configuration file exists."""
-        app_path = get_application_path()
-        config_path = os.path.join(app_path, CONFIG_FILE_NAME)
+        """Ensure the default configuration file exists by using the ConfigManager singleton.
+        Also automatically renews config to keep it up-to-date with the template."""
+        # Get the singleton config manager instance, which will create the default config if needed
+        config_path = self.config_manager.config_path
         
+        # Check if we need to create a new config file
+        created_new = False
         if not os.path.exists(config_path):
-            emit_default_config(config_path, in_gui=True)
-            return True
-        else:
-            renew_config()
-            return False
+            created_new = True
+        
+        # If not creating new, renew the config to ensure it's up-to-date with template
+        if not created_new:
+            self.renew_config()
+            
+        return created_new
 
     def load_default_config(self):
-        """Load default log file path, regex patterns, colors, and other settings from config."""
-        app_path = get_application_path()
-        config_path = os.path.join(app_path, CONFIG_FILE_NAME)
-        
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, 'r', encoding='utf-8') as config_file:
-                    config = json.load(config_file)
-                    
-                self.default_log_file_path = config.get('log_file_path', '')
-                self.google_sheets_webhook = config.get('google_sheets_webhook', '')
-                self.discord_webhook_url = config.get('discord_webhook_url', '')
-                self.console_key = config.get('console_key', '')  # Load console key with default
-                self.colors = config.get('colors', {})  # Load colors from config
-                # Set checkbox defaults from config
-                self.discord_check.Check(config.get('use_discord', True))  # Default to True
-                self.googlesheet_check.Check(config.get('use_googlesheet', True))  # Default to True
-                
-            except Exception as e:
-                self.log_text.AppendText(f"Error loading config: {e}\n")
+        """Load configuration values using the ConfigManager singleton."""
+        try:
+            # Get the singleton config manager instance
+            
+            # We'll still cache the default_log_file_path, it's needed frequently
+            self.default_log_file_path = self.log_file_path
+            
+            # Only set checkbox states from config, other values will be accessed dynamically
+            self.discord_check.Check(self.use_discord)
+            self.googlesheet_check.Check(self.use_googlesheet)
+            
+        except Exception as e:
+            self.log_text.AppendText(f"Error loading config: {e}\n")
 
     def validate_startup_settings(self):
         """Validate critical settings and show the config dialog if necessary."""
@@ -1186,6 +1227,39 @@ class LogAnalyzerFrame(wx.Frame):
                 wx.MessageBox("Failed to send test entry to Google Sheets. Check the logs for details.", "Error", wx.OK | wx.ICON_ERROR)
         except Exception as e:
             wx.MessageBox(f"Error sending test entry to Google Sheets: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
+    def renew_config(self):
+        """Renew the configuration using the ConfigManager while preserving important values.
+        This is a wrapper for the ConfigManager.renew_config method, maintaining compatibility
+        with the older approach."""
+        try:
+            # Use the ConfigManager instance to renew the configuration
+            success = self.config_manager.renew_config()
+            if success:
+                # Only log to log_text if it exists (it might not during initialization)
+                if hasattr(self, 'log_text') and self.log_text is not None:
+                    self.log_text.AppendText("Configuration renewed successfully.\n")
+                else:
+                    print("Configuration renewed successfully.")
+                    
+                # Reload configuration after renewal
+                # Only reload if we're not in initialization (log_text would exist if we were fully initialized)
+                self.load_default_config()
+                # Update Google Sheets tabs if they exist
+                self.update_google_sheets_tabs()
+                return True
+            else:
+                if hasattr(self, 'log_text') and self.log_text is not None:
+                    self.log_text.AppendText("Failed to renew configuration.\n")
+                else:
+                    print("Failed to renew configuration.")
+                return False
+        except Exception as e:
+            if hasattr(self, 'log_text') and self.log_text is not None:
+                self.log_text.AppendText(f"Error during configuration renewal: {e}\n")
+            else:
+                print(f"Error during configuration renewal: {e}")
+            return False
 
     def on_close(self, event):
         """Handle window close event."""

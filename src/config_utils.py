@@ -11,9 +11,12 @@ DEFAULT_CONFIG_TEMPLATE = "config.json.template"
 _config_manager_instance = None
 _config_manager_lock = threading.Lock()
 
-def get_config_manager():
+def get_config_manager(in_gui=False):
     """
     Get or create the singleton ConfigManager instance.
+    
+    Args:
+        in_gui (bool): Whether the application is running in GUI mode
     
     Returns:
         ConfigManager: The singleton instance of ConfigManager
@@ -22,7 +25,11 @@ def get_config_manager():
     
     with _config_manager_lock:
         if _config_manager_instance is None:
-            _config_manager_instance = ConfigManager()
+            _config_manager_instance = ConfigManager(in_gui=in_gui)
+        elif in_gui:
+            # If we're in GUI mode but the instance wasn't created with in_gui=True,
+            # update the flag on the existing instance
+            _config_manager_instance.in_gui = True
         return _config_manager_instance
 
 def prompt_for_config_values(template):
@@ -170,12 +177,13 @@ class ConfigManager:
     """
     A class to manage configuration settings with support for nested keys and dynamic updates.
     """
-    def __init__(self, config_path=None):
+    def __init__(self, config_path=None, in_gui=False):
         """Initialize the ConfigManager with a configuration file path."""
         self.config_path = config_path or os.path.join(get_application_path(), "config.json")
         self.app_path = get_application_path()
         self._config = {}
         self._lock = threading.RLock()  # Reentrant lock for thread safety
+        self.in_gui = in_gui  # Track whether we're running in GUI mode
         self.load_config()
     
     def load_config(self):
@@ -196,7 +204,8 @@ class ConfigManager:
     def _create_default_config(self):
         """Create a default configuration file and load it."""
         try:
-            emit_default_config(self.config_path)
+            # Pass the GUI mode flag to emit_default_config
+            emit_default_config(self.config_path, in_gui=self.in_gui)
             with open(self.config_path, 'r', encoding='utf-8') as config_file:
                 self._config = json.load(config_file)
             print(f"Created default configuration at {self.config_path}")
