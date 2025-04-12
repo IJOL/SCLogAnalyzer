@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import requests  # Added for fetch_dynamic_config
 
 DEFAULT_CONFIG_TEMPLATE = "config.json.template"
 
@@ -85,3 +86,62 @@ def renew_config():
         print("Config renewed successfully.")
     except Exception as e:
         print(f"Error renewing config: {e}")
+
+def fetch_dynamic_config(url):
+    """
+    Fetch dynamic configuration from the Google Sheets webhook.
+
+    Returns:
+        dict: A dictionary containing configuration values fetched from the "config" sheet.
+    """
+    if not url:
+        return {}
+        
+    try:
+        # Fetch the "config" sheet from Google Sheets
+        response = requests.get(f"{url}?sheet=Config")
+        if response.status_code == 200:
+            # Parse the response as JSON
+            rows = response.json()
+            # Convert rows into a dictionary ("key" as key, "value" as value)
+            return {row["Key"]: row["Value"] for row in rows if "Key" in row and "Value" in row}
+        else:
+            print(f"Error fetching dynamic config: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"Exception fetching dynamic config: {e}")
+
+    return {}
+
+def merge_configs(static_config, dynamic_config):
+    """
+    Deeply merge static configuration with dynamic configuration.
+
+    Args:
+        static_config (dict): The static configuration loaded from config.json.
+        dynamic_config (dict): The dynamic configuration fetched from Google Sheets.
+
+    Returns:
+        dict: The deeply merged configuration.
+    """
+    def set_nested_key(config, key_path, value):
+        """Set a value in a nested dictionary using a dot-separated key path."""
+        keys = key_path.split('.')
+        for key in keys[:-1]:
+            config = config.setdefault(key, {})
+        config[keys[-1]] = value
+
+    merged_config = static_config.copy()
+
+    for key, value in dynamic_config.items():
+        if '.' in key:
+            # Handle complex keys like 'regex_patterns.player_death'
+            set_nested_key(merged_config, key, value)
+        else:
+            # Simple key, overwrite or add to the top level
+            if isinstance(value, dict) and key in merged_config and isinstance(merged_config[key], dict):
+                # Recursively merge dictionaries
+                merged_config[key] = merge_configs(merged_config[key], value)
+            else:
+                merged_config[key] = value
+
+    return merged_config
