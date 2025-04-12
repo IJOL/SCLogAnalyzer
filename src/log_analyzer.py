@@ -305,31 +305,21 @@ class LogFileHandler(FileSystemEventHandler):
                 player_fields = ['player', 'owner', 'victim', 'killer', 'entity']
                 players = [data.get(field) for field in player_fields if data.get(field)]
                 
-                # Determine if we should send the message based on important_players
-                should_send = (
-                    not self.important_players or  # Send if no important players configured
-                    any(player in self.important_players for player in players)  # Or if any player is important
-                )
-                
-                if should_send:
-                    # Add alert emoji if any player is in important_players
-                    if any(player in self.important_players for player in players):
-                        data['alert'] = '🔊 Sound Alert!'
-                    else:
-                        data['alert'] = ''  # Empty string for non-important players
-                        
-                    content = self.discord_messages[pattern_name].format(**data)
-                    
-                    # Determine the correct webhook URL based on the mode and message type
-                    if self.current_mode == "SC_Default" and self.live_discord_webhook:
-                        url = self.live_discord_webhook
-                    elif self.current_mode != "SC_Default" and self.ac_discord_webhook:
-                        url = self.ac_discord_webhook
-                    else:
-                        url = self.discord_webhook_url  # Fallback to the default webhook
+                # Add alert emoji if any player is in important_players
+                if any(player in self.important_players for player in players):
+                    data['alert'] = '🔊 Sound Alert!'
                 else:
-                    return
+                    data['alert'] = ''  # Empty string for non-important players
+                    
+                content = self.discord_messages[pattern_name].format(**data)
                 
+                # Determine the correct webhook URL based on the mode and message type
+                if self.current_mode == "SC_Default" and self.live_discord_webhook:
+                    url = self.live_discord_webhook
+                elif self.current_mode != "SC_Default" and self.ac_discord_webhook:
+                    url = self.ac_discord_webhook
+                else:
+                    url = self.discord_webhook_url  # Fallback to the default webhook
             else:
                 return
             
