@@ -14,7 +14,7 @@ from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
 from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustment
 from pyzbar.pyzbar import decode  # For QR code detection
-from config_utils import get_application_path, ConfigManager
+from config_utils import get_application_path, get_config_manager
 from gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
 
 # Configure logging with application path and executable name
@@ -838,7 +838,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         logging.info(f"{tool_name} {version} started")
 
         # Initialize the ConfigManager
-        config_manager = ConfigManager()
+        config_manager = get_config_manager()
         output_message(None, f"Loading config from: {config_manager.config_path}")
         
         # Apply dynamic configuration if Google Sheets webhook is available
