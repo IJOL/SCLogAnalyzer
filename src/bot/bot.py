@@ -26,6 +26,7 @@ class StatusBoardBot(commands.Cog):
         self.stats_message_id = None  # ID of the embed message
         self.ratio_live_message_id = None  # ID of the Ratio/Live leaderboard embed
         self.ratio_sb_message_id = None  # ID of the Ratio/SB leaderboard embed
+        self.last_update_time = 0  # Track the last update time
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -66,19 +67,23 @@ class StatusBoardBot(commands.Cog):
                     embed = message.embeds[0]
                     if embed.title == "Leaderboard - Ratio/Live":
                         self.ratio_live_message_id = message.id
+                        logger.info("Found existing Ratio/Live leaderboard message.")
                     elif embed.title == "Leaderboard - Ratio/SB":
                         self.ratio_sb_message_id = message.id
+                        logger.info("Found existing Ratio/SB leaderboard message.")
 
             # Create new embeds if not found
-            if not hasattr(self, 'ratio_live_message_id'):
+            if self.ratio_live_message_id is None:
                 embed = discord.Embed(title="Leaderboard - Ratio/Live", description="Loading data...", color=discord.Color.green())
                 message = await channel.send(embed=embed)
                 self.ratio_live_message_id = message.id
+                logger.info(f"Created new Ratio/Live leaderboard message with ID: {message.id}")
 
-            if not hasattr(self, 'ratio_sb_message_id'):
+            if self.ratio_sb_message_id is None:
                 embed = discord.Embed(title="Leaderboard - Ratio/SB", description="Loading data...", color=discord.Color.purple())
                 message = await channel.send(embed=embed)
                 self.ratio_sb_message_id = message.id
+                logger.info(f"Created new Ratio/SB leaderboard message with ID: {message.id}")
 
         except Exception as e:
             logger.exception(f"Error initializing leaderboard messages: {e}")
@@ -90,6 +95,15 @@ class StatusBoardBot(commands.Cog):
             return
 
         try:
+            # Check if message IDs are valid before attempting to fetch
+            if self.ratio_live_message_id is None or self.ratio_sb_message_id is None:
+                logger.warning("Leaderboard message IDs are not initialized. Running initialization...")
+                await self.initialize_leaderboard_messages()
+                # If still None after initialization, abort the update
+                if self.ratio_live_message_id is None or self.ratio_sb_message_id is None:
+                    logger.error("Failed to initialize leaderboard message IDs. Skipping update.")
+                    return
+
             # Update Ratio/Live leaderboard
             sorted_ratio_live = sorted(data, key=lambda x: float(x.get("Ratio/Live", 0)), reverse=True)
             embed_live = discord.Embed(
@@ -98,12 +112,13 @@ class StatusBoardBot(commands.Cog):
                 color=discord.Color.green()
             )
 
-            for i, row in enumerate(sorted_ratio_live[:10], start=1):
+            for i, row in enumerate(sorted_ratio_live[:3], start=1):
                 player_name = row.get("Jugador", "Unknown")
+                ratio_value = row.get('Ratio/Live', 'N/A')
                 medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖️"
                 embed_live.add_field(
-                    name=f"{medal} #{i} {player_name}",
-                    value=f"{row.get('Ratio/Live', 'N/A')}",
+                    name=f"{medal} {player_name} - {ratio_value}",
+                    value="\u200b",  # Zero-width space as a placeholder
                     inline=False
                 )
 
@@ -118,12 +133,13 @@ class StatusBoardBot(commands.Cog):
                 color=discord.Color.purple()
             )
 
-            for i, row in enumerate(sorted_ratio_sb[:10], start=1):
+            for i, row in enumerate(sorted_ratio_sb[:3], start=1):
                 player_name = row.get("Jugador", "Unknown")
+                ratio_value = row.get('Ratio/SB', 'N/A')
                 medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖️"
                 embed_sb.add_field(
-                    name=f"{medal} #{i} {player_name}",
-                    value=f"{row.get('Ratio/SB', 'N/A')}",
+                    name=f"{medal} {player_name} - {ratio_value}",
+                    value="\u200b",  # Zero-width space as a placeholder
                     inline=False
                 )
 
@@ -132,6 +148,11 @@ class StatusBoardBot(commands.Cog):
 
             logger.info("Leaderboard embeds updated successfully.")
 
+        except discord.NotFound:
+            logger.error("One or more leaderboard messages not found. Re-initializing...")
+            self.ratio_live_message_id = None
+            self.ratio_sb_message_id = None
+            await self.initialize_leaderboard_messages()
         except Exception as e:
             logger.exception(f"Error updating leaderboard embeds: {e}")
 
@@ -163,9 +184,21 @@ class StatusBoardBot(commands.Cog):
         except Exception as e:
             logger.exception(f"An unexpected error occurred while initializing the stats message: {e}")
 
-    @tasks.loop(minutes=lambda self: self.config.get('update_period_minutes', 1))
+    @tasks.loop(minutes=1)  # Use a fixed interval of 1 minute
     async def update_stats_task(self):
         """Periodic task to update the stats and leaderboard embed messages."""
+        # Get the configured update period (in minutes)
+        update_period = self.config.get('update_period_minutes', 1)
+        current_time = time.time()
+        
+        # Check if enough time has passed since the last update
+        # Convert update_period from minutes to seconds for comparison
+        if current_time - self.last_update_time < (update_period * 60):
+            return  # Skip this iteration if not enough time has passed
+            
+        # Update the last update time
+        self.last_update_time = current_time
+            
         if not self.google_sheets_webhook or not self.stats_channel_id or not self.stats_message_id:
             logger.warning("Cannot update stats message: incomplete configuration.")
             return
@@ -194,7 +227,7 @@ class StatusBoardBot(commands.Cog):
             # Update the leaderboard embeds
             await self.update_leaderboard_embeds(data)
 
-            logger.info("Stats and leaderboard messages updated successfully.")
+            logger.info(f"Stats and leaderboard messages updated successfully. Next update in {update_period} minutes.")
         except Exception as e:
             logger.exception(f"Error updating stats message: {e}")
 
