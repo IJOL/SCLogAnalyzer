@@ -55,7 +55,7 @@ class StatusBoardBot(commands.Cog):
         return channel
 
     async def initialize_leaderboard_messages(self):
-        """Create or fetch the leaderboard embed messages."""
+        """Create or fetch the combined leaderboard embed message."""
         channel = await self.get_channel(self.stats_channel_id)
         if not channel:
             return
@@ -65,96 +65,91 @@ class StatusBoardBot(commands.Cog):
             async for message in channel.history(limit=100):
                 if message.embeds:
                     embed = message.embeds[0]
-                    if embed.title == "Leaderboard - Ratio/Live":
+                    if "Leaderboards" in embed.title:
                         self.ratio_live_message_id = message.id
-                        logger.info("Found existing Ratio/Live leaderboard message.")
-                    elif embed.title == "Leaderboard - Ratio/SB":
-                        self.ratio_sb_message_id = message.id
-                        logger.info("Found existing Ratio/SB leaderboard message.")
+                        self.ratio_sb_message_id = None  # We don't need this anymore
+                        logger.info("Found existing combined leaderboard message.")
+                        return
+                    elif "Ratio/Live" in embed.title or "Ratio/SB" in embed.title:
+                        # Found an old format message, will replace it
+                        await message.delete()
+                        logger.info("Deleted old format leaderboard message.")
 
-            # Create new embeds if not found
-            if self.ratio_live_message_id is None:
-                embed = discord.Embed(title="Leaderboard - Ratio/Live", description="Loading data...", color=discord.Color.green())
-                message = await channel.send(embed=embed)
-                self.ratio_live_message_id = message.id
-                logger.info(f"Created new Ratio/Live leaderboard message with ID: {message.id}")
-
-            if self.ratio_sb_message_id is None:
-                embed = discord.Embed(title="Leaderboard - Ratio/SB", description="Loading data...", color=discord.Color.purple())
-                message = await channel.send(embed=embed)
-                self.ratio_sb_message_id = message.id
-                logger.info(f"Created new Ratio/SB leaderboard message with ID: {message.id}")
+            # Create new combined embed if not found
+            embed = discord.Embed(
+                title="🏆 Leaderboards",
+                description="Top players ranked by performance metrics",
+                color=discord.Color.gold()
+            )
+            embed.add_field(name="🟢 Ratio/Live", value="Loading data...", inline=True)
+            embed.add_field(name="🟣 Ratio/SB", value="Loading data...", inline=True)
+            
+            message = await channel.send(embed=embed)
+            self.ratio_live_message_id = message.id
+            self.ratio_sb_message_id = None  # We don't need this anymore
+            logger.info(f"Created new combined leaderboard message with ID: {message.id}")
 
         except Exception as e:
-            logger.exception(f"Error initializing leaderboard messages: {e}")
+            logger.exception(f"Error initializing combined leaderboard message: {e}")
 
     async def update_leaderboard_embeds(self, data):
-        """Update the leaderboard embeds with sorted data."""
+        """Update the combined leaderboard embed with sorted data."""
         channel = await self.get_channel(self.stats_channel_id)
         if not channel:
             return
 
         try:
-            # Check if message IDs are valid before attempting to fetch
-            if self.ratio_live_message_id is None or self.ratio_sb_message_id is None:
-                logger.warning("Leaderboard message IDs are not initialized. Running initialization...")
+            # Check if message ID is valid before attempting to fetch
+            if self.ratio_live_message_id is None:
+                logger.warning("Leaderboard message ID is not initialized. Running initialization...")
                 await self.initialize_leaderboard_messages()
                 # If still None after initialization, abort the update
-                if self.ratio_live_message_id is None or self.ratio_sb_message_id is None:
-                    logger.error("Failed to initialize leaderboard message IDs. Skipping update.")
+                if self.ratio_live_message_id is None:
+                    logger.error("Failed to initialize leaderboard message ID. Skipping update.")
                     return
 
-            # Update Ratio/Live leaderboard
-            sorted_ratio_live = sorted(data, key=lambda x: float(x.get("Ratio/Live", 0)), reverse=True)
-            embed_live = discord.Embed(
-                title="🏆 Leaderboard - Ratio/Live",
-                description="Top players ranked by **Ratio/Live**. 🟢",
-                color=discord.Color.green()
+            # Create a combined embed with both leaderboards side by side
+            embed = discord.Embed(
+                title="🏆 Leaderboards",
+                description="Top players ranked by performance metrics",
+                color=discord.Color.gold()
             )
-
+            
+            # Process Ratio/Live data
+            sorted_ratio_live = sorted(data, key=lambda x: float(x.get("Ratio/Live", 0)), reverse=True)
+            live_content = ""
             for i, row in enumerate(sorted_ratio_live[:3], start=1):
                 player_name = row.get("Jugador", "Unknown")
                 ratio_value = row.get('Ratio/Live', 'N/A')
                 medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖️"
-                embed_live.add_field(
-                    name=f"{medal} {player_name} - {ratio_value}",
-                    value="\u200b",  # Zero-width space as a placeholder
-                    inline=False
-                )
-
-            message_live = await channel.fetch_message(self.ratio_live_message_id)
-            await message_live.edit(embed=embed_live)
-
-            # Update Ratio/SB leaderboard
+                live_content += f"{medal} {player_name}: {ratio_value}\n"
+            
+            # Process Ratio/SB data
             sorted_ratio_sb = sorted(data, key=lambda x: float(x.get("Ratio/SB", 0)), reverse=True)
-            embed_sb = discord.Embed(
-                title="🏆 Leaderboard - Ratio/SB",
-                description="Top players ranked by **Ratio/SB**. 🟣",
-                color=discord.Color.purple()
-            )
-
+            sb_content = ""
             for i, row in enumerate(sorted_ratio_sb[:3], start=1):
                 player_name = row.get("Jugador", "Unknown")
                 ratio_value = row.get('Ratio/SB', 'N/A')
                 medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖️"
-                embed_sb.add_field(
-                    name=f"{medal} {player_name} - {ratio_value}",
-                    value="\u200b",  # Zero-width space as a placeholder
-                    inline=False
-                )
-
-            message_sb = await channel.fetch_message(self.ratio_sb_message_id)
-            await message_sb.edit(embed=embed_sb)
-
-            logger.info("Leaderboard embeds updated successfully.")
-
-        except discord.NotFound:
-            logger.error("One or more leaderboard messages not found. Re-initializing...")
-            self.ratio_live_message_id = None
-            self.ratio_sb_message_id = None
-            await self.initialize_leaderboard_messages()
+                sb_content += f"{medal} {player_name}: {ratio_value}\n"
+            
+            # Add the fields side by side (inline=True for side-by-side display)
+            embed.add_field(name="🟢 Ratio/Live", value=live_content, inline=True)
+            embed.add_field(name="🟣 Ratio/SB", value=sb_content, inline=True)
+            
+            # Update existing message or create a new one if needed
+            try:
+                message = await channel.fetch_message(self.ratio_live_message_id)
+                await message.edit(embed=embed)
+                logger.info("Combined leaderboard message updated successfully.")
+            except discord.NotFound:
+                # If the message is not found, create a new one
+                message = await channel.send(embed=embed)
+                self.ratio_live_message_id = message.id
+                logger.info(f"Created new combined leaderboard message with ID: {message.id}")
+            
         except Exception as e:
-            logger.exception(f"Error updating leaderboard embeds: {e}")
+            logger.exception(f"Error updating combined leaderboard: {e}")
 
     async def initialize_stats_message(self):
         """Create or fetch the stats embed message and initialize leaderboards."""
