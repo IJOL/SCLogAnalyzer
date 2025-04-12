@@ -71,14 +71,8 @@ class LogAnalyzerFrame(wx.Frame):
         self.monitoring = False
         self.console_key = ""  # Default console key
         
-        # Load configuration
-        self.load_default_config()
-        
-        # Ensure default config exists
-        self.ensure_default_config()
-        
-        # Validate settings and show config dialog if needed
-        self.validate_startup_settings()
+        # Initialize configuration
+        self.initialize_config()
 
         # Only add Google Sheets tabs if the webhook URL is valid
         if self.google_sheets_webhook:
@@ -727,62 +721,48 @@ class LogAnalyzerFrame(wx.Frame):
             self.process_log_button.Enable(True)
             self.SetStatusText("Monitoring stopped")
 
-    def ensure_default_config(self):
-        """Ensure the default configuration file exists by using the ConfigManager singleton.
-        Also automatically renews config to keep it up-to-date with the template."""
-        # Get the singleton config manager instance, which will create the default config if needed
-        config_path = self.config_manager.config_path
-        
-        # Check if we need to create a new config file
-        created_new = False
-        if not os.path.exists(config_path):
-            created_new = True
-        
-        # If not creating new, renew the config to ensure it's up-to-date with template
-        if not created_new:
-            self.renew_config()
-            
-        return created_new
-
-    def load_default_config(self):
-        """Load configuration values using the ConfigManager singleton."""
+    def initialize_config(self):
+        """Initialize configuration: load settings, ensure config exists with latest template, and validate."""
         try:
-            # Get the singleton config manager instance
-            
-            # We'll still cache the default_log_file_path, it's needed frequently
+            # 1. Load configuration values from ConfigManager
             self.default_log_file_path = self.log_file_path
-            
-            # Only set checkbox states from config, other values will be accessed dynamically
             self.discord_check.Check(self.use_discord)
             self.googlesheet_check.Check(self.use_googlesheet)
             
-        except Exception as e:
-            self.log_text.AppendText(f"Error loading config: {e}\n")
-
-    def validate_startup_settings(self):
-        """Validate critical settings and show the config dialog if necessary."""
-        missing_settings = []
-        if not self.default_log_file_path:
-            missing_settings.append("Log file path")
-        else:
-            if not os.path.exists(self.default_log_file_path):
+            # 2. Ensure config is up-to-date with template
+            config_path = self.config_manager.config_path
+            if os.path.exists(config_path):
+                self.renew_config()
+            
+            # 3. Validate critical settings and prompt for missing ones
+            missing_settings = []
+            if not self.default_log_file_path:
+                missing_settings.append("Log file path")
+            elif not os.path.exists(self.default_log_file_path):
                 missing_settings.append("Log file path does not exist")
                 
-        if not self.google_sheets_webhook:
-            missing_settings.append("Google Sheets webhook URL")
-            self.googlesheet_check.Check(False)  # Uncheck Google Sheets usage
-        if not self.discord_webhook_url:
-            missing_settings.append("Discord webhook URL")
-            self.discord_check.Check(False)  # Uncheck Discord usage
+            if not self.google_sheets_webhook:
+                missing_settings.append("Google Sheets webhook URL")
+                self.googlesheet_check.Check(False)  # Uncheck Google Sheets usage
+                
+            if not self.discord_webhook_url:
+                missing_settings.append("Discord webhook URL")
+                self.discord_check.Check(False)  # Uncheck Discord usage
 
-        if missing_settings:
-            wx.MessageBox(
-                f"The following settings are missing or invalid: {', '.join(missing_settings)}.\n"
-                "Please configure them to start safely.",
-                "Configuration Required",
-                wx.OK | wx.ICON_WARNING
-            )
-            self.on_edit_config(None)  # Show the configuration dialog modal
+            if missing_settings:
+                wx.MessageBox(
+                    f"The following settings are missing or invalid: {', '.join(missing_settings)}.\n"
+                    "Please configure them to start safely.",
+                    "Configuration Required",
+                    wx.OK | wx.ICON_WARNING
+                )
+                self.on_edit_config(None)  # Show the configuration dialog modal
+            
+        except Exception as e:
+            if hasattr(self, 'log_text') and self.log_text is not None:
+                self.log_text.AppendText(f"Error initializing configuration: {e}\n")
+            else:
+                print(f"Error initializing configuration: {e}")
 
     def on_process_log(self, event):
         """Open the process log dialog."""
@@ -1091,8 +1071,7 @@ class LogAnalyzerFrame(wx.Frame):
         event.Skip()
         
         # Reload configuration after the dialog is closed
-        self.load_default_config()
-        self.validate_startup_settings()
+        self.initialize_config()
         if self.monitoring:
             self.stop_monitoring()
             self.start_monitoring()
@@ -1242,11 +1221,18 @@ class LogAnalyzerFrame(wx.Frame):
                 else:
                     print("Configuration renewed successfully.")
                     
-                # Reload configuration after renewal
-                # Only reload if we're not in initialization (log_text would exist if we were fully initialized)
-                self.load_default_config()
-                # Update Google Sheets tabs if they exist
-                self.update_google_sheets_tabs()
+                # Just reload configuration values without calling initialize_config
+                # This prevents an infinite recursion loop
+                self.default_log_file_path = self.log_file_path
+                if hasattr(self, 'discord_check') and self.discord_check is not None:
+                    self.discord_check.Check(self.use_discord)
+                if hasattr(self, 'googlesheet_check') and self.googlesheet_check is not None:
+                    self.googlesheet_check.Check(self.use_googlesheet)
+                
+                # Update Google Sheets tabs if possible
+                if hasattr(self, 'update_google_sheets_tabs') and callable(getattr(self, 'update_google_sheets_tabs')):
+                    self.update_google_sheets_tabs()
+                
                 return True
             else:
                 if hasattr(self, 'log_text') and self.log_text is not None:
