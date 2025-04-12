@@ -7,6 +7,24 @@ import re  # Added for URL validation
 
 DEFAULT_CONFIG_TEMPLATE = "config.json.template"
 
+# Global singleton instance
+_config_manager_instance = None
+_config_manager_lock = threading.Lock()
+
+def get_config_manager():
+    """
+    Get or create the singleton ConfigManager instance.
+    
+    Returns:
+        ConfigManager: The singleton instance of ConfigManager
+    """
+    global _config_manager_instance
+    
+    with _config_manager_lock:
+        if _config_manager_instance is None:
+            _config_manager_instance = ConfigManager()
+        return _config_manager_instance
+
 def prompt_for_config_values(template):
     """Prompt the user for configuration values based on a template."""
     config = template.copy()
