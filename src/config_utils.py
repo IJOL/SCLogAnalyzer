@@ -3,6 +3,7 @@ import sys
 import json
 import requests  # Added for fetch_dynamic_config
 import threading
+import re  # Added for URL validation
 
 DEFAULT_CONFIG_TEMPLATE = "config.json.template"
 
@@ -154,6 +155,7 @@ class ConfigManager:
     def __init__(self, config_path=None):
         """Initialize the ConfigManager with a configuration file path."""
         self.config_path = config_path or os.path.join(get_application_path(), "config.json")
+        self.app_path = get_application_path()
         self._config = {}
         self._lock = threading.RLock()  # Reentrant lock for thread safety
         self.load_config()
@@ -335,3 +337,74 @@ class ConfigManager:
         """Update the configuration with a new dictionary."""
         with self._lock:
             self._config.update(new_config)
+    
+    def override_with_parameters(self, **kwargs):
+        """
+        Override config values with provided parameters, modifying the internal config directly.
+        
+        Args:
+            **kwargs: Variable keyword arguments to override config values.
+                     Common parameters include:
+                     - process_all: Whether to process the entire log file
+                     - use_discord: Whether to use Discord for notifications
+                     - process_once: Whether to process the log file once and exit
+                     - use_googlesheet: Whether to use Google Sheets for data storage
+                     - log_file_path: Path to the log file
+            
+        Returns:
+            dict: Reference to the internal configuration dictionary after modifications
+        """
+        with self._lock:
+            # Handle log file path
+            if kwargs.get('log_file_path'):
+                self._config['log_file_path'] = kwargs['log_file_path']
+            elif 'log_file_path' in self._config and not os.path.isabs(self._config['log_file_path']):
+                self._config['log_file_path'] = os.path.join(self.app_path, self._config['log_file_path'])
+            
+            # Handle special boolean flags with consistent logic
+            special_params = {
+                # key: (kwargs_key, config_default, special_handling_function)
+                'use_discord': ('use_discord', True, 
+                               lambda: self.is_valid_url(self._config.get('discord_webhook_url', ''))),
+                'use_googlesheet': ('use_googlesheet', True,
+                                  lambda: self.is_valid_url(self._config.get('google_sheets_webhook', ''))),
+                'process_once': ('process_once', False,
+                               lambda: bool(self._config.get('process_once', False)))
+            }
+            
+            for config_key, (kwargs_key, default, validate_fn) in special_params.items():
+                if kwargs_key in kwargs:
+                    self._config[config_key] = kwargs[kwargs_key]
+                elif not bool(self._config.get(config_key, default)):
+                    self._config[config_key] = False
+                else:
+                    self._config[config_key] = validate_fn()
+            
+            # Handle process_all with its special reversed logic
+            if 'process_all' in kwargs:
+                # -p flag (False) means don't process all (force incremental)
+                self._config['process_all'] = not(not kwargs['process_all'])
+            else:
+                self._config['process_all'] = bool(self._config.get('process_all', True))
+            
+            # Apply all other parameters directly
+            for key, value in kwargs.items():
+                if key not in ['process_all', 'use_discord', 'process_once', 'use_googlesheet', 'log_file_path']:
+                    self._config[key] = value
+            
+            return self._config
+
+    def is_valid_url(self, url):
+        """Validate if the given string is a correctly formatted URL"""
+        if not url:
+            return False
+            
+        regex = re.compile(
+            r'^(?:http|ftp)s?://'  # http:// or https://
+            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # domain...
+            r'localhost|'  # localhost...
+            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|'  # ...or ipv4
+            r'\[?[A-F0-9]*:[A-F0-9:]+\]?)'  # ...or ipv6
+            r'(?::\d+)?'  # optional port
+            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+        return re.match(regex, url) is not None
