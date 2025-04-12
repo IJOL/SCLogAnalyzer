@@ -20,6 +20,7 @@ import shutil  # For file operations
 import tempfile  # For temporary directories
 import subprocess
 import webcolors  # Import the webcolors library
+import zipfile  # For handling zip files
 
 from version import get_version  # For restarting the app
 
@@ -267,28 +268,109 @@ class LogAnalyzerFrame(wx.Frame):
         """Download the update and replace the running application."""
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
+                # Create and configure the progress dialog - we'll reuse it for all steps
+                progress_dialog = wx.ProgressDialog(
+                    "Updating SCLogAnalyzer",
+                    "Starting update process...",
+                    maximum=100,
+                    parent=self,
+                    style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_SMOOTH | wx.PD_ELAPSED_TIME | wx.PD_REMAINING_TIME | wx.PD_CAN_ABORT
+                )
+                progress_dialog.SetSize((500, -1))
+                
+                # Step 1: Download the update file (50% of overall progress)
                 temp_file = os.path.join(temp_dir, "update.zip")
-                with requests.get(download_url, stream=True) as response:
-                    response.raise_for_status()
-                    with open(temp_file, "wb") as f:
-                        shutil.copyfileobj(response.raw, f)
-    
-                # Extract the update
-                update_dir = os.path.join(temp_dir, "update")
-                shutil.unpack_archive(temp_file, update_dir)
-    
-                # Move the updater script to a persistent location
-                updated_exe = os.path.join(update_dir, APP_EXECUTABLE)
-                persistent_updater_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "updater.py")
-                shutil.copyfile(updated_exe, persistent_updater_script)
-    
-            # Launch the updater script
-            subprocess.Popen([persistent_updater_script, os.path.dirname(os.path.abspath(sys.argv[0])), APP_EXECUTABLE])
-            # Exit the current application
-            self.Close()
-            sys.exit(0)
+                continue_update, skip = True, False
+                
+                try:
+                    # Update progress dialog for download phase
+                    progress_dialog.Update(0, "Downloading update package...")
+                    
+                    # Start download with stream=True to get content length and update progress
+                    with requests.get(download_url, stream=True) as response:
+                        response.raise_for_status()
+                        
+                        # Get total file size if available
+                        total_size = int(response.headers.get('content-length', 0))
+                        block_size = 8192  # 8KB blocks
+                        downloaded = 0
+                        
+                        with open(temp_file, "wb") as f:
+                            for chunk in response.iter_content(chunk_size=block_size):
+                                if chunk:  # filter out keep-alive new chunks
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    
+                                    # Update progress bar - download is 50% of overall process
+                                    if total_size > 0:
+                                        progress = int((downloaded / total_size) * 50)  # 0-50% for download
+                                        continue_update, skip = progress_dialog.Update(
+                                            progress, 
+                                            f"Downloading: {int((downloaded / total_size) * 100)}% complete"
+                                        )
+                                    else:
+                                        # If size unknown, just pulse
+                                        continue_update, skip = progress_dialog.Pulse(
+                                            f"Downloaded {downloaded/1024:.1f} KB"
+                                        )
+                                    
+                                    # Check if user canceled
+                                    if not continue_update:
+                                        progress_dialog.Destroy()
+                                        return
+                    
+                    # Step 2: Extract the update (75% of overall progress)
+                    progress_dialog.Update(50, "Extracting update files...")
+                    update_dir = os.path.join(temp_dir, "update")
+                    os.makedirs(update_dir, exist_ok=True)
+                    
+                    # Unpack and track progress
+                    with zipfile.ZipFile(temp_file, 'r') as zip_ref:
+                        file_list = zip_ref.namelist()
+                        total_files = len(file_list)
+                        
+                        for i, file in enumerate(file_list):
+                            zip_ref.extract(file, update_dir)
+                            # Update progress - extraction is 25% of overall process (50-75%)
+                            progress = 50 + int((i + 1) / total_files * 25)
+                            continue_update, skip = progress_dialog.Update(
+                                progress, 
+                                f"Extracting: {i+1} of {total_files} files"
+                            )
+                            if not continue_update:
+                                progress_dialog.Destroy()
+                                return
+                    
+                    # Step 3: Prepare installation (75-90% of overall progress)
+                    progress_dialog.Update(75, "Preparing to install update...")
+                    
+                    # Create updater script
+                    updated_exe = os.path.join(update_dir, APP_EXECUTABLE)
+                    persistent_updater_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "updater.py")
+                    
+                    # Copy the updater script with progress indication
+                    shutil.copyfile(updated_exe, persistent_updater_script)
+                    progress_dialog.Update(90, "Installation files prepared")
+                    
+                    # Step 4: Finalize update (90-100% of overall progress)
+                    progress_dialog.Update(95, "Finalizing update, application will restart...")
+                    time.sleep(1)  # Short delay to show final message
+                    progress_dialog.Update(100, "Update complete!")
+                    progress_dialog.Destroy()
+                    
+                    # Launch the updater script
+                    subprocess.Popen([persistent_updater_script, os.path.dirname(os.path.abspath(sys.argv[0])), APP_EXECUTABLE])
+                    # Exit the current application
+                    self.Close()
+                    sys.exit(0)
+                    
+                except Exception as e:
+                    if 'progress_dialog' in locals() and progress_dialog:
+                        progress_dialog.Destroy()
+                    wx.MessageBox(f"Error during update process: {e}", "Update Error", wx.OK | wx.ICON_ERROR)
+                    
         except Exception as e:
-            wx.MessageBox(f"Error downloading or applying the update: {e}", "Error", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(f"Error initializing update process: {e}", "Update Error", wx.OK | wx.ICON_ERROR)
 
     def _add_tab(self, notebook, tab_title, url, params=None):
         """
