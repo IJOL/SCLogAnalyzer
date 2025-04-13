@@ -116,22 +116,21 @@ class KeyValueGrid(wx.Panel):
         return {
             (key_ctrl.GetStringSelection() if isinstance(key_ctrl, wx.Choice) else key_ctrl.GetValue()): 
             # Convert comma-separated strings back to lists
-            value_ctrl.GetValue().split(", ") if ", " in value_ctrl.GetValue() else value_ctrl.GetValue()
+            value_ctrl.GetValue()
             for key_ctrl, value_ctrl, _ in self.controls
         }
 
 
 class ConfigDialog(wx.Frame):
     """Resizable, non-modal dialog for editing configuration options."""
-    def __init__(self, parent, config_path):
+    def __init__(self, parent, config_manager):
         super().__init__(parent, title="Edit Configuration", size=(600, 400))
-        self.config_path = config_path
-        self.config_data = {}
+        self.config_manager = config_manager
         self.app_name = "SCLogAnalyzer"
         self.app_path = f'"{os.path.join(get_application_path(), "SCLogAnalyzer.exe")}" --start-hidden'
 
-        # Load the configuration file
-        self.load_config()
+        # Load the configuration data from the manager
+        self.config_data = self.config_manager.get_all()
 
         # Create main sizer
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -234,6 +233,7 @@ class ConfigDialog(wx.Frame):
 
         panel.SetSizer(sizer)
         notebook.AddPage(panel, title)
+
     def on_browse_log_file(self, event, text_ctrl):
         """Handle browse button click for log file path."""
         with wx.FileDialog(self, "Select log file", wildcard="Log files (*.log)|*.log|All files (*.*)|*.*",
@@ -241,28 +241,36 @@ class ConfigDialog(wx.Frame):
             if file_dialog.ShowModal() == wx.ID_CANCEL:
                 return
             text_ctrl.SetValue(file_dialog.GetPath())
-    def load_config(self):
-        """Load configuration from the JSON file."""
-        if os.path.exists(self.config_path):
-            with open(self.config_path, 'r', encoding='utf-8') as config_file:
-                self.config_data = json.load(config_file)
-                self.config_data.pop("username", None)  # Remove username if it exists
-                self.config_data.pop("google_sheets_mapping", None)  # Remove google_sheets_mapping if it exists
 
     def save_config(self):
-        """Save configuration to the JSON file."""
-        # Save general config values
+        """Save configuration using the ConfigManager."""
+        # Save general config values 
         for key, control in self.general_controls.items():
-            self.config_data[key] = control.GetValue() if isinstance(control, wx.CheckBox) else control.GetValue()
+            value = control.GetValue() if isinstance(control, wx.CheckBox) else control.GetValue()
+            self.config_manager.set(key, value)
 
+        # Save regex patterns data
+        regex_patterns_data = self.regex_patterns_grid.get_data()
+        self.config_manager.set("regex_patterns", regex_patterns_data)
+        
+        # Save messages data
+        messages_data = self.messages_grid.get_data()
+        self.config_manager.set("messages", messages_data)
+        
+        # Save discord data
+        discord_data = self.discord_grid.get_data()
+        self.config_manager.set("discord", discord_data)
+        
         # Save colors data
-        self.config_data["colors"] = self.colors_grid.get_data()
+        colors_data = self.colors_grid.get_data()
+        self.config_manager.set("colors", colors_data)
+        
+        # Save to file
+        self.config_manager.save_config()
 
     def on_accept(self, event):
-        """Handle the Save button click."""
+        """Handle the Accept button click."""
         self.save_config()
-        with open(self.config_path, 'w', encoding='utf-8') as config_file:
-            json.dump(self.config_data, config_file, indent=4)
         self.Destroy()
 
     def on_close(self, event):
