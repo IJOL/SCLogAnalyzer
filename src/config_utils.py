@@ -339,7 +339,8 @@ class ConfigManager:
             try:
                 # Use provided URL or get from config
                 webhook_url = url or self.get('google_sheets_webhook', '')
-                if not webhook_url:
+                if not webhook_url or not self.is_valid_url(webhook_url):
+                    print("Invalid webhook URL provided or in config.")
                     return False
                 
                 dynamic_config = fetch_dynamic_config(webhook_url)
