@@ -1106,12 +1106,18 @@ class LogAnalyzerFrame(wx.Frame):
         # Process the event first
         event.Skip()
         
-        # Reload configuration after the dialog is closed
-        self.initialize_config()
-        if self.monitoring:
-            self.stop_monitoring()
-            self.start_monitoring()
-        self.update_google_sheets_tabs()  # Update tabs after reloading config
+        # Check if config was saved (i.e., Accept was clicked, not Cancel)
+        config_saved = False
+        if hasattr(self, 'config_dialog') and self.config_dialog:
+            config_saved = getattr(self.config_dialog, 'config_saved', False)
+        
+        # Only reload configuration if changes were saved
+        if config_saved:
+            self.initialize_config()
+            if self.monitoring:
+                self.stop_monitoring()
+                self.start_monitoring()
+            self.update_google_sheets_tabs()  # Update tabs after reloading config
 
 
     def update_google_sheets_tabs(self, refresh_tabs=[]):
