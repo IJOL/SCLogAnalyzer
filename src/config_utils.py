@@ -139,40 +139,6 @@ def fetch_dynamic_config(url):
 
     return {}
 
-def merge_configs(static_config, dynamic_config):
-    """
-    Deeply merge static configuration with dynamic configuration.
-
-    Args:
-        static_config (dict): The static configuration loaded from config.json.
-        dynamic_config (dict): The dynamic configuration fetched from Google Sheets.
-
-    Returns:
-        dict: The deeply merged configuration.
-    """
-    def set_nested_key(config, key_path, value):
-        """Set a value in a nested dictionary using a dot-separated key path."""
-        keys = key_path.split('.')
-        for key in keys[:-1]:
-            config = config.setdefault(key, {})
-        config[keys[-1]] = value
-
-    merged_config = static_config.copy()
-
-    for key, value in dynamic_config.items():
-        if '.' in key:
-            # Handle complex keys like 'regex_patterns.player_death'
-            set_nested_key(merged_config, key, value)
-        else:
-            # Simple key, overwrite or add to the top level
-            if isinstance(value, dict) and key in merged_config and isinstance(merged_config[key], dict):
-                # Recursively merge dictionaries
-                merged_config[key] = merge_configs(merged_config[key], value)
-            else:
-                merged_config[key] = value
-
-    return merged_config
-
 class ConfigManager:
     """
     A class to manage configuration settings with support for nested keys and dynamic updates.
