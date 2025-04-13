@@ -80,40 +80,6 @@ def get_application_path():
         # If the application is run as a Python script
         return os.path.dirname(os.path.abspath(__file__))
 
-def renew_config():
-    """Renew the config.json using the template while preserving specific values."""
-    app_path = get_application_path()
-    config_path = os.path.join(app_path, "config.json")
-    template_path = get_template_path()  # Use get_template_path to determine the template path
-
-    if not os.path.exists(template_path):
-        print("Template file not found. Skipping config renewal.")
-        return
-
-    try:
-        # Load the template
-        with open(template_path, 'r', encoding='utf-8') as template_file:
-            template_data = json.load(template_file)
-
-        # Load the current config if it exists
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as config_file:
-                current_config = json.load(config_file)
-        else:
-            current_config = {}
-
-        # Preserve specific values
-        for key in ["discord_webhook_url", "google_sheets_webhook", "log_file_path", "console_key"]:
-            template_data[key] = current_config.get(key, template_data.get(key, ""))
-
-        # Write the renewed config back to the file
-        with open(config_path, 'w', encoding='utf-8') as config_file:
-            json.dump(template_data, config_file, indent=4)
-
-        print("Config renewed successfully.")
-    except Exception as e:
-        print(f"Error renewing config: {e}")
-
 def fetch_dynamic_config(url):
     """
     Fetch dynamic configuration from the Google Sheets webhook.
@@ -150,8 +116,9 @@ class ConfigManager:
         self._config = {}
         self._lock = threading.RLock()  # Reentrant lock for thread safety
         self.in_gui = in_gui  # Track whether we're running in GUI mode
+        self.new_config = True  # Flag to indicate if a new config was created
         self.load_config()
-    
+
     def load_config(self):
         """Load configuration from file. Creates default config if it doesn't exist."""
         with self._lock:
@@ -159,6 +126,7 @@ class ConfigManager:
                 try:
                     with open(self.config_path, 'r', encoding='utf-8') as config_file:
                         self._config = json.load(config_file)
+                        self.new_config = False  # Flag to indicate if a new config was created
                 except Exception as e:
                     print(f"Error loading configuration: {e}")
                     # Create default config if the file exists but couldn't be loaded
@@ -178,6 +146,7 @@ class ConfigManager:
         except Exception as e:
             print(f"Error creating default configuration: {e}")
             self._config = {}  # Set empty config as fallback
+        self.new_config = True
     
     def renew_config(self, preserve_keys=None):
         """
@@ -190,43 +159,44 @@ class ConfigManager:
         Returns:
             bool: True if successful, False otherwise
         """
-        with self._lock:
-            try:
-                # Default keys to preserve if none specified
-                preserve_keys = preserve_keys or ["discord_webhook_url", "google_sheets_webhook", 
-                                                 "log_file_path", "console_key"]
-                
-                template_path = get_template_path()
-                if not os.path.exists(template_path):
-                    print("Template file not found. Skipping config renewal.")
+        if not self.new_config:
+            with self._lock:
+                try:
+                    # Default keys to preserve if none specified
+                    preserve_keys = preserve_keys or ["discord_webhook_url", "google_sheets_webhook", 
+                                                    "log_file_path", "console_key"]
+                    
+                    template_path = get_template_path()
+                    if not os.path.exists(template_path):
+                        print("Template file not found. Skipping config renewal.")
+                        return False
+                    
+                    # Load the template
+                    with open(template_path, 'r', encoding='utf-8') as template_file:
+                        template_data = json.load(template_file)
+                    
+                    # Store values from the current config that need to be preserved
+                    preserved_values = {}
+                    for key in preserve_keys:
+                        value = self.get(key)
+                        if value is not None:  # Only preserve if the key exists in current config
+                            preserved_values[key] = value
+                    
+                    # Update the configuration with the template
+                    self._config = template_data
+                    
+                    # Restore preserved values using the set method
+                    for key, value in preserved_values.items():
+                        self.set(key, value)
+                    
+                    # Save the renewed config
+                    self.save_config()
+                    
+                    print("Configuration renewed successfully.")
+                    return True
+                except Exception as e:
+                    print(f"Error renewing configuration: {e}")
                     return False
-                
-                # Load the template
-                with open(template_path, 'r', encoding='utf-8') as template_file:
-                    template_data = json.load(template_file)
-                
-                # Store values from the current config that need to be preserved
-                preserved_values = {}
-                for key in preserve_keys:
-                    value = self.get(key)
-                    if value is not None:  # Only preserve if the key exists in current config
-                        preserved_values[key] = value
-                
-                # Update the configuration with the template
-                self._config = template_data
-                
-                # Restore preserved values using the set method
-                for key, value in preserved_values.items():
-                    self.set(key, value)
-                
-                # Save the renewed config
-                self.save_config()
-                
-                print("Configuration renewed successfully.")
-                return True
-            except Exception as e:
-                print(f"Error renewing configuration: {e}")
-                return False
     
     def save_config(self):
         """Save the current configuration to file."""
