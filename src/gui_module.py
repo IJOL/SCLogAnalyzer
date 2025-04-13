@@ -128,6 +128,7 @@ class ConfigDialog(wx.Frame):
         self.config_manager = config_manager
         self.app_name = "SCLogAnalyzer"
         self.app_path = f'"{os.path.join(get_application_path(), "SCLogAnalyzer.exe")}" --start-hidden'
+        self.config_saved = False  # Track whether config was saved
 
         # Load the configuration data from the manager
         self.config_data = self.config_manager.get_all()
@@ -271,10 +272,12 @@ class ConfigDialog(wx.Frame):
     def on_accept(self, event):
         """Handle the Accept button click."""
         self.save_config()
+        self.config_saved = True  # Mark that config was saved
         self.Destroy()
 
     def on_close(self, event):
         """Handle the Cancel button click."""
+        self.config_saved = False  # Mark that config was not saved
         self.Destroy()
 
 
