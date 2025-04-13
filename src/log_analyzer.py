@@ -167,7 +167,7 @@ class Event:
             callback(*args, **kwargs)
 
 class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, config_manager, **kwargs):
+    def __init__(self, **kwargs):
         # Initialize events
         self.on_shard_version_update = Event()  # Event for shard and version updates
         self.on_mode_change = Event()  # Event for mode changes
@@ -178,21 +178,21 @@ class LogFileHandler(FileSystemEventHandler):
         if 'on_mode_change' in kwargs and callable(kwargs['on_mode_change']):
             self.on_mode_change.subscribe(kwargs['on_mode_change'])
             
-        # Store config manager
-        self.config_manager = config_manager
+        # Get the singleton config manager instead of having it passed
+        self.config_manager = get_config_manager()
         
         # Initialize rate limiter
         self.rate_limiter = MessageRateLimiter(
-            timeout=config_manager.get('rate_limit_timeout', 300),
-            max_duplicates=config_manager.get('rate_limit_max_duplicates', 1)
+            timeout=self.config_manager.get('rate_limit_timeout', 300),
+            max_duplicates=self.config_manager.get('rate_limit_max_duplicates', 1)
         )
         
         # Initialize core attributes from config
-        self.username = config_manager.get('username', 'Unknown')
+        self.username = self.config_manager.get('username', 'Unknown')
         self.current_shard = None
         self.current_version = None
         self.script_version = get_version()
-        self.log_file_path = config_manager.get('log_file_path')
+        self.log_file_path = self.config_manager.get('log_file_path')
         self.last_position = 0
         self.actor_state = {}
         self.google_sheets_queue = queue.Queue()
@@ -313,7 +313,7 @@ class LogFileHandler(FileSystemEventHandler):
                 # Technical messages are sent as-is
                 content = data
                 url = self.technical_webhook_url or self.discord_webhook_url
-            elif pattern_name and pattern_name in self.discord_messages:
+            elif pattern_name and pattern_name in self.discord:
                 # Get all possible player references from the data
                 player_fields = ['player', 'owner', 'victim', 'killer', 'entity']
                 players = [data.get(field) for field in player_fields if data.get(field)]
@@ -324,7 +324,7 @@ class LogFileHandler(FileSystemEventHandler):
                 else:
                     data['alert'] = ''  # Empty string for non-important players
                     
-                content = self.discord_messages[pattern_name].format(**data)
+                content = self.discord[pattern_name].format(**data)
                 
                 # Determine the correct webhook URL based on the mode and message type
                 if self.current_mode == "SC_Default" and self.live_discord_webhook:
@@ -665,7 +665,7 @@ class LogFileHandler(FileSystemEventHandler):
                 output_message(timestamp, f"Mode changed: '{old_mode or 'None'}' → '{new_mode}'",'mode_change')
 
                 # Send to Discord if enabled
-                if send_message and self.use_discord and 'mode_change' in self.discord_messages:
+                if send_message and self.use_discord and 'mode_change' in self.discord:
                     self.send_discord_message(mode_data, pattern_name='mode_change')
 
                 return True
@@ -693,7 +693,7 @@ class LogFileHandler(FileSystemEventHandler):
                 self.current_mode = None
 
                 # Send to Discord if enabled
-                if send_message and self.use_discord and 'mode_change' in self.discord_messages:
+                if send_message and self.use_discord and 'mode_change' in self.discord:
                     self.send_discord_message(mode_data, pattern_name='mode_change')
 
                 return True
@@ -719,7 +719,7 @@ class LogFileHandler(FileSystemEventHandler):
             self.current_mode = None
 
             # Send to Discord if enabled
-            if send_message and self.use_discord and 'mode_change' in self.discord_messages:
+            if send_message and self.use_discord and 'mode_change' in self.discord:
                 self.send_discord_message(mode_data, pattern_name='mode_change')
 
             return True
@@ -869,7 +869,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         )
 
         # Create a file handler with kwargs for event subscriptions
-        event_handler = LogFileHandler(config_manager, **kwargs)
+        event_handler = LogFileHandler(**kwargs)
 
         if event_handler.process_once:
             output_message(None, "Processing log file once and exiting...")
