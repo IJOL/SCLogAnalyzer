@@ -52,6 +52,15 @@ class LogAnalyzerFrame(wx.Frame):
         if os.path.exists(icon_path):
             self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO))
             
+        # Initialize state properties
+        self.username = "Unknown"
+        self.shard = "Unknown"
+        self.version = "Unknown"
+        self.mode = "None"
+            
+# Initialize tab dictionary to store references to created tabs and grids
+        self.tab_references = {}
+            
         # Create main panel and UI components first
         self._create_ui_components()
         
@@ -71,7 +80,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.monitoring = False
         self.console_key = ""  # Default console key
         
-        # Initialize configuration
+        # Initialize configuration and create sheets tabs (only once)
         self.initialize_config()
 
         # Only add Google Sheets tabs if the webhook URL is valid
@@ -420,9 +429,8 @@ class LogAnalyzerFrame(wx.Frame):
             params (dict, optional): Parameters to pass to the request.
         """
         # Check if a tab with the same title already exists
-        for i in range(notebook.GetPageCount()):
-            if notebook.GetPageText(i) == tab_title:
-                return None  # Return None if the tab already exists
+        if tab_title in self.tab_references:
+            return self.tab_references[tab_title]  # Return None if the tab already exists
 
         # Create a new panel for the tab
         new_tab = wx.Panel(notebook)
@@ -453,7 +461,10 @@ class LogAnalyzerFrame(wx.Frame):
         # Bind the refresh button to fetch and update the grid
         refresh_button.Bind(wx.EVT_BUTTON, self.on_refresh_tab)
 
-        return grid  # Return the grid for further updates
+        # Store the tab reference in the dictionary
+        self.tab_references[tab_title] = (grid,refresh_button)
+
+        return grid,refresh_button  # Return the grid for further updates
 
     def add_tab(self, url, tab_title, params=None, top_panel=None):
         """
@@ -465,8 +476,14 @@ class LogAnalyzerFrame(wx.Frame):
             params (dict, optional): A dictionary of parameters to pass to the request.
             top_panel (wx.Panel, optional): A panel to place above the grid (e.g., a form).
         """
-        # Use _add_tab to create the base tab with a grid and refresh button
-        grid = self._add_tab(self.notebook, tab_title, url, params)
+        # Check if tab already exists
+        if tab_title in self.tab_references:
+            # Tab exists, just return the existing grid
+            grid,refresh_button = self.tab_references[tab_title]            
+            return grid,refresh_button
+        
+        # If tab doesn't exist, use _add_tab to create it
+        grid,refresh_button = self._add_tab(self.notebook, tab_title, url, params)
 
         if grid and top_panel:
             # Add the top panel to the tab's sizer
@@ -476,13 +493,10 @@ class LogAnalyzerFrame(wx.Frame):
             parent_panel.Layout()
 
         # Trigger initial refresh if the grid was created
-        if grid:
-            self.execute_refresh_event(grid)
 
-        return grid
+        return grid,refresh_button
 
-    def execute_refresh_event(self, grid):
-        refresh_button = grid.GetParent().FindWindowByLabel("Refresh")
+    def execute_refresh_event(self, refresh_button):
         event = wx.CommandEvent(wx.wxEVT_BUTTON)
         event.SetEventObject(refresh_button)
         self.on_refresh_tab(event)
@@ -497,8 +511,14 @@ class LogAnalyzerFrame(wx.Frame):
             form_fields (dict): A dictionary where keys are field names and values are input types.
             params (dict, optional): Parameters to pass to the request.
         """
-        # Create the base tab first
-        grid = self._add_tab(self.notebook, tab_title, url, params)
+        # Check if tab already exists
+        if tab_title in self.tab_references:
+            # Tab exists, just return the existing grid
+            grid,refresh_button = self.tab_references[tab_title]            
+            return grid,refresh_button
+                
+        # Create the base tab if it doesn't exist
+        grid,refresh_button = self._add_tab(self.notebook, tab_title, url, params)
 
         if grid:
             # Use the grid's parent as the correct parent for the form panel
@@ -552,8 +572,8 @@ class LogAnalyzerFrame(wx.Frame):
 
             # Bind the submit button
             submit_button.Bind(wx.EVT_BUTTON, lambda event: self.on_form_submit(event, url, grid, form_controls, params.get("sheet", "")))
-
-        return grid
+            self.tab_references[tab_title] = (grid,refresh_button)  # Store the grid reference
+        return grid,refresh_button
 
     def on_refresh_tab(self, event):
         """
@@ -608,6 +628,8 @@ class LogAnalyzerFrame(wx.Frame):
             grid.Enable(False)
         else:
             grid.Enable(True)
+            # Make all cells read-only without disabling the grid
+            grid.EnableEditing(False)
 
     def fetch_and_update(self, url, params, target_grid):
         """
@@ -633,9 +655,7 @@ class LogAnalyzerFrame(wx.Frame):
 
             data = response.json()
             if not isinstance(data, list) or not data:
-                safe_call_after(wx.MessageBox, 
-                                "The response data is empty or not in the expected format.", 
-                                "Error", wx.OK | wx.ICON_ERROR)
+                safe_call_after(self.log_text.AppendText, "No data available or invalid response format.\n") 
                 return
 
             # Update the grid with data
@@ -653,13 +673,11 @@ class LogAnalyzerFrame(wx.Frame):
     def update_dynamic_labels(self):
         """Update the username, shard, version, and mode labels dynamically."""
         try:
-            if self.event_handler:
-                username = getattr(self.event_handler, "username", "Unknown")
-                shard = getattr(self.event_handler, "current_shard", "Unknown")
-                version = getattr(self.event_handler, "current_version", "Unknown")
-                mode = getattr(self.event_handler, "current_mode", "None")
-            else:
-                username, shard, version, mode = "Unknown", "Unknown", "Unknown", "None"
+            # Use instance properties if they're set, fall back to event_handler if needed
+            username = self.username if self.username != "Unknown" and self.event_handler else getattr(self.event_handler, "username", "Unknown")
+            shard = self.shard if self.shard != "Unknown" and self.event_handler else getattr(self.event_handler, "current_shard", "Unknown")
+            version = self.version if self.version != "Unknown" and self.event_handler else getattr(self.event_handler, "current_version", "Unknown")
+            mode = self.mode if self.mode != "None" and self.event_handler else getattr(self.event_handler, "current_mode", "None")
 
             self.username_label.SetLabel(f"Username: {username}")
             self.shard_label.SetLabel(f"Shard: {shard}")
@@ -679,7 +697,14 @@ class LogAnalyzerFrame(wx.Frame):
             mode (str): The current game mode.
         """
         try:
-            self.update_dynamic_labels()  # Call update_dynamic_labels directly
+            # Update instance properties
+            self.shard = shard
+            self.version = version
+            self.username = username
+            if mode is not None:
+                self.mode = mode
+                
+            self.update_dynamic_labels()  # Call update_dynamic_labels to refresh UI
         except Exception as e:
             self.log_text.AppendText(f"Error updating shard/version/username/mode: {e}\n")
 
@@ -842,6 +867,21 @@ class LogAnalyzerFrame(wx.Frame):
         thread.daemon = True
         thread.start()
 
+    def on_username_change(self, username,old_username ):
+        """
+        Handle username change events.
+
+        Args:
+            username (str): The new username.
+            old_username (str): The previous username.
+        """
+        self.username = username
+        self.update_dynamic_labels()
+        for tab_title, (grid, refresh_button) in self.tab_references.items():
+            if refresh_button and refresh_button.grid == grid:
+                # Update the grid's username if it matches the current tab
+                self.execute_refresh_event(refresh_button)
+
     def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet):
         """Run monitoring in thread."""
         try:
@@ -853,7 +893,8 @@ class LogAnalyzerFrame(wx.Frame):
                 use_googlesheet=use_googlesheet,
                 log_file_path=log_file,
                 on_shard_version_update=self.on_shard_version_update,
-                on_mode_change=self.on_mode_change
+                on_mode_change=self.on_mode_change,
+                on_username_change=self.on_username_change,
             )
 
             if result:
@@ -1078,21 +1119,37 @@ class LogAnalyzerFrame(wx.Frame):
         self.update_google_sheets_tabs()  # Update tabs after reloading config
 
 
-    def update_google_sheets_tabs(self):
+    def update_google_sheets_tabs(self, refresh_tabs=[]):
         """Update Google Sheets tabs based on current configuration."""
-        # Remove all existing Google Sheets tabs
-        for i in range(self.notebook.GetPageCount() - 1, 0, -1):  # Skip the first tab (Main Log)
-            self.notebook.DeletePage(i)
-        
-        # Only add Google Sheets tabs if the webhook URL is valid
+        # Only add/update Google Sheets tabs if the webhook URL is valid
         if self.google_sheets_webhook and self.googlesheet_check.IsChecked():
-            self.add_tab(self.google_sheets_webhook, "Stats")
-            self.add_tab(self.google_sheets_webhook, "SC Default", params={"sheet": "SC_Default", "username": lambda self: self.event_handler.username})
-            self.add_tab(self.google_sheets_webhook, "SC Squadrons Battle", params={"sheet": "EA_SquadronBattle", "username": lambda self: self.event_handler.username})
-            self.add_form_tab(self.google_sheets_webhook, "Materials",
-                                params={"sheet": "Materials", "username": lambda self: self.event_handler.username},
-                                form_fields={"Material": "text", "Qty": "number", "committed": "check"}) # Update labels dynamically
-
+            # Define the tabs we want to ensure exist
+            if not len(self.tab_references):            
+                required_tabs = [
+                    {"title": "Stats", "params": None},
+                    {"title": "SC Default", "params": {"sheet": "SC_Default", "username": lambda self: self.username}},
+                    {"title": "SC Squadrons Battle", "params": {"sheet": "EA_SquadronBattle", "username": lambda self: self.username}},
+                    {"title": "Materials", "params": {"sheet": "Materials", "username": lambda self: self.username}, 
+                    "form_fields": {"Material": "text", "Qty": "number", "committed": "check"}}
+                ]
+                # First, create any missing tabs
+                for tab_info in required_tabs:
+                    title = tab_info["title"]
+                    # Create the tab if it doesn't exist
+                    if "form_fields" in tab_info:
+                        self.add_form_tab(self.google_sheets_webhook, title, 
+                                        params=tab_info["params"], 
+                                        form_fields=tab_info["form_fields"])
+                    else:
+                        self.add_tab(self.google_sheets_webhook, title, params=tab_info["params"])
+            else:            
+                # Now refresh all tabs
+                for title,t in self.tab_references.items():
+                    if title in refresh_tabs or len(refresh_tabs) == 0:
+                        self.execute_refresh_event(t[1])
+            
+            # No need to remove tabs - once created they stay in the UI
+            # This simplifies the UI experience and matches your requirement
 
     def update_sheets_grid(self, json_data, grid):
         """
@@ -1231,7 +1288,7 @@ class LogAnalyzerFrame(wx.Frame):
                 
                 # Update Google Sheets tabs if possible
                 if hasattr(self, 'update_google_sheets_tabs') and callable(getattr(self, 'update_google_sheets_tabs')):
-                    self.update_google_sheets_tabs()
+                    self.update_google_sheets_tabs(['Stats'])
                 
                 return True
             else:

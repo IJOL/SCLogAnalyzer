@@ -171,12 +171,14 @@ class LogFileHandler(FileSystemEventHandler):
         # Initialize events
         self.on_shard_version_update = Event()  # Event for shard and version updates
         self.on_mode_change = Event()  # Event for mode changes
-        
+        self.on_username_change = Event()  # Event for username changes        
         # Handle subscriptions passed via kwargs
         if 'on_shard_version_update' in kwargs and callable(kwargs['on_shard_version_update']):
             self.on_shard_version_update.subscribe(kwargs['on_shard_version_update'])
         if 'on_mode_change' in kwargs and callable(kwargs['on_mode_change']):
             self.on_mode_change.subscribe(kwargs['on_mode_change'])
+        if 'on_username_change' in kwargs and callable(kwargs['on_username_change']):
+            self.on_username_change.subscribe(kwargs['on_username_change'])
             
         # Get the singleton config manager instead of having it passed
         self.config_manager = get_config_manager()
@@ -627,7 +629,7 @@ class LogFileHandler(FileSystemEventHandler):
                 output_message(nickname_data.get('timestamp'), f"Username updated: '{old_username}' → '{new_nickname}'")
                 
                 # Emit the event to notify subscribers about nickname/username change
-                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
+                self.on_username_change.emit(self.username, old_username)
                 
                 # Send startup Discord message after getting the username for the first time
                 if old_username == 'Unknown' and not self.process_once:
