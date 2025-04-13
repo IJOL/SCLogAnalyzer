@@ -162,9 +162,19 @@ class ConfigManager:
         if not self.new_config:
             with self._lock:
                 try:
+                    # Import here to avoid circular import issues
+                    from version import get_version
+                    current_version = get_version()
+                    
                     # Default keys to preserve if none specified
                     preserve_keys = preserve_keys or ["discord_webhook_url", "google_sheets_webhook", 
-                                                    "log_file_path", "console_key"]
+                                                     "log_file_path", "console_key", "renew"]
+                    
+                    # Check if the config has already been renewed for this version
+                    config_renew_version = self.get("renew")
+                    if config_renew_version == current_version:
+                        print(f"Configuration already renewed for version {current_version}")
+                        return True
                     
                     template_path = get_template_path()
                     if not os.path.exists(template_path):
@@ -189,10 +199,13 @@ class ConfigManager:
                     for key, value in preserved_values.items():
                         self.set(key, value)
                     
+                    # Save the current version as the renewal version
+                    self.set("renew", current_version)
+                    
                     # Save the renewed config
                     self.save_config()
                     
-                    print("Configuration renewed successfully.")
+                    print(f"Configuration renewed successfully for version {current_version}.")
                     return True
                 except Exception as e:
                     print(f"Error renewing configuration: {e}")
@@ -316,7 +329,7 @@ class ConfigManager:
         """Get a copy of the entire configuration dictionary."""
         with self._lock:
             filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
-                                               'live_discord_webhook', 'ac_discord_webhook',])
+                                               'live_discord_webhook', 'ac_discord_webhook','renew'])
             return filtered_config
     
     def update(self, new_config):
