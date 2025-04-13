@@ -202,11 +202,31 @@ class ConfigManager:
         """Save the current configuration to file."""
         with self._lock:
             try:
+                # filter unwanted values in json file
+                filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
+                                               'live_discord_webhook', 'ac_discord_webhook',])
                 with open(self.config_path, 'w', encoding='utf-8') as config_file:
-                    json.dump(self._config, config_file, indent=4)
+                    json.dump(filtered_config, config_file, indent=4)
             except Exception as e:
                 print(f"Error saving configuration: {e}")
-    
+
+    def filter(self, key_paths):
+        """
+        Filter the configuration dictionary based on provided key paths.
+        
+        Args:
+            key_paths (list): List of key paths to filter from the config.
+            
+        Returns:
+            dict: A new dictionary without the key_paths.
+        """
+        with self._lock:
+            filtered_config = {}
+            for key in self._config:
+                if key not in key_paths:
+                    filtered_config[key] = self._config[key]
+            return filtered_config
+
     def get(self, key_path, default=None):
         """
         Get a configuration value using dot notation for nested keys.
@@ -295,7 +315,9 @@ class ConfigManager:
     def get_all(self):
         """Get a copy of the entire configuration dictionary."""
         with self._lock:
-            return self._config.copy()
+            filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
+                                               'live_discord_webhook', 'ac_discord_webhook',])
+            return filtered_config
     
     def update(self, new_config):
         """Update the configuration with a new dictionary."""
