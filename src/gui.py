@@ -67,7 +67,9 @@ class LogAnalyzerFrame(wx.Frame):
         # Now set up configuration
         # Store config manager reference for dynamic attribute access
         self.config_manager = get_config_manager(in_gui=True)
-        
+        if self.google_sheets_webhook:
+            self.config_manager.apply_dynamic_config(self.google_sheets_webhook)
+       
         # Set flag for GUI mode
         log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled
         
@@ -82,10 +84,10 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Initialize configuration and create sheets tabs (only once)
         self.initialize_config()
-
+        self.config_manager.renew_config()
         # Only add Google Sheets tabs if the webhook URL is valid
         if self.google_sheets_webhook:
-            self.update_google_sheets_tabs()
+            wx.CallAfter(self.update_google_sheets_tabs)
 
         # Set up stdout redirection
         sys.stdout = RedirectText(self.log_text)
@@ -96,13 +98,13 @@ class LogAnalyzerFrame(wx.Frame):
         # Check if the app is started with the --start-hidden flag
         if STARTUP_COMMAND_FLAG in sys.argv:
             self.Hide()  # Hide the main window at startup
+        # Check for updates at app initialization
+        wx.CallAfter(self.check_for_updates)
 
         # Start monitoring by default when GUI is launched
         wx.CallAfter(self.start_monitoring)
         wx.CallAfter(self.update_monitoring_buttons, True)
 
-        # Check for updates at app initialization
-        wx.CallAfter(self.check_for_updates)
 
         self.save_timer = wx.Timer(self)  # Timer to delay saving window info
         self.Bind(wx.EVT_TIMER, self.on_save_timer, self.save_timer)
@@ -655,7 +657,6 @@ class LogAnalyzerFrame(wx.Frame):
 
             data = response.json()
             if not isinstance(data, list) or not data:
-                safe_call_after(self.log_text.AppendText, "No data available or invalid response format.\n") 
                 return
 
             # Update the grid with data
@@ -754,10 +755,6 @@ class LogAnalyzerFrame(wx.Frame):
             self.discord_check.Check(self.use_discord)
             self.googlesheet_check.Check(self.use_googlesheet)
             
-            # 2. Ensure config is up-to-date with template
-            config_path = self.config_manager.config_path
-            if os.path.exists(config_path):
-                self.renew_config()
             
             # 3. Validate critical settings and prompt for missing ones
             missing_settings = []
@@ -880,7 +877,7 @@ class LogAnalyzerFrame(wx.Frame):
         for tab_title, (grid, refresh_button) in self.tab_references.items():
             if refresh_button and refresh_button.grid == grid:
                 # Update the grid's username if it matches the current tab
-                self.execute_refresh_event(refresh_button)
+                wx.CallAfter(wx.CallLater,500,self.execute_refresh_event,(refresh_button))
 
     def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet):
         """Run monitoring in thread."""
@@ -1077,10 +1074,8 @@ class LogAnalyzerFrame(wx.Frame):
 
     def on_edit_config(self, event):
         """Open the configuration dialog."""
-        app_path = get_application_path()
-        config_path = os.path.join(app_path, CONFIG_FILE_NAME)
         if not hasattr(self, 'config_dialog') or not self.config_dialog:
-            self.config_dialog = ConfigDialog(self, config_path)
+            self.config_dialog = ConfigDialog(self, self.config_manager)
             # Bind the close event to reload configuration
             self.config_dialog.Bind(wx.EVT_WINDOW_DESTROY, self.on_config_dialog_close)
         
@@ -1264,45 +1259,6 @@ class LogAnalyzerFrame(wx.Frame):
         except Exception as e:
             wx.MessageBox(f"Error sending test entry to Google Sheets: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
-    def renew_config(self):
-        """Renew the configuration using the ConfigManager while preserving important values.
-        This is a wrapper for the ConfigManager.renew_config method, maintaining compatibility
-        with the older approach."""
-        try:
-            # Use the ConfigManager instance to renew the configuration
-            success = self.config_manager.renew_config()
-            if success:
-                # Only log to log_text if it exists (it might not during initialization)
-                if hasattr(self, 'log_text') and self.log_text is not None:
-                    self.log_text.AppendText("Configuration renewed successfully.\n")
-                else:
-                    print("Configuration renewed successfully.")
-                    
-                # Just reload configuration values without calling initialize_config
-                # This prevents an infinite recursion loop
-                self.default_log_file_path = self.log_file_path
-                if hasattr(self, 'discord_check') and self.discord_check is not None:
-                    self.discord_check.Check(self.use_discord)
-                if hasattr(self, 'googlesheet_check') and self.googlesheet_check is not None:
-                    self.googlesheet_check.Check(self.use_googlesheet)
-                
-                # Update Google Sheets tabs if possible
-                if hasattr(self, 'update_google_sheets_tabs') and callable(getattr(self, 'update_google_sheets_tabs')):
-                    self.update_google_sheets_tabs(['Stats'])
-                
-                return True
-            else:
-                if hasattr(self, 'log_text') and self.log_text is not None:
-                    self.log_text.AppendText("Failed to renew configuration.\n")
-                else:
-                    print("Failed to renew configuration.")
-                return False
-        except Exception as e:
-            if hasattr(self, 'log_text') and self.log_text is not None:
-                self.log_text.AppendText(f"Error during configuration renewal: {e}\n")
-            else:
-                print(f"Error during configuration renewal: {e}")
-            return False
 
     def on_close(self, event):
         """Handle window close event."""
