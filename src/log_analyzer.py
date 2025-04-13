@@ -855,8 +855,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
             use_discord=use_discord,
             process_once=process_once,
             use_googlesheet=use_googlesheet,
-            log_file_path=log_file_path,
-            **kwargs
+            log_file_path=log_file_path
         )
 
         # Log file path must exist
