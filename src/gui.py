@@ -20,7 +20,9 @@ import shutil  # For file operations
 import tempfile  # For temporary directories
 import subprocess
 import webcolors  # Import the webcolors library
-import zipfile  # For handling zip files
+
+# Import the updater module for update functionality
+import updater
 
 from version import get_version  # For restarting the app
 
@@ -34,8 +36,9 @@ DEFAULT_WINDOW_POSITION = (50, 50)
 DEFAULT_WINDOW_SIZE = (800, 600)
 LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
 TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
-GITHUB_API_URL = "https://api.github.com/repos/IJOL/SCLogAnalyzer/releases"
-APP_EXECUTABLE = "SCLogAnalyzer.exe"  # Replace with your app's executable name
+
+# Use constants from the updater module
+from updater import GITHUB_API_URL, APP_EXECUTABLE, UPDATER_EXECUTABLE
 
 def safe_call_after(func, *args, **kwargs):
     """Safely call wx.CallAfter, ensuring wx.App is initialized."""
@@ -282,155 +285,8 @@ class LogAnalyzerFrame(wx.Frame):
 
     def check_for_updates(self):
         """Check for updates by querying the GitHub API."""
-        try:
-            response = requests.get(GITHUB_API_URL)
-            if response.status_code != 200:
-                wx.MessageBox("Failed to check for updates.", "Error", wx.OK | wx.ICON_ERROR)
-                return
-
-            releases = response.json()
-            if not isinstance(releases, list) or not releases:
-                wx.MessageBox("No releases found.", "Error", wx.OK | wx.ICON_ERROR)
-                return
-
-            # Find the latest release named SCLogAnalyzer
-            latest_release = max(
-                (release for release in releases if release.get("name").startswith("SCLogAnalyzer")),
-                key=lambda r: r.get("published_at", ""),
-                default=None
-            )
-
-            if not latest_release:
-                wx.MessageBox("No valid release named 'SCLogAnalyzer' found.", "Error", wx.OK | wx.ICON_ERROR)
-                return
-
-            latest_version = latest_release.get("tag_name", "").split('-')[0].lstrip('v')
-            download_url = latest_release.get("assets", [{}])[0].get("browser_download_url")
-
-            if not latest_version or not download_url:
-                wx.MessageBox("Invalid release information.", "Error", wx.OK | wx.ICON_ERROR)
-                return
-
-            current_version = get_version().split('-')[0].lstrip('v')  # Remove 'v' prefix and extract version
-
-            # Compare versions numerically
-            def version_to_tuple(version):
-                return tuple(map(int, version.split('.')))
-
-            if version_to_tuple(latest_version) > version_to_tuple(current_version):
-                if wx.MessageBox(f"A new version ({latest_version}) is available. Do you want to update?",
-                                 "Update Available", wx.YES_NO | wx.ICON_QUESTION) == wx.YES:
-                    self.download_and_update(download_url)
-        except Exception as e:
-            wx.MessageBox(f"Error checking for updates: {e}", "Error", wx.OK | wx.ICON_ERROR)
-
-    def download_and_update(self, download_url):
-        """Download the update and replace the running application."""
-        try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Create and configure the progress dialog - we'll reuse it for all steps
-                progress_dialog = wx.ProgressDialog(
-                    "Updating SCLogAnalyzer",
-                    "Starting update process...",
-                    maximum=100,
-                    parent=self,
-                    style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_SMOOTH | wx.PD_ELAPSED_TIME | wx.PD_REMAINING_TIME | wx.PD_CAN_ABORT
-                )
-                progress_dialog.SetSize((500, -1))
-                
-                # Step 1: Download the update file (50% of overall progress)
-                temp_file = os.path.join(temp_dir, "update.zip")
-                continue_update, skip = True, False
-                
-                try:
-                    # Update progress dialog for download phase
-                    progress_dialog.Update(0, "Downloading update package...")
-                    
-                    # Start download with stream=True to get content length and update progress
-                    with requests.get(download_url, stream=True) as response:
-                        response.raise_for_status()
-                        
-                        # Get total file size if available
-                        total_size = int(response.headers.get('content-length', 0))
-                        block_size = 8192  # 8KB blocks
-                        downloaded = 0
-                        
-                        with open(temp_file, "wb") as f:
-                            for chunk in response.iter_content(chunk_size=block_size):
-                                if chunk:  # filter out keep-alive new chunks
-                                    f.write(chunk)
-                                    downloaded += len(chunk)
-                                    
-                                    # Update progress bar - download is 50% of overall process
-                                    if total_size > 0:
-                                        progress = int((downloaded / total_size) * 50)  # 0-50% for download
-                                        continue_update, skip = progress_dialog.Update(
-                                            progress, 
-                                            f"Downloading: {int((downloaded / total_size) * 100)}% complete"
-                                        )
-                                    else:
-                                        # If size unknown, just pulse
-                                        continue_update, skip = progress_dialog.Pulse(
-                                            f"Downloaded {downloaded/1024:.1f} KB"
-                                        )
-                                    
-                                    # Check if user canceled
-                                    if not continue_update:
-                                        progress_dialog.Destroy()
-                                        return
-                    
-                    # Step 2: Extract the update (75% of overall progress)
-                    progress_dialog.Update(50, "Extracting update files...")
-                    update_dir = os.path.join(temp_dir, "update")
-                    os.makedirs(update_dir, exist_ok=True)
-                    
-                    # Unpack and track progress
-                    with zipfile.ZipFile(temp_file, 'r') as zip_ref:
-                        file_list = zip_ref.namelist()
-                        total_files = len(file_list)
-                        
-                        for i, file in enumerate(file_list):
-                            zip_ref.extract(file, update_dir)
-                            # Update progress - extraction is 25% of overall process (50-75%)
-                            progress = 50 + int((i + 1) / total_files * 25)
-                            continue_update, skip = progress_dialog.Update(
-                                progress, 
-                                f"Extracting: {i+1} of {total_files} files"
-                            )
-                            if not continue_update:
-                                progress_dialog.Destroy()
-                                return
-                    
-                    # Step 3: Prepare installation (75-90% of overall progress)
-                    progress_dialog.Update(75, "Preparing to install update...")
-                    
-                    # Create updater script
-                    updated_exe = os.path.join(update_dir, APP_EXECUTABLE)
-                    persistent_updater_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "updater.py")
-                    
-                    # Copy the updater script with progress indication
-                    shutil.copyfile(updated_exe, persistent_updater_script)
-                    progress_dialog.Update(90, "Installation files prepared")
-                    
-                    # Step 4: Finalize update (90-100% of overall progress)
-                    progress_dialog.Update(95, "Finalizing update, application will restart...")
-                    time.sleep(1)  # Short delay to show final message
-                    progress_dialog.Update(100, "Update complete!")
-                    progress_dialog.Destroy()
-                    
-                    # Launch the updater script
-                    subprocess.Popen([persistent_updater_script, os.path.dirname(os.path.abspath(sys.argv[0])), APP_EXECUTABLE])
-                    # Exit the current application
-                    self.Close()
-                    sys.exit(0)
-                    
-                except Exception as e:
-                    if 'progress_dialog' in locals() and progress_dialog:
-                        progress_dialog.Destroy()
-                    wx.MessageBox(f"Error during update process: {e}", "Update Error", wx.OK | wx.ICON_ERROR)
-                    
-        except Exception as e:
-            wx.MessageBox(f"Error initializing update process: {e}", "Update Error", wx.OK | wx.ICON_ERROR)
+        current_version = get_version()
+        updater.check_for_updates(self, current_version)
 
     def _add_tab(self, notebook, tab_title, url, params=None):
         """
@@ -1466,55 +1322,16 @@ class LogAnalyzerFrame(wx.Frame):
             self.GetMenuBar().Refresh()
         self.Refresh()
 
-def cleanup_updater_script():
-    updater_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "updater.py")
-    if os.path.exists(updater_script):
-        try:
-            os.remove(updater_script)
-            print("Cleaned up updater.py.")
-        except Exception as e:
-            print(f"Failed to clean up updater.py: {e}")
-
 def main():
-    if os.path.basename(sys.argv[0]) == "updater.py":
-        update_application()    
+    if os.path.basename(sys.argv[0]) == UPDATER_EXECUTABLE:
+        updater.update_application()    
     else:
-        cleanup_updater_script()
+        updater.cleanup_updater_script()
     app = wx.App()
     frame = LogAnalyzerFrame()
     frame.Show()
     frame.async_init_tabs()  # Initialize tabs asynchronously
     app.MainLoop()
-
-def update_application():
-
-    if len(sys.argv) < 3:
-        print("Usage: updater.py <target_dir> <app_executable>")
-        sys.exit(1)
-
-    target_dir = sys.argv[1]
-    app_executable = sys.argv[2]
-
-    # Wait for the main application to exit
-    time.sleep(5)
-
-    # Replace the original executable with the updated one
-    src_file = os.path.abspath(sys.argv[0])  # This script itself
-    dest_file = os.path.join(target_dir, app_executable)
-
-    try:
-        shutil.move(src_file, dest_file)
-        print(f"Replaced {dest_file} successfully.")
-    except Exception as e:
-        print(f"Failed to replace {dest_file}: {e}")
-        sys.exit(1)
-
-    # Restart the application
-    try:
-        os.execv(dest_file, [dest_file])
-    except Exception as e:
-        print(f"Failed to restart the application: {e}")
-        sys.exit(1)
 
 if __name__ == "__main__":
     main()
