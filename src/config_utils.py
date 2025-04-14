@@ -168,12 +168,11 @@ class ConfigManager:
                     
                     # Default keys to preserve if none specified
                     preserve_keys = preserve_keys or ["discord_webhook_url", "google_sheets_webhook", 
-                                                     "log_file_path", "console_key", "renew"]
+                                                     "log_file_path", "console_key", "version"]
                     
                     # Check if the config has already been renewed for this version
-                    config_renew_version = self.get("renew")
+                    config_renew_version = self.get("version")
                     if config_renew_version == current_version:
-                        print(f"Configuration already renewed for version {current_version}")
                         return True
                     
                     template_path = get_template_path()
@@ -200,7 +199,7 @@ class ConfigManager:
                         self.set(key, value)
                     
                     # Save the current version as the renewal version
-                    self.set("renew", current_version)
+                    self.set("version", current_version)
                     
                     # Save the renewed config
                     self.save_config()
