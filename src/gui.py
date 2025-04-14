@@ -57,6 +57,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.shard = "Unknown"
         self.version = "Unknown"
         self.mode = "None"
+        self.debug_mode = False  # Flag to track if debug mode is active
             
 # Initialize tab dictionary to store references to created tabs and grids
         self.tab_references = {}
@@ -85,9 +86,7 @@ class LogAnalyzerFrame(wx.Frame):
         # Initialize configuration and create sheets tabs (only once)
         self.initialize_config()
         self.config_manager.renew_config()
-        # Only add Google Sheets tabs if the webhook URL is valid
-        if self.google_sheets_webhook:
-            wx.CallAfter(self.update_google_sheets_tabs)
+        # Tab creation is now handled asynchronously in main() via async_init_tabs()
 
         # Set up stdout redirection
         sys.stdout = RedirectText(self.log_text)
@@ -115,12 +114,25 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Bind close event to save window position
         self.Bind(wx.EVT_CLOSE, self.on_close)
+        
+        # Bind keyboard events for secret debug mode activation
+        # Bind to components that can receive focus
+        self.Bind(wx.EVT_KEY_DOWN, self.on_key_down)  # Frame-level binding
+        if hasattr(self, 'log_text'):
+            self.log_text.Bind(wx.EVT_KEY_DOWN, self.on_key_down)  # Bind to log text control
+        
         wx.CallAfter(self.update_dynamic_labels)
+        
+        # Initially hide debug elements
+        self.update_debug_ui_visibility()
         
     def _create_ui_components(self):
         """Create all UI components first to ensure they exist before configuration is handled."""
         # Create main panel
         panel = wx.Panel(self)
+        
+        # Bind keyboard events to panel as well
+        panel.Bind(wx.EVT_KEY_DOWN, self.on_key_down)
 
         # Create main vertical sizer
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -841,12 +853,17 @@ class LogAnalyzerFrame(wx.Frame):
             self.start_monitoring()
             self.update_monitoring_buttons(started=True)
     
-    def start_monitoring(self):
-        """Start log file monitoring."""
+    def start_monitoring(self, delay_ms=1500):
+        """Start log file monitoring.
+        
+        Args:
+            delay_ms (int): Delay in milliseconds before starting the monitoring
+        """
         if self.monitoring:  # Prevent starting monitoring if already active
             return
         self.log_text.Clear()
         self.monitoring = True  # Update monitoring state here
+        self.SetStatusText("Preparing to monitor log file...")
         
         # Use the default log file path from the configuration
         log_file = self.default_log_file_path
@@ -859,12 +876,25 @@ class LogAnalyzerFrame(wx.Frame):
         use_discord = self.discord_check.IsChecked()
         use_googlesheet = self.googlesheet_check.IsChecked()
         
+        # Delay the start of monitoring to ensure UI is fully loaded
+        if delay_ms > 0:
+            wx.CallLater(delay_ms, self._start_monitoring_thread, log_file, process_all, use_discord, use_googlesheet)
+            self.log_text.AppendText(f"Monitoring will start in {delay_ms/1000:.1f} seconds...\n")
+        else:
+            self._start_monitoring_thread(log_file, process_all, use_discord, use_googlesheet)
+            
+    def _start_monitoring_thread(self, log_file, process_all, use_discord, use_googlesheet):
+        """Start the actual monitoring thread after any delay."""
+        if not self.monitoring:  # Check if monitoring was canceled during delay
+            return
+            
+        self.log_text.AppendText("Starting log monitoring...\n")
         # Run in a separate thread to keep UI responsive
         thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet))
         thread.daemon = True
         thread.start()
 
-    def on_username_change(self, username,old_username ):
+    def on_username_change(self, username, old_username):
         """
         Handle username change events.
 
@@ -877,7 +907,7 @@ class LogAnalyzerFrame(wx.Frame):
         for tab_title, (grid, refresh_button) in self.tab_references.items():
             if refresh_button and refresh_button.grid == grid:
                 # Update the grid's username if it matches the current tab
-                wx.CallAfter(wx.CallLater,500,self.execute_refresh_event,(refresh_button))
+                safe_call_after(wx.CallLater, 500, self.execute_refresh_event, refresh_button)
 
     def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet):
         """Run monitoring in thread."""
@@ -1293,6 +1323,149 @@ class LogAnalyzerFrame(wx.Frame):
         # Destroy the window
         self.Destroy()
 
+    def async_init_tabs(self):
+        """
+        Initialize tabs asynchronously after the main window is loaded and stable.
+        This prevents UI freezing during startup and improves user experience.
+        """
+        # Update status to indicate we're loading tabs
+        self.SetStatusText("Loading data tabs...")
+        
+        # Create a timer to delay tab creation (ensures window is fully rendered)
+        wx.CallLater(1000, self._create_and_load_tabs)
+    
+    def _create_and_load_tabs(self):
+        """
+        Create and load tabs with data after a delay to ensure main window is stable.
+        Separated from async_init_tabs to allow different timing options.
+        """
+        try:
+            # Only proceed if Google Sheets is enabled
+            if self.google_sheets_webhook and self.googlesheet_check.IsChecked():
+                # Log that we're starting to create tabs
+                self.log_text.AppendText("Creating data tabs...\n")
+                
+                # Define required tabs with their configuration
+                required_tabs = [
+                    {"title": "Stats", "params": None},
+                    {"title": "SC Default", "params": {"sheet": "SC_Default", "username": lambda self: self.username}},
+                    {"title": "SC Squadrons Battle", "params": {"sheet": "EA_SquadronBattle", "username": lambda self: self.username}},
+                    {"title": "Materials", "params": {"sheet": "Materials", "username": lambda self: self.username}, 
+                    "form_fields": {"Material": "text", "Qty": "number", "committed": "check"}}
+                ]
+                
+                # Create each tab asynchronously 
+                for i, tab_info in enumerate(required_tabs):
+                    # Use another delayed call to stagger tab creation
+                    wx.CallLater(200 * i, self._create_single_tab, tab_info)
+                
+                # After all tabs are scheduled for creation, update status
+                wx.CallLater(200 * len(required_tabs) + 500, 
+                             lambda: self.SetStatusText("All tabs created"))
+            else:
+                self.SetStatusText("Google Sheets integration disabled")
+        except Exception as e:
+            self.log_text.AppendText(f"Error creating tabs: {e}\n")
+            self.SetStatusText("Error creating tabs")
+    
+    def _create_single_tab(self, tab_info):
+        """
+        Create a single tab with its configuration.
+        
+        Args:
+            tab_info (dict): Tab configuration information
+        """
+        try:
+            title = tab_info["title"]
+            self.SetStatusText(f"Creating tab: {title}...")
+            
+            # Create the tab based on its type
+            if "form_fields" in tab_info:
+                self.add_form_tab(
+                    self.google_sheets_webhook, 
+                    title,
+                    params=tab_info["params"],
+                    form_fields=tab_info["form_fields"]
+                )
+            else:
+                self.add_tab(
+                    self.google_sheets_webhook, 
+                    title, 
+                    params=tab_info["params"]
+                )
+                
+            # Update log with creation status
+            self.log_text.AppendText(f"Tab '{title}' created\n")
+            
+            # Check if this is the last tab and trigger refresh if needed
+            if len(self.tab_references) == len(self._get_required_tabs()):
+                # All tabs created, trigger initial data load
+                wx.CallLater(500, self._refresh_all_tabs)
+        except Exception as e:
+            self.log_text.AppendText(f"Error creating tab '{tab_info.get('title', 'unknown')}': {e}\n")
+    
+    def _refresh_all_tabs(self):
+        """Refresh all tabs with current data"""
+        try:
+            self.SetStatusText("Loading tab data...")
+            for title, (grid, refresh_button) in self.tab_references.items():
+                # Stagger refresh calls to prevent simultaneous requests
+                wx.CallLater(300, self.execute_refresh_event, refresh_button)
+            
+            # Update status when complete
+            wx.CallLater(500 + (300 * len(self.tab_references)), 
+                         lambda: self.SetStatusText("Ready"))
+        except Exception as e:
+            self.log_text.AppendText(f"Error refreshing tabs: {e}\n")
+    
+    def _get_required_tabs(self):
+        """Get the list of required tabs - factored out for maintainability"""
+        return [
+            "Stats", 
+            "SC Default", 
+            "SC Squadrons Battle", 
+            "Materials"
+        ]
+
+    def on_key_down(self, event):
+        """Handle keyboard events for debug mode activation"""
+        # Get the key code and modifier states
+        key_code = event.GetKeyCode()
+        ctrl_down = event.ControlDown()
+        shift_down = event.ShiftDown()
+        alt_down = event.AltDown()
+        
+        # Secret key combination: CTRL+SHIFT+ALT+D
+        if ctrl_down and shift_down and alt_down and key_code == ord('D'):
+            # Toggle debug mode
+            self.debug_mode = not self.debug_mode
+            self.update_debug_ui_visibility()
+            
+            # Show a subtle indication in the status bar
+            if self.debug_mode:
+                self.SetStatusText("Developer mode activated")
+                self.log_text.AppendText("Developer tools activated\n")
+            else:
+                self.SetStatusText("Ready")
+                self.log_text.AppendText("Developer tools deactivated\n")
+        
+        # Process the event normally
+        event.Skip()
+        
+    def update_debug_ui_visibility(self):
+        """Update UI elements based on debug mode state"""
+        if hasattr(self, 'test_google_sheets_button'):
+            self.test_google_sheets_button.Show(self.debug_mode)
+            
+        # Force layout update
+        if hasattr(self, 'log_page') and self.log_page:
+            self.log_page.Layout()
+            
+        # Update GUI refresh
+        if hasattr(self, 'GetMenuBar') and self.GetMenuBar():
+            self.GetMenuBar().Refresh()
+        self.Refresh()
+
 def cleanup_updater_script():
     updater_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "updater.py")
     if os.path.exists(updater_script):
@@ -1310,6 +1483,7 @@ def main():
     app = wx.App()
     frame = LogAnalyzerFrame()
     frame.Show()
+    frame.async_init_tabs()  # Initialize tabs asynchronously
     app.MainLoop()
 
 def update_application():
