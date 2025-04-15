@@ -69,16 +69,20 @@ def get_template_path():
         return os.path.join(sys._MEIPASS, DEFAULT_CONFIG_TEMPLATE)
     else:
         # Running in normal Python environment
-        return os.path.join(os.path.dirname(__file__), DEFAULT_CONFIG_TEMPLATE)
+        return os.path.join(get_application_path(), DEFAULT_CONFIG_TEMPLATE)
+
 
 def get_application_path():
     """Determine the correct application path whether running as .py or .exe."""
     if getattr(sys, 'frozen', False):
         # If the application is run as a bundle (exe)
-        return os.path.dirname(sys.executable)
+        current_dir = os.path.dirname(sys.executable)
     else:
         # If the application is run as a Python script
-        return os.path.dirname(os.path.abspath(__file__))
+        # Get the directory of the current file
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+    return current_dir
 
 def fetch_dynamic_config(url):
     """

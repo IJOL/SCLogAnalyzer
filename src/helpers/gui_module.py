@@ -12,8 +12,11 @@ import win32api  # Required for sending keystrokes
 import psutil  # Required for process management
 import winreg
 import wx.adv  # Import wx.adv for taskbar icon support
-from ..version import get_version  # Adjusted import for version
-from ..helpers.config_utils import get_application_path  # Adjusted import for config_utils
+import sys
+
+from version import get_version  # Using absolute import for module in parent directory
+from .config_utils import get_application_path  # Direct import from same directory
+from .message_bus import message_bus, MessageLevel  # Direct import from same directory
 
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -26,10 +29,7 @@ class RedirectText:
         """Publish the string to the message bus."""
         if string and string.strip():  # Skip empty strings
             try:
-                # Import message bus here to avoid circular imports
-                from ..helpers.message_bus import message_bus, MessageLevel
-                
-                # Publish the message to the bus
+                # Use the module-level import of message_bus
                 message_bus.publish(
                     content=string,
                     level=MessageLevel.INFO,
@@ -194,10 +194,14 @@ class ConfigDialog(wx.Frame):
         """Toggle adding/removing the app from Windows startup."""
         if is_app_in_startup(self.app_name):
             remove_app_from_startup(self.app_name)
-            wx.MessageBox(f"{self.app_name} removed from Windows startup.", "Info", wx.OK | wx.ICON_INFORMATION)
+            message = f"{self.app_name} removed from Windows startup."
+            wx.MessageBox(message, "Info", wx.OK | wx.ICON_INFORMATION)
+            message_bus.publish(content=message, level=MessageLevel.INFO)
         else:
             add_app_to_startup(self.app_name, self.app_path)
-            wx.MessageBox(f"{self.app_name} added to Windows startup with '--start-hidden' parameter.", "Info", wx.OK | wx.ICON_INFORMATION)
+            message = f"{self.app_name} added to Windows startup with '--start-hidden' parameter."
+            wx.MessageBox(message, "Info", wx.OK | wx.ICON_INFORMATION)
+            message_bus.publish(content=message, level=MessageLevel.INFO)
         self.update_startup_button_label()
 
     def add_tab(self, notebook, title, config_key, key_choices=None):
@@ -345,7 +349,9 @@ class ProcessDialog(wx.Dialog):
         """Handle accept button click."""
         log_file = self.file_path.GetValue()
         if not log_file:
-            wx.MessageBox("Please select a log file.", "Error", wx.OK | wx.ICON_ERROR)
+            message = "Please select a log file."
+            wx.MessageBox(message, "Error", wx.OK | wx.ICON_ERROR)
+            message_bus.publish(content=message, level=MessageLevel.ERROR)
             return
         self.GetParent().run_process_log(log_file)
         self.Destroy()
@@ -379,10 +385,10 @@ class AboutDialog(wx.Dialog):
 
         # Add recent commits section
         try:
-            from ..version import COMMIT_MESSAGES
+            from version import COMMIT_MESSAGES
             if COMMIT_MESSAGES:
                 commits_label = wx.StaticText(panel, label="Recent Changes:")
-                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_BOLD))
                 sizer.Add(commits_label, 0, wx.ALL | wx.ALIGN_LEFT, 5)
                 
                 # Create a scrolled window for commit messages with fixed height

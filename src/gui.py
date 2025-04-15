@@ -6,27 +6,20 @@ import threading
 import log_analyzer
 import time
 from watchdog.observers.polling import PollingObserver as Observer
-import wx.adv  # Import wx.adv for taskbar icon support
 import json  # For handling JSON files
 import winreg  # Import for Windows registry manipulation
 import wx.grid  # Import wx.grid for displaying tabular data
 import requests  # For HTTP requests
-from helpers.config_utils import get_config_manager, get_application_path  # Import the singleton getter
-from helpers.gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper, NumericValidator, TaskBarIcon  # Import TaskBarIcon
-from PIL import Image
-import mss
+from helpers.config_utils import get_config_manager  # Import the singleton getter
+from helpers.gui_module import RedirectText, ConfigDialog, ProcessDialog, WindowsHelper, NumericValidator, TaskBarIcon  # Import TaskBarIcon
 from pyzbar.pyzbar import decode
-import shutil  # For file operations
-import tempfile  # For temporary directories
-import subprocess
 import webcolors  # Import the webcolors library
 
 # Import Supabase manager for cloud storage
 from helpers.supabase_manager import supabase_manager
 
 # Import the updater module for update functionality
-from helpers.updater import updater, check_for_updates  # Import check_for_updates at module level
-
+from helpers import updater
 from version import get_version  # For restarting the app
 
 # Import message bus for centralized message handling
@@ -117,7 +110,8 @@ class LogAnalyzerFrame(wx.Frame):
         wx.CallAfter(self.check_for_updates)
 
         # Start monitoring by default when GUI is launched
-        wx.CallAfter(self.start_monitoring)
+        if self.log_file_path:
+            wx.CallAfter(self.start_monitoring, 1500)
         wx.CallAfter(self.update_monitoring_buttons, True)
 
 
@@ -302,7 +296,7 @@ class LogAnalyzerFrame(wx.Frame):
     def check_for_updates(self):
         """Check for updates by querying the GitHub API."""
         current_version = get_version()
-        check_for_updates(self, current_version)
+        updater.check_for_updates(self, current_version)
 
     def _add_tab(self, notebook, tab_title, url, params=None):
         """
@@ -758,7 +752,7 @@ class LogAnalyzerFrame(wx.Frame):
             self.start_monitoring()
             self.update_monitoring_buttons(started=True)
     
-    def start_monitoring(self, delay_ms=1500):
+    def start_monitoring(self, delay_ms=0):
         """Start log file monitoring.
         
         Args:
@@ -1024,10 +1018,6 @@ class LogAnalyzerFrame(wx.Frame):
 
     def send_keystrokes_to_sc(self):
         """Send predefined keystrokes to the Star Citizen window."""
-        if not self.default_log_file_path:
-            wx.MessageBox("Log file path is not set in the configuration.", "Error", wx.OK | wx.ICON_ERROR)
-            return
-
         # Derive the ScreenShots folder from the log file path
         screenshots_folder = os.path.join(os.path.dirname(self.default_log_file_path), "ScreenShots")
         ck = self.console_key if self.console_key!='' else WindowsHelper.CONSOLE_KEY
@@ -1110,8 +1100,8 @@ class LogAnalyzerFrame(wx.Frame):
             config_saved = getattr(self.config_dialog, 'config_saved', False)
         
         # Only reload configuration if changes were saved
+        self.initialize_config()
         if config_saved:
-            self.initialize_config()
             if self.monitoring:
                 self.stop_monitoring()
                 self.start_monitoring()
