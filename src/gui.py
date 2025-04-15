@@ -21,6 +21,9 @@ import tempfile  # For temporary directories
 import subprocess
 import webcolors  # Import the webcolors library
 
+# Import Supabase manager for cloud storage
+from supabase_manager import supabase_manager
+
 # Import the updater module for update functionality
 import updater
 
@@ -62,7 +65,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.mode = "None"
         self.debug_mode = False  # Flag to track if debug mode is active
             
-# Initialize tab dictionary to store references to created tabs and grids
+        # Initialize tab dictionary to store references to created tabs and grids
         self.tab_references = {}
             
         # Create main panel and UI components first
@@ -76,6 +79,10 @@ class LogAnalyzerFrame(wx.Frame):
        
         # Set flag for GUI mode
         log_analyzer.main.in_gui = True  # Ensure GUI mode is enabled
+        
+        # Connect to Supabase if enabled
+        if self.use_supabase and not supabase_manager.is_connected():
+            supabase_manager.connect()
         
         # Set up a custom log handler for GUI (do this after log_text is created)
         log_analyzer.main.gui_log_handler = self.append_log_message
@@ -229,6 +236,7 @@ class LogAnalyzerFrame(wx.Frame):
         config_menu = wx.Menu()
         self.discord_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Discord")
         self.googlesheet_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Google Sheets")
+        self.supabase_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Supabase") # Add Supabase option
         config_menu.AppendSeparator()
         edit_config_item = config_menu.Append(wx.ID_ANY, "Edit Configuration")  # Add menu item for config dialog
         menu_bar.Append(config_menu, "Config")
@@ -242,6 +250,7 @@ class LogAnalyzerFrame(wx.Frame):
         # Bind menu events
         self.Bind(wx.EVT_MENU, self.on_toggle_check, self.discord_check)
         self.Bind(wx.EVT_MENU, self.on_toggle_check, self.googlesheet_check)
+        self.Bind(wx.EVT_MENU, self.on_toggle_check, self.supabase_check) # Bind Supabase check
         self.Bind(wx.EVT_MENU, self.on_edit_config, edit_config_item)  # Bind the new menu item
         self.Bind(wx.EVT_MENU, self.on_about, about_item)  # Bind About menu item
 
@@ -273,7 +282,8 @@ class LogAnalyzerFrame(wx.Frame):
                 'console_key': '',
                 'colors': {},
                 'use_discord': True,
-                'use_googlesheet': True
+                'use_googlesheet': True,
+                'use_supabase': False  # Default: Supabase disabled
             }
             
             # Try to get the property from the config_manager with appropriate default
@@ -622,7 +632,15 @@ class LogAnalyzerFrame(wx.Frame):
             self.default_log_file_path = self.log_file_path
             self.discord_check.Check(self.use_discord)
             self.googlesheet_check.Check(self.use_googlesheet)
+            self.supabase_check.Check(self.use_supabase)  # Set Supabase checkbox state
             
+            # Connect to Supabase if enabled
+            if self.use_supabase:
+                if supabase_manager.is_connected():
+                    self.log_text.AppendText("Connected to Supabase successfully.\n")
+                else:
+                    self.log_text.AppendText("Failed to connect to Supabase. Check your credentials in .env file.\n")
+                    self.supabase_check.Check(False)  # Uncheck if connection failed
             
             # 3. Validate critical settings and prompt for missing ones
             missing_settings = []
@@ -731,22 +749,23 @@ class LogAnalyzerFrame(wx.Frame):
         process_all = True  # Always process the entire log
         use_discord = self.discord_check.IsChecked()
         use_googlesheet = self.googlesheet_check.IsChecked()
+        use_supabase = self.supabase_check.IsChecked()  # Get Supabase checkbox state
         
         # Delay the start of monitoring to ensure UI is fully loaded
         if delay_ms > 0:
-            wx.CallLater(delay_ms, self._start_monitoring_thread, log_file, process_all, use_discord, use_googlesheet)
+            wx.CallLater(delay_ms, self._start_monitoring_thread, log_file, process_all, use_discord, use_googlesheet, use_supabase)
             self.log_text.AppendText(f"Monitoring will start in {delay_ms/1000:.1f} seconds...\n")
         else:
-            self._start_monitoring_thread(log_file, process_all, use_discord, use_googlesheet)
+            self._start_monitoring_thread(log_file, process_all, use_discord, use_googlesheet, use_supabase)
             
-    def _start_monitoring_thread(self, log_file, process_all, use_discord, use_googlesheet):
+    def _start_monitoring_thread(self, log_file, process_all, use_discord, use_googlesheet, use_supabase):
         """Start the actual monitoring thread after any delay."""
         if not self.monitoring:  # Check if monitoring was canceled during delay
             return
             
         self.log_text.AppendText("Starting log monitoring...\n")
         # Run in a separate thread to keep UI responsive
-        thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet))
+        thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet, use_supabase))
         thread.daemon = True
         thread.start()
 
@@ -765,7 +784,7 @@ class LogAnalyzerFrame(wx.Frame):
                 # Update the grid's username if it matches the current tab
                 safe_call_after(wx.CallLater, 500, self.execute_refresh_event, refresh_button)
 
-    def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet):
+    def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet, use_supabase):
         """Run monitoring in thread."""
         try:
             # Call startup with event subscriptions passed as kwargs
@@ -774,6 +793,7 @@ class LogAnalyzerFrame(wx.Frame):
                 use_discord=use_discord,
                 process_once=False,
                 use_googlesheet=use_googlesheet,
+                use_supabase=use_supabase,  # Pass Supabase flag to startup
                 log_file_path=log_file,
                 on_shard_version_update=self.on_shard_version_update,
                 on_mode_change=self.on_mode_change,
@@ -957,6 +977,20 @@ class LogAnalyzerFrame(wx.Frame):
         menu_item = self.FindItemById(event.GetId())
         if menu_item:
             menu_item.Check(not menu_item.IsChecked())
+            # Update config when Supabase is toggled
+            if menu_item == self.supabase_check:
+                self.config_manager.set('use_supabase', menu_item.IsChecked())
+                self.config_manager.save_config()
+                
+                # Connect or disconnect based on checkbox state
+                if menu_item.IsChecked() and not supabase_manager.is_connected():
+                    if supabase_manager.connect():
+                        self.log_text.AppendText("Connected to Supabase successfully.\n")
+                    else:
+                        self.log_text.AppendText("Failed to connect to Supabase. Check your credentials in .env file.\n")
+                        menu_item.Check(False)  # Uncheck if connection failed
+                        self.config_manager.set('use_supabase', False)
+                        self.config_manager.save_config()
 
     def on_edit_config(self, event):
         """Open the configuration dialog."""

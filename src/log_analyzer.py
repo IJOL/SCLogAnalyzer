@@ -16,6 +16,7 @@ from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustme
 from pyzbar.pyzbar import decode  # For QR code detection
 from config_utils import get_application_path, get_config_manager
 from gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
+from supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -198,6 +199,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.last_position = 0
         self.actor_state = {}
         self.google_sheets_queue = queue.Queue()
+        self.supabase_queue = queue.Queue()  # Queue for Supabase operations
         self.stop_event = threading.Event()
         self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
         self.current_mode = None
@@ -212,6 +214,11 @@ class LogFileHandler(FileSystemEventHandler):
             self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
             self.google_sheets_thread.daemon = True
             self.google_sheets_thread.start()
+            
+            # Start Supabase thread if not in process_once mode
+            self.supabase_thread = threading.Thread(target=self.process_supabase_queue)
+            self.supabase_thread.daemon = True
+            self.supabase_thread.start()
         
         # Compile mode regex patterns
         self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
@@ -279,9 +286,16 @@ class LogFileHandler(FileSystemEventHandler):
     def cleanup_threads(self):
         """Ensure all threads are stopped"""
         # Wait for Google Sheets thread to finish processing remaining items
-        if self.google_sheets_thread.is_alive():
+        if hasattr(self, 'google_sheets_thread') and self.google_sheets_thread.is_alive():
             output_message(None, "Waiting for Google Sheets queue to complete...")
             self.google_sheets_queue.join()
+            # Give it a moment to exit gracefully
+            time.sleep(0.5)
+            
+        # Wait for Supabase thread to finish processing remaining items
+        if hasattr(self, 'supabase_thread') and self.supabase_thread.is_alive():
+            output_message(None, "Waiting for Supabase queue to complete...")
+            self.supabase_queue.join()
             # Give it a moment to exit gracefully
             time.sleep(0.5)
 
@@ -409,6 +423,63 @@ class LogFileHandler(FileSystemEventHandler):
         # Add state data to the payload
         data_with_state = self.add_state_data(data)
         self.google_sheets_queue.put((data_with_state, event_type))
+        return True
+
+    def process_supabase_queue(self):
+        """Worker thread to process Supabase queue"""
+        while not self.stop_event.is_set():
+            if not self.use_supabase or not supabase_manager.is_connected():
+                time.sleep(1)
+                continue
+                
+            try:
+                # Try to get a task from the queue
+                try:
+                    data, event_type = self.supabase_queue.get(timeout=1)
+                    self._send_to_supabase(data, event_type)
+                    self.supabase_queue.task_done()
+                except queue.Empty:
+                    # No items in queue, just continue loop
+                    pass
+            except Exception as e:
+                output_message(None, f"Exception in Supabase worker thread: {e}")
+        
+        output_message(None, "Supabase worker thread stopped")
+
+    def _send_to_supabase(self, data, event_type):
+        """Send data to Supabase"""
+        if not self.use_supabase or not supabase_manager.is_connected():
+            return False
+            
+        try:
+            # Insert log data into Supabase
+            if supabase_manager.insert_log(data):
+                output_message(None, "Data sent to Supabase successfully")
+                return True
+            else:
+                output_message(None, "Error sending data to Supabase")
+                return False
+        except Exception as e:
+            output_message(None, f"Exception sending data to Supabase: {e}")
+            return False
+
+    def update_supabase(self, data, event_type):
+        """
+        Add data to Supabase queue, including state information.
+
+        Args:
+            data (dict): The data to send.
+            event_type (str): The type of event triggering the update.
+            
+        Returns:
+            bool: True if queued successfully, False otherwise.
+        """
+        if not self.use_supabase:
+            return False
+
+        # Add state data to the payload
+        data_with_state = self.add_state_data(data)
+        self.supabase_queue.put((data_with_state, event_type))
         return True
 
     def on_modified(self, event):
@@ -779,6 +850,10 @@ class LogFileHandler(FileSystemEventHandler):
             # Send to Google Sheets if enabled and pattern is in the mapping
             if send_message and pattern_name in self.google_sheets_mapping:
                 self.update_google_sheets(data, pattern_name)
+                
+            # Send to Supabase if enabled
+            if send_message and self.use_supabase:
+                self.update_supabase(data, pattern_name)
     
             return True, data
         return False, None
@@ -818,7 +893,7 @@ def stop_monitor(event_handler, observer):
     event_handler.stop()
     output_message(None, "Monitor stopped successfully")
 
-def startup(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None, **kwargs):
+def startup(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, use_supabase=None, log_file_path=None, **kwargs):
     """
     Initialize the log analyzer infrastructure and allow the caller to pass event subscriptions via kwargs.
 
@@ -827,6 +902,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         use_discord: Whether to use Discord for notifications.
         process_once: Whether to process the log file once and exit.
         use_googlesheet: Whether to use Google Sheets for data storage.
+        use_supabase: Whether to use Supabase for data storage.
         log_file_path: Path to the log file.
         kwargs: Additional arguments for event subscriptions or configurations.
     """
@@ -849,12 +925,20 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
             config_manager.apply_dynamic_config(google_sheets_webhook)
             output_message(None, "Applied dynamic configuration from Google Sheets")
         
+        # Connect to Supabase if credentials are available
+        if config_manager.get('use_supabase', False):
+            if supabase_manager.is_connected():
+                output_message(None, "Successfully connected to Supabase")
+            else:
+                output_message(None, "Failed to connect to Supabase. Check your credentials in .env file")
+        
         # Override configuration with command-line parameters
         config_manager.override_with_parameters(
             process_all=process_all,
             use_discord=use_discord,
             process_once=process_once,
             use_googlesheet=use_googlesheet,
+            use_supabase=use_supabase,
             log_file_path=log_file_path
         )
 
@@ -897,9 +981,9 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         logging.error("Stack trace:\n%s", traceback.format_exc())
         raise
 
-def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None):
+def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, use_supabase=None, log_file_path=None):
     try:
-        event_handler, observer = startup(process_all, use_discord, process_once, use_googlesheet, log_file_path)
+        event_handler, observer = startup(process_all, use_discord, process_once, use_googlesheet, use_supabase, log_file_path)
 
         # If in GUI mode, start the observer in a separate thread and return immediately
         if hasattr(main, 'in_gui') and main.in_gui:
@@ -942,12 +1026,13 @@ if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
         print(f"SC Log Analyzer v{get_version()}")
-        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng] [--debug | -d]")
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng] [--no-supabase | -ns] [--debug | -d]")
         print("Options:")
         print("  --process-all, -p    Skip processing entire log file (overrides config)")
         print("  --no-discord, -nd    Do not send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
         print("  --no-googlesheet, -ng    Do not send output to Google Sheets webhook")
+        print("  --no-supabase, -ns   Do not send output to Supabase")
         print("  --debug, -d          Enable debug mode (e.g., save cropped images)")
         print(f"Version: {get_version()}")
         sys.exit(0)
@@ -956,6 +1041,7 @@ if __name__ == "__main__":
     use_discord = not ('--no-discord' in sys.argv or '-nd' in sys.argv)
     process_once = '--process-once' in sys.argv or '-o' in sys.argv
     use_googlesheet = not ('--no-googlesheet' in sys.argv or '-ng' in sys.argv)
+    use_supabase = not ('--no-supabase' in sys.argv or '-ns' in sys.argv)
     debug_mode = '--debug' in sys.argv or '-d' in sys.argv
 
     # Set debug mode globally
@@ -963,4 +1049,4 @@ if __name__ == "__main__":
 
     # Show version info on startup
     print(f"SC Log Analyzer v{get_version()} starting...")
-    main(process_all, use_discord, process_once, use_googlesheet)
+    main(process_all, use_discord, process_once, use_googlesheet, use_supabase)

@@ -122,11 +122,12 @@ class ConfigManager:
     def load_config(self):
         """Load configuration from file. Creates default config if it doesn't exist."""
         with self._lock:
+            # First try to load from the local file
             if os.path.exists(self.config_path):
                 try:
                     with open(self.config_path, 'r', encoding='utf-8') as config_file:
                         self._config = json.load(config_file)
-                        self.new_config = False  # Flag to indicate if a new config was created
+                        self.new_config = False
                 except Exception as e:
                     print(f"Error loading configuration: {e}")
                     # Create default config if the file exists but couldn't be loaded
@@ -217,8 +218,11 @@ class ConfigManager:
                 # filter unwanted values in json file
                 filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
                                                'live_discord_webhook', 'ac_discord_webhook',])
+                
+                # Save to local file
                 with open(self.config_path, 'w', encoding='utf-8') as config_file:
                     json.dump(filtered_config, config_file, indent=4)
+                    
             except Exception as e:
                 print(f"Error saving configuration: {e}")
 
