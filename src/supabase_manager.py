@@ -39,6 +39,7 @@ class SupabaseManager:
                 print("Supabase URL or key not found in config.")
                 return False
                 
+            # Create client without any additional parameters that might cause issues
             self.supabase = create_client(self.supabase_url, self.supabase_key)
             self.is_initialized = True
             print("Connected to Supabase successfully.")
@@ -63,29 +64,116 @@ class SupabaseManager:
     
     def _refresh_table_cache(self):
         """
-        Refresh the cache of existing tables.
+        Refresh the cache of existing tables using PostgreSQL metadata.
         """
         if not self.is_connected():
             return
             
         try:
-            # Query to get all table names
-            response = self.supabase.rpc('get_tables').execute()
+            # Try a direct method that works with Supabase PostgREST API
+            # This uses the special PostgREST metadata format to get a schema listing
+            # Reference: https://postgrest.org/en/stable/api.html#schema-discovery
             
-            if hasattr(response, 'data') and response.data:
-                # Extract table names
-                self.existing_tables = set(item['name'] for item in response.data)
-                self.table_cache_time = time.time()
-            else:
-                # Alternative method if RPC is not available
-                # This is a fallback that uses the REST API
-                # The actual query might differ based on your Supabase setup
-                response = self.supabase.table('pg_tables').select('tablename').eq('schemaname', 'public').execute()
-                if hasattr(response, 'data') and response.data:
-                    self.existing_tables = set(item['tablename'] for item in response.data)
+            # Since we're using the Supabase client, we need to adapt the approach
+            try:
+                # Try the special PostgREST approach by directly querying public schema tables
+                # Get the base URL from supabase client
+                base_url = self.supabase.rest_url
+                
+                # Add the metadata query directly to the base URL
+                import requests
+                
+                # Get the headers from the supabase client
+                headers = {
+                    'apikey': self.supabase_key,
+                    'Authorization': f'Bearer {self.supabase_key}'
+                }
+                
+                # Direct REST API call to get schema metadata
+                response = requests.get(
+                    f"{base_url}",
+                    headers=headers
+                )
+                
+                if response.status_code == 200:
+                    # Extract table names from the response
+                    schema_data = response.json()
+                    
+                    # The response contains all tables in the public schema
+                    self.existing_tables = set(table for table in schema_data.keys() 
+                                           if not table.startswith('_'))
                     self.table_cache_time = time.time()
+                    
+                    print(f"Table cache refreshed using PostgREST schema discovery. Found {len(self.existing_tables)} tables.")
+                    return
+            except Exception as e:
+                print(f"PostgREST schema discovery approach failed: {e}")
+                
+            # Fall back to direct querying of tables
+            self._refresh_table_cache_fallback()
+            
         except Exception as e:
             print(f"Error refreshing table cache: {e}")
+            # Don't clear the cache on error - conservative approach
+            
+    def _refresh_table_cache_fallback(self):
+        """
+        Robust method to refresh the table cache when direct metadata queries aren't possible.
+        Detects tables by probing for their existence and builds a cache over time.
+        """
+        # Reset the table cache time to indicate a refresh was attempted
+        self.table_cache_time = time.time()
+        
+        # Standard tables to check - expand this list based on your application's needs
+        standard_tables = [
+            "game_logs", 
+            "default_logs",
+            # Add other known table names your application might use
+        ]
+        
+        # Add any tables we've successfully used before to the check list
+        all_tables_to_check = list(standard_tables)
+        
+        # If we've previously detected tables, add them to our check list
+        # but avoid duplicates
+        for existing_table in self.existing_tables:
+            if existing_table not in all_tables_to_check:
+                all_tables_to_check.append(existing_table)
+        
+        # Track newly confirmed tables
+        confirmed_tables = set()
+        
+        # Track tables confirmed to not exist
+        nonexistent_tables = set()
+        
+        # Check each table
+        for table in all_tables_to_check:
+            try:
+                # Just fetch the count which is minimal data
+                response = self.supabase.table(table).select('*', count='exact').limit(0).execute()
+                
+                # If we get here without error, the table exists
+                confirmed_tables.add(table)
+                print(f"Confirmed table exists: {table}")
+            except Exception as e:
+                error_str = str(e).lower()
+                # Check if the error indicates table doesn't exist
+                if ("relation" in error_str and "does not exist" in error_str) or "not found" in error_str:
+                    nonexistent_tables.add(table)
+                    print(f"Confirmed table does not exist: {table}")
+                else:
+                    # For other errors, we're uncertain - be conservative and assume it might exist
+                    print(f"Uncertain about table {table}: {e}")
+        
+        # Update our cache:
+        # 1. Remove tables confirmed to not exist
+        self.existing_tables -= nonexistent_tables
+        
+        # 2. Add tables confirmed to exist
+        self.existing_tables.update(confirmed_tables)
+        
+        # Log the results
+        print(f"Table cache refreshed. Known tables: {', '.join(sorted(self.existing_tables)) if self.existing_tables else 'none'}")
     
     def _sanitize_table_name(self, name):
         """
@@ -147,48 +235,36 @@ class SupabaseManager:
             return False
             
         try:
-            # Determine column types based on data values
-            columns = []
+            # Since we can't use raw SQL in this Supabase instance,
+            # we'll attempt to create the table by inserting data
+            # and letting Supabase auto-create the table with appropriate types
             
-            # Standard columns that should always be present
-            columns.append("id serial primary key")
-            columns.append("created_at timestamp with time zone default now()")
+            # First, ensure we have the minimum fields needed
+            insert_data = data.copy()
             
-            # Add columns based on data fields
-            for key, value in data.items():
-                # Skip id field as it's already defined
-                if key == 'id':
-                    continue
-                    
-                # Skip created_at field as it's already defined
-                if key == 'created_at':
-                    continue
-                    
-                # Determine column type based on value type
-                if isinstance(value, int):
-                    columns.append(f"\"{key}\" integer")
-                elif isinstance(value, float):
-                    columns.append(f"\"{key}\" double precision")
-                elif isinstance(value, bool):
-                    columns.append(f"\"{key}\" boolean")
-                elif isinstance(value, dict) or isinstance(value, list):
-                    columns.append(f"\"{key}\" jsonb")
-                else:
-                    # Default to text for strings and other types
-                    columns.append(f"\"{key}\" text")
-            
-            # Create the table
-            create_table_sql = f"CREATE TABLE {table_name} ({', '.join(columns)});"
-            
-            # Execute the SQL (this depends on how your Supabase client handles raw SQL)
-            # The implementation may vary based on your Supabase setup
-            response = self.supabase.rpc('run_sql', {"sql": create_table_sql}).execute()
-            
-            # Update table cache
-            self.existing_tables.add(table_name)
-            
-            print(f"Created new table {table_name} in Supabase")
-            return True
+            # Strip any fields that might cause issues
+            if 'id' in insert_data:
+                del insert_data['id']  # Don't specify ID for new records
+                
+            if 'created_at' in insert_data:
+                del insert_data['created_at']  # Let Supabase handle this
+                
+            # Try to insert the data, which may auto-create the table
+            # Note: This depends on your Supabase configuration allowing table creation
+            # If table auto-creation isn't enabled, this will fail
+            try:
+                result = self.supabase.table(table_name).insert(insert_data).execute()
+                
+                # If we get here without error, table was created or already existed
+                self.existing_tables.add(table_name)
+                print(f"Created or verified table {table_name} in Supabase")
+                return True
+            except Exception as e:
+                error_msg = str(e)
+                
+                # If table creation is not enabled, or another error occurred
+                print(f"Error creating table through insert: {error_msg}")
+                return False
         except Exception as e:
             print(f"Error creating table {table_name}: {e}")
             return False
