@@ -17,13 +17,26 @@ import wx.adv  # Import wx.adv for taskbar icon support
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 class RedirectText:
-    """Class to redirect stdout to a text control."""
+    """Class to redirect stdout to the message bus."""
     def __init__(self, text_ctrl):
         self.text_ctrl = text_ctrl
 
     def write(self, string):
-        """Write to the text control."""
-        wx.CallAfter(self.text_ctrl.AppendText, string)
+        """Publish the string to the message bus."""
+        if string and string.strip():  # Skip empty strings
+            try:
+                # Import message bus here to avoid circular imports
+                from message_bus import message_bus, MessageLevel
+                
+                # Publish the message to the bus
+                message_bus.publish(
+                    content=string,
+                    level=MessageLevel.INFO,
+                    metadata={'from_stdout': True}
+                )
+            except ImportError:
+                # Fallback to direct writing if message_bus isn't available
+                wx.CallAfter(self.text_ctrl.AppendText, string)
 
     def flush(self):
         pass

@@ -29,6 +29,9 @@ import updater
 
 from version import get_version  # For restarting the app
 
+# Import message bus for centralized message handling
+from message_bus import message_bus, MessageLevel
+
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
 REGISTRY_KEY_PATH = r"Software\SCLogAnalyzer\WindowInfo"
@@ -86,6 +89,9 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Set up a custom log handler for GUI (do this after log_text is created)
         log_analyzer.main.gui_log_handler = self.append_log_message
+        
+        # Initialize message bus subscription
+        message_bus.subscribe("gui_main", self._append_log_message_from_bus)
         
         # Initialize variables
         self.observer = None
@@ -540,11 +546,20 @@ class LogAnalyzerFrame(wx.Frame):
             # Update the grid with data
             safe_call_after(self.update_sheets_grid, data, target_grid)
         except requests.RequestException as e:
-            safe_call_after(self.log_text.AppendText, f"Network error while fetching data: {e}\n")
+            safe_call_after(lambda: message_bus.publish(
+                content=f"Network error while fetching data: {e}",
+                level=MessageLevel.ERROR
+            ))
         except json.JSONDecodeError:
-            safe_call_after(self.log_text.AppendText, "Failed to decode JSON response from server.\n")
+            safe_call_after(lambda: message_bus.publish(
+                content="Failed to decode JSON response from server.",
+                level=MessageLevel.ERROR
+            ))
         except Exception as e:
-            safe_call_after(self.log_text.AppendText, f"Unexpected error during data fetch: {e}\n")
+            safe_call_after(lambda: message_bus.publish(
+                content=f"Unexpected error during data fetch: {e}",
+                level=MessageLevel.ERROR
+            ))
         finally:
             # Clear loading state
             safe_call_after(self.set_grid_loading, target_grid, False)
@@ -563,7 +578,10 @@ class LogAnalyzerFrame(wx.Frame):
             self.version_label.SetLabel(f"Version: {version}")
             self.mode_label.SetLabel(f"Mode: {mode or 'None'}")
         except Exception as e:
-            self.log_text.AppendText(f"Error updating labels: {e}\n")
+            message_bus.publish(
+                content=f"Error updating labels: {e}",
+                level=MessageLevel.ERROR
+            )
 
     def on_shard_version_update(self, shard, version, username, mode=None):
         """
@@ -585,7 +603,10 @@ class LogAnalyzerFrame(wx.Frame):
                 
             self.update_dynamic_labels()  # Call update_dynamic_labels to refresh UI
         except Exception as e:
-            self.log_text.AppendText(f"Error updating shard/version/username/mode: {e}\n")
+            message_bus.publish(
+                content=f"Error updating shard/version/username/mode: {e}",
+                level=MessageLevel.ERROR
+            )
 
     def on_mode_change(self, new_mode, old_mode):
         """
@@ -637,9 +658,15 @@ class LogAnalyzerFrame(wx.Frame):
             # Connect to Supabase if enabled
             if self.use_supabase:
                 if supabase_manager.is_connected():
-                    self.log_text.AppendText("Connected to Supabase successfully.\n")
+                    message_bus.publish(
+                        content="Connected to Supabase successfully.",
+                        level=MessageLevel.INFO
+                    )
                 else:
-                    self.log_text.AppendText("Failed to connect to Supabase. Check your credentials in .env file.\n")
+                    message_bus.publish(
+                        content="Failed to connect to Supabase. Check your credentials in .env file.",
+                        level=MessageLevel.ERROR
+                    )
                     self.supabase_check.Check(False)  # Uncheck if connection failed
             
             # 3. Validate critical settings and prompt for missing ones
@@ -667,10 +694,10 @@ class LogAnalyzerFrame(wx.Frame):
                 self.on_edit_config(None)  # Show the configuration dialog modal
             
         except Exception as e:
-            if hasattr(self, 'log_text') and self.log_text is not None:
-                self.log_text.AppendText(f"Error initializing configuration: {e}\n")
-            else:
-                print(f"Error initializing configuration: {e}")
+            message_bus.publish(
+                content=f"Error initializing configuration: {e}",
+                level=MessageLevel.ERROR
+            )
 
     def on_process_log(self, event):
         """Open the process log dialog."""
@@ -710,7 +737,11 @@ class LogAnalyzerFrame(wx.Frame):
             )
             wx.CallAfter(self.SetStatusText, "Processing completed")
         except Exception as e:
-            wx.CallAfter(self.log_text.AppendText, f"Error processing log: {e}\n")
+            # Use message bus instead of direct AppendText
+            wx.CallAfter(lambda e=e: message_bus.publish(
+                content=f"Error processing log: {e}",
+                level=MessageLevel.ERROR
+            ))
             wx.CallAfter(self.SetStatusText, "Error during processing")
         finally:
             wx.CallAfter(self.process_log_button.Enable, True)
@@ -754,7 +785,11 @@ class LogAnalyzerFrame(wx.Frame):
         # Delay the start of monitoring to ensure UI is fully loaded
         if delay_ms > 0:
             wx.CallLater(delay_ms, self._start_monitoring_thread, log_file, process_all, use_discord, use_googlesheet, use_supabase)
-            self.log_text.AppendText(f"Monitoring will start in {delay_ms/1000:.1f} seconds...\n")
+            # Use message bus instead of direct AppendText
+            message_bus.publish(
+                content=f"Monitoring will start in {delay_ms/1000:.1f} seconds...",
+                level=MessageLevel.INFO
+            )
         else:
             self._start_monitoring_thread(log_file, process_all, use_discord, use_googlesheet, use_supabase)
             
@@ -763,7 +798,12 @@ class LogAnalyzerFrame(wx.Frame):
         if not self.monitoring:  # Check if monitoring was canceled during delay
             return
             
-        self.log_text.AppendText("Starting log monitoring...\n")
+        # Use message bus instead of direct AppendText
+        message_bus.publish(
+            content="Starting log monitoring...",
+            level=MessageLevel.INFO
+        )
+        
         # Run in a separate thread to keep UI responsive
         thread = threading.Thread(target=self.run_monitoring, args=(log_file, process_all, use_discord, use_googlesheet, use_supabase))
         thread.daemon = True
@@ -809,7 +849,10 @@ class LogAnalyzerFrame(wx.Frame):
                     self.observer.start()
 
         except Exception as e:
-            wx.CallAfter(self.log_text.AppendText, f"Error starting monitoring: {e}\n")
+            wx.CallAfter(lambda e=e: message_bus.publish(
+                content=f"Error starting monitoring: {e}",
+                level=MessageLevel.ERROR
+            ))
             wx.CallAfter(self.update_monitoring_buttons, False)
             self.monitoring = False
     
@@ -822,15 +865,30 @@ class LogAnalyzerFrame(wx.Frame):
             self.event_handler = None
             self.observer = None
         self.monitoring = False  # Ensure monitoring state is updated
-    def append_log_message(self, message, regex_pattern=None):
-        wx.CallAfter(self._append_log_message, message, regex_pattern)
-    def _append_log_message(self, message, regex_pattern=None):
-        """
-        Append a log message to the GUI log output area.
 
+    def append_log_message(self, message, regex_pattern=None):
+        """
+        Bridge method to maintain compatibility with older code.
+        Redirects to the new message handling system.
+        """
+        if isinstance(message, str):
+            # Publish the message to the bus
+            message_bus.publish(
+                content=message,
+                level=MessageLevel.INFO,
+                pattern_name=regex_pattern,
+                metadata={'from_legacy': True}
+            )
+        else:
+            # For the new Message objects from the message bus
+            wx.CallAfter(self._append_log_message_from_bus, message)
+
+    def _append_log_message_from_bus(self, message):
+        """
+        Process a message from the message bus and display it in the log text control.
+        
         Args:
-            message: The log message to append.
-            regex_pattern: The regex pattern name that matched the message (optional).
+            message: The message object from the message bus
         """
         if self.log_text:
             # Default colors
@@ -839,9 +897,11 @@ class LogAnalyzerFrame(wx.Frame):
 
             # Load colors and patterns from the configuration
             colors = getattr(self, "colors", {})
-            if regex_pattern:
+            pattern_name = message.pattern_name
+            
+            if pattern_name:
                 for color_spec, pattern_names in colors.items():
-                    if regex_pattern in pattern_names:
+                    if pattern_name in pattern_names:
                         # Parse the color specification
                         color_parts = color_spec.split(",")
                         if len(color_parts) > 0:
@@ -868,7 +928,7 @@ class LogAnalyzerFrame(wx.Frame):
 
             # Apply the colors and append the message
             self.log_text.SetDefaultStyle(wx.TextAttr(foreground_color, background_color))
-            self.log_text.AppendText(message + "\n")
+            self.log_text.AppendText(message.get_formatted_message() + "\n")
 
     def save_window_info(self):
         """Save the window's current position, size, and state to the Windows registry."""
@@ -884,7 +944,10 @@ class LogAnalyzerFrame(wx.Frame):
             winreg.SetValueEx(key, "Iconized", 0, winreg.REG_SZ, str(is_iconized))
             winreg.CloseKey(key)
         except Exception as e:
-            self.log_text.AppendText(f"Error saving window info: {e}\n")
+            message_bus.publish(
+                content=f"Error saving window info: {e}",
+                level=MessageLevel.ERROR
+            )
 
     def restore_window_info(self):
         """Restore the window's position, size, and state from the Windows registry."""
@@ -928,7 +991,10 @@ class LogAnalyzerFrame(wx.Frame):
             self.SetPosition(wx.Point(*DEFAULT_WINDOW_POSITION))
             self.SetSize(wx.Size(*DEFAULT_WINDOW_SIZE))
         except Exception as e:
-            self.log_text.AppendText(f"Error restoring window info: {e}\n")
+            message_bus.publish(
+                content=f"Error restoring window info: {e}",
+                level=MessageLevel.ERROR
+            )
 
     def on_window_move_or_resize(self, event):
         """Handle window move or resize events."""
@@ -946,9 +1012,15 @@ class LogAnalyzerFrame(wx.Frame):
         """Handle Auto Shard button click."""
         try:
             self.send_keystrokes_to_sc()  # Call the method to send keystrokes
-            self.log_text.AppendText("Auto Shard keystrokes sent.\n")
+            message_bus.publish(
+                content="Auto Shard keystrokes sent.",
+                level=MessageLevel.INFO
+            )
         except Exception as e:
-            self.log_text.AppendText(f"Error sending Auto Shard keystrokes: {e}\n")
+            message_bus.publish(
+                content=f"Error sending Auto Shard keystrokes: {e}",
+                level=MessageLevel.ERROR
+            )
 
     def send_keystrokes_to_sc(self):
         """Send predefined keystrokes to the Star Citizen window."""
@@ -985,9 +1057,15 @@ class LogAnalyzerFrame(wx.Frame):
                 # Connect or disconnect based on checkbox state
                 if menu_item.IsChecked() and not supabase_manager.is_connected():
                     if supabase_manager.connect():
-                        self.log_text.AppendText("Connected to Supabase successfully.\n")
+                        message_bus.publish(
+                            content="Connected to Supabase successfully.",
+                            level=MessageLevel.INFO
+                        )
                     else:
-                        self.log_text.AppendText("Failed to connect to Supabase. Check your credentials in .env file.\n")
+                        message_bus.publish(
+                            content="Failed to connect to Supabase. Check your credentials in .env file.",
+                            level=MessageLevel.ERROR
+                        )
                         menu_item.Check(False)  # Uncheck if connection failed
                         self.config_manager.set('use_supabase', False)
                         self.config_manager.save_config()
@@ -1233,7 +1311,10 @@ class LogAnalyzerFrame(wx.Frame):
             # Only proceed if Google Sheets is enabled
             if self.google_sheets_webhook and self.googlesheet_check.IsChecked():
                 # Log that we're starting to create tabs
-                self.log_text.AppendText("Creating data tabs...\n")
+                message_bus.publish(
+                    content="Creating data tabs...",
+                    level=MessageLevel.INFO
+                )
                 
                 # Define required tabs with their configuration
                 required_tabs = [
@@ -1255,7 +1336,10 @@ class LogAnalyzerFrame(wx.Frame):
             else:
                 self.SetStatusText("Google Sheets integration disabled")
         except Exception as e:
-            self.log_text.AppendText(f"Error creating tabs: {e}\n")
+            message_bus.publish(
+                content=f"Error creating tabs: {e}",
+                level=MessageLevel.ERROR
+            )
             self.SetStatusText("Error creating tabs")
     
     def _create_single_tab(self, tab_info):
@@ -1285,14 +1369,20 @@ class LogAnalyzerFrame(wx.Frame):
                 )
                 
             # Update log with creation status
-            self.log_text.AppendText(f"Tab '{title}' created\n")
+            message_bus.publish(
+                content=f"Tab '{title}' created",
+                level=MessageLevel.INFO
+            )
             
             # Check if this is the last tab and trigger refresh if needed
             if len(self.tab_references) == len(self._get_required_tabs()):
                 # All tabs created, trigger initial data load
                 wx.CallLater(500, self._refresh_all_tabs)
         except Exception as e:
-            self.log_text.AppendText(f"Error creating tab '{tab_info.get('title', 'unknown')}': {e}\n")
+            message_bus.publish(
+                content=f"Error creating tab '{tab_info.get('title', 'unknown')}': {e}",
+                level=MessageLevel.ERROR
+            )
     
     def _refresh_all_tabs(self):
         """Refresh all tabs with current data"""
@@ -1306,8 +1396,11 @@ class LogAnalyzerFrame(wx.Frame):
             wx.CallLater(500 + (300 * len(self.tab_references)), 
                          lambda: self.SetStatusText("Ready"))
         except Exception as e:
-            self.log_text.AppendText(f"Error refreshing tabs: {e}\n")
-    
+            message_bus.publish(
+                content=f"Error refreshing tabs: {e}",
+                level=MessageLevel.ERROR
+            )
+
     def _get_required_tabs(self):
         """Get the list of required tabs - factored out for maintainability"""
         return [
@@ -1334,10 +1427,16 @@ class LogAnalyzerFrame(wx.Frame):
             # Show a subtle indication in the status bar
             if self.debug_mode:
                 self.SetStatusText("Developer mode activated")
-                self.log_text.AppendText("Developer tools activated\n")
+                message_bus.publish(
+                    content="Developer tools activated",
+                    level=MessageLevel.INFO
+                )
             else:
                 self.SetStatusText("Ready")
-                self.log_text.AppendText("Developer tools deactivated\n")
+                message_bus.publish(
+                    content="Developer tools deactivated",
+                    level=MessageLevel.INFO
+                )
         
         # Process the event normally
         event.Skip()

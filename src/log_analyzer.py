@@ -17,6 +17,7 @@ from pyzbar.pyzbar import decode  # For QR code detection
 from config_utils import get_application_path, get_config_manager
 from gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
 from supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
+from event_handlers import Event  # Import Event from our new event_handlers module
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -122,50 +123,52 @@ class MessageRateLimiter:
             }
         return None
 
-def output_message(timestamp, message, regex_pattern=None):
+def output_message(timestamp, message, regex_pattern=None, level=None):
     """
-    Output a message to stdout or a custom handler in GUI mode.
+    Output a message using the message bus.
 
     Args:
         timestamp: Timestamp string or None.
         message: Message to output.
         regex_pattern: The regex pattern name that matched the message (optional).
+        level: Message priority level (optional).
     """
+    # Import message bus here to avoid circular imports
+    from message_bus import message_bus, MessageLevel
+    
     # Check if rate limiter exists and if message should be sent
     rate_limiter = getattr(main, 'rate_limiter', None)
     if rate_limiter and not rate_limiter.should_send(message, 'stdout'):
         return  # Message is rate-limited, do not output
 
-    # Format the message with timestamp and regex pattern
-    if timestamp:
-        formatted_msg = f"{timestamp} - {message}"
+    # Map level string to MessageLevel enum if provided as string
+    if level is None:
+        msg_level = MessageLevel.INFO
+    elif isinstance(level, str):
+        level_map = {
+            'debug': MessageLevel.DEBUG,
+            'info': MessageLevel.INFO,
+            'warning': MessageLevel.WARNING, 
+            'error': MessageLevel.ERROR,
+            'critical': MessageLevel.CRITICAL
+        }
+        msg_level = level_map.get(level.lower(), MessageLevel.INFO)
     else:
-        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        formatted_msg = f"*{current_time} - {message}"
-
-        # Redirect to GUI log handler if in GUI mode
-    if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler') and callable(main.gui_log_handler):
-        main.gui_log_handler(formatted_msg, regex_pattern=regex_pattern)
-    else:
-        print(formatted_msg)
-
-class Event:
-    """A simple event system to allow subscribers to listen for updates."""
-    def __init__(self):
-        self._subscribers = []
-
-    def subscribe(self, callback):
-        """Subscribe to the event."""
-        self._subscribers.append(callback)
-
-    def unsubscribe(self, callback):
-        """Unsubscribe from the event."""
-        self._subscribers.remove(callback)
-
-    def emit(self, *args, **kwargs):
-        """Emit the event to all subscribers."""
-        for callback in self._subscribers:
-            callback(*args, **kwargs)
+        msg_level = level
+    
+    # Create metadata
+    metadata = {}
+    if hasattr(main, 'in_gui'):
+        metadata['in_gui'] = getattr(main, 'in_gui', False)
+    
+    # Publish the message to the bus
+    message_bus.publish(
+        content=message,
+        timestamp=timestamp,
+        level=msg_level,
+        pattern_name=regex_pattern,
+        metadata=metadata
+    )
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, **kwargs):

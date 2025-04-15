@@ -7,6 +7,46 @@ from supabase import create_client, Client
 # Load environment variables from config.json instead of .env
 from config_utils import get_config_manager
 
+# Import message bus for standardized output
+try:
+    from message_bus import message_bus, MessageLevel
+except ImportError:
+    # Fallback for when message_bus is not available
+    message_bus = None
+    MessageLevel = None
+
+def log_message(content, level="INFO", pattern_name=None, metadata=None):
+    """
+    Send a message through the message bus or fallback to print if not available.
+    
+    Args:
+        content: The message content
+        level: Message level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        pattern_name: Optional regex pattern name
+        metadata: Additional metadata
+    """
+    if message_bus:
+        # Map string level to MessageLevel enum
+        level_map = {
+            "DEBUG": MessageLevel.DEBUG,
+            "INFO": MessageLevel.INFO,
+            "WARNING": MessageLevel.WARNING,
+            "ERROR": MessageLevel.ERROR,
+            "CRITICAL": MessageLevel.CRITICAL
+        }
+        msg_level = level_map.get(level.upper(), MessageLevel.INFO)
+        
+        # Send message to bus
+        message_bus.publish(
+            content=content,
+            level=msg_level,
+            pattern_name=pattern_name,
+            metadata=metadata or {"source": "supabase_manager"}
+        )
+    else:
+        # Fallback to print if message bus not available
+        print(content)
+
 class SupabaseManager:
     """
     Class to manage Supabase connection and operations.
@@ -36,20 +76,20 @@ class SupabaseManager:
             self.supabase_key = config_manager.get('supabase_key')
             
             if not self.supabase_url or not self.supabase_key:
-                print("Supabase URL or key not found in config.")
+                log_message("Supabase URL or key not found in config.", "ERROR")
                 return False
                 
             # Create client without any additional parameters that might cause issues
             self.supabase = create_client(self.supabase_url, self.supabase_key)
             self.is_initialized = True
-            print("Connected to Supabase successfully.")
+            log_message("Connected to Supabase successfully.", "INFO")
             
             # Initialize table cache
             self._refresh_table_cache()
             
             return True
         except Exception as e:
-            print(f"Error connecting to Supabase: {e}")
+            log_message(f"Error connecting to Supabase: {e}", "ERROR")
             self.is_initialized = False
             return False
             
@@ -104,76 +144,15 @@ class SupabaseManager:
                                            if not table.startswith('_'))
                     self.table_cache_time = time.time()
                     
-                    print(f"Table cache refreshed using PostgREST schema discovery. Found {len(self.existing_tables)} tables.")
+                    log_message(f"Table cache refreshed using PostgREST schema discovery. Found {len(self.existing_tables)} tables.", "DEBUG")
                     return
             except Exception as e:
-                print(f"PostgREST schema discovery approach failed: {e}")
-                
-            # Fall back to direct querying of tables
-            self._refresh_table_cache_fallback()
-            
+                log_message(f"PostgREST failed: {e}", "WARNING")
+                           
         except Exception as e:
-            print(f"Error refreshing table cache: {e}")
+            log_message(f"Error refreshing table cache: {e}", "ERROR")
             # Don't clear the cache on error - conservative approach
             
-    def _refresh_table_cache_fallback(self):
-        """
-        Robust method to refresh the table cache when direct metadata queries aren't possible.
-        Detects tables by probing for their existence and builds a cache over time.
-        """
-        # Reset the table cache time to indicate a refresh was attempted
-        self.table_cache_time = time.time()
-        
-        # Standard tables to check - expand this list based on your application's needs
-        standard_tables = [
-            "game_logs", 
-            "default_logs",
-            # Add other known table names your application might use
-        ]
-        
-        # Add any tables we've successfully used before to the check list
-        all_tables_to_check = list(standard_tables)
-        
-        # If we've previously detected tables, add them to our check list
-        # but avoid duplicates
-        for existing_table in self.existing_tables:
-            if existing_table not in all_tables_to_check:
-                all_tables_to_check.append(existing_table)
-        
-        # Track newly confirmed tables
-        confirmed_tables = set()
-        
-        # Track tables confirmed to not exist
-        nonexistent_tables = set()
-        
-        # Check each table
-        for table in all_tables_to_check:
-            try:
-                # Just fetch the count which is minimal data
-                response = self.supabase.table(table).select('*', count='exact').limit(0).execute()
-                
-                # If we get here without error, the table exists
-                confirmed_tables.add(table)
-                print(f"Confirmed table exists: {table}")
-            except Exception as e:
-                error_str = str(e).lower()
-                # Check if the error indicates table doesn't exist
-                if ("relation" in error_str and "does not exist" in error_str) or "not found" in error_str:
-                    nonexistent_tables.add(table)
-                    print(f"Confirmed table does not exist: {table}")
-                else:
-                    # For other errors, we're uncertain - be conservative and assume it might exist
-                    print(f"Uncertain about table {table}: {e}")
-        
-        # Update our cache:
-        # 1. Remove tables confirmed to not exist
-        self.existing_tables -= nonexistent_tables
-        
-        # 2. Add tables confirmed to exist
-        self.existing_tables.update(confirmed_tables)
-        
-        # Log the results
-        print(f"Table cache refreshed. Known tables: {', '.join(sorted(self.existing_tables)) if self.existing_tables else 'none'}")
     
     def _sanitize_table_name(self, name):
         """
@@ -257,16 +236,16 @@ class SupabaseManager:
                 
                 # If we get here without error, table was created or already existed
                 self.existing_tables.add(table_name)
-                print(f"Created or verified table {table_name} in Supabase")
+                log_message(f"Created or verified table {table_name} in Supabase", "INFO")
                 return True
             except Exception as e:
                 error_msg = str(e)
                 
                 # If table creation is not enabled, or another error occurred
-                print(f"Error creating table through insert: {error_msg}")
+                log_message(f"Error creating table through insert: {error_msg}", "ERROR")
                 return False
         except Exception as e:
-            print(f"Error creating table {table_name}: {e}")
+            log_message(f"Error creating table {table_name}: {e}", "ERROR")
             return False
         
     def insert_log(self, data):
@@ -302,7 +281,7 @@ class SupabaseManager:
                     # Create default table if it doesn't exist
                     if not self._table_exists(table_name):
                         if not self._create_table(table_name, data):
-                            print("Failed to create even the default table. Aborting insert.")
+                            log_message("Failed to create even the default table. Aborting insert.", "ERROR")
                             return False
             
             # Insert the data into the table
@@ -310,12 +289,12 @@ class SupabaseManager:
             
             # Check for errors
             if hasattr(result, 'error') and result.error:
-                print(f"Error inserting log into Supabase table {table_name}: {result.error}")
+                log_message(f"Error inserting log into Supabase table {table_name}: {result.error}", "ERROR")
                 return False
                 
             return True
         except Exception as e:
-            print(f"Exception inserting log into Supabase: {e}")
+            log_message(f"Exception inserting log into Supabase: {e}", "ERROR")
             return False
 
 # Create a singleton instance
