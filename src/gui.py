@@ -104,7 +104,7 @@ class LogAnalyzerFrame(wx.Frame):
         wx.CallAfter(self.check_for_updates)
 
         # Start monitoring by default when GUI is launched
-        wx.CallAfter(self.start_monitoring)
+        wx.CallAfter(self.start_monitoring, 1500 )
         wx.CallAfter(self.update_monitoring_buttons, True)
 
 
@@ -709,7 +709,7 @@ class LogAnalyzerFrame(wx.Frame):
             self.start_monitoring()
             self.update_monitoring_buttons(started=True)
     
-    def start_monitoring(self, delay_ms=1500):
+    def start_monitoring(self, delay_ms=0):
         """Start log file monitoring.
         
         Args:
