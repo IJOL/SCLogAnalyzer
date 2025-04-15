@@ -441,7 +441,7 @@ class LogAnalyzerFrame(wx.Frame):
             parent_panel.Layout()
 
             # Bind the submit button
-            submit_button.Bind(wx.EVT_BUTTON, lambda event: self.on_form_submit(event, url, grid, form_controls, params.get("sheet", "")))
+            submit_button.Bind(wx.EVT_BUTTON, lambda event: self.on_form_submit(event, url, refresh_button, form_controls, params.get("sheet", "")))
             self.tab_references[tab_title] = (grid,refresh_button)  # Store the grid reference
         return grid,refresh_button
 
@@ -1075,7 +1075,7 @@ class LogAnalyzerFrame(wx.Frame):
         if grid.GetNumberCols() > 0 and grid.GetNumberRows() > 0:
             grid.AutoSizeColumns()
 
-    def on_form_submit(self, event, url, grid, form_controls, sheet):
+    def on_form_submit(self, event, url, refresh_button, form_controls, sheet):
         """
         Handle form submission.
 
@@ -1119,7 +1119,7 @@ class LogAnalyzerFrame(wx.Frame):
                     else:
                         control.SetValue("")
                 # Optionally refresh the grid
-                self.execute_refresh_event(grid)
+                self.execute_refresh_event(refresh_button)
             else:
                 wx.MessageBox("Failed to submit form. Please check the logs for details.", "Error", wx.OK | wx.ICON_ERROR)
         except Exception as e:
