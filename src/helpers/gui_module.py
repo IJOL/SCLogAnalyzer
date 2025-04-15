@@ -1,7 +1,6 @@
 import wx
 import os
 import json
-from config_utils import get_application_path  # Ensure this is imported if needed
 import win32gui
 from pynput.keyboard import Controller, Key
 from PIL import Image
@@ -11,9 +10,11 @@ import win32con  # Required for window constants like SW_RESTORE
 import win32process  # Required for process-related functions
 import win32api  # Required for sending keystrokes
 import psutil  # Required for process management
-from version import get_version  # Import get_version to fetch the version dynamically
 import winreg
 import wx.adv  # Import wx.adv for taskbar icon support
+from ..version import get_version  # Adjusted import for version
+from ..helpers.config_utils import get_application_path  # Adjusted import for config_utils
+
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 class RedirectText:
@@ -26,7 +27,7 @@ class RedirectText:
         if string and string.strip():  # Skip empty strings
             try:
                 # Import message bus here to avoid circular imports
-                from message_bus import message_bus, MessageLevel
+                from ..helpers.message_bus import message_bus, MessageLevel
                 
                 # Publish the message to the bus
                 message_bus.publish(
@@ -378,7 +379,7 @@ class AboutDialog(wx.Dialog):
 
         # Add recent commits section
         try:
-            from version import COMMIT_MESSAGES
+            from ..version import COMMIT_MESSAGES
             if COMMIT_MESSAGES:
                 commits_label = wx.StaticText(panel, label="Recent Changes:")
                 commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
@@ -608,7 +609,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.tooltip = tooltip
 
         # Set the icon using the custom application icon
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SCLogAnalyzer.ico")
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SCLogAnalyzer.ico")
         if os.path.exists(icon_path):
             self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO), self.tooltip)
         else:
@@ -650,4 +651,3 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         """Exit the application"""
         if self.frame:
             wx.CallAfter(self.frame.Close)
-

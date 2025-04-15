@@ -5,11 +5,11 @@ import time
 from supabase import create_client, Client
 
 # Load environment variables from config.json instead of .env
-from config_utils import get_config_manager
+from .config_utils import get_config_manager
 
 # Import message bus for standardized output
 try:
-    from message_bus import message_bus, MessageLevel
+    from .message_bus import message_bus, MessageLevel
 except ImportError:
     # Fallback for when message_bus is not available
     message_bus = None

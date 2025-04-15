@@ -14,10 +14,11 @@ from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
 from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustment
 from pyzbar.pyzbar import decode  # For QR code detection
-from config_utils import get_application_path, get_config_manager
-from gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
-from supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
-from event_handlers import Event  # Import Event from our new event_handlers module
+from helpers.config_utils import get_application_path, get_config_manager
+from helpers.gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
+from helpers.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
+from helpers.event_handlers import Event  # Import Event from our new event_handlers module
+from helpers.message_bus import message_bus, MessageLevel  # Import at module level instead of in function
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -133,9 +134,6 @@ def output_message(timestamp, message, regex_pattern=None, level=None):
         regex_pattern: The regex pattern name that matched the message (optional).
         level: Message priority level (optional).
     """
-    # Import message bus here to avoid circular imports
-    from message_bus import message_bus, MessageLevel
-    
     # Check if rate limiter exists and if message should be sent
     rate_limiter = getattr(main, 'rate_limiter', None)
     if rate_limiter and not rate_limiter.should_send(message, 'stdout'):

@@ -11,8 +11,8 @@ import json  # For handling JSON files
 import winreg  # Import for Windows registry manipulation
 import wx.grid  # Import wx.grid for displaying tabular data
 import requests  # For HTTP requests
-from config_utils import get_config_manager, get_application_path  # Import the singleton getter
-from gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper, NumericValidator, TaskBarIcon  # Import TaskBarIcon
+from helpers.config_utils import get_config_manager, get_application_path  # Import the singleton getter
+from helpers.gui_module import RedirectText, KeyValueGrid, ConfigDialog, ProcessDialog, WindowsHelper, NumericValidator, TaskBarIcon  # Import TaskBarIcon
 from PIL import Image
 import mss
 from pyzbar.pyzbar import decode
@@ -22,15 +22,15 @@ import subprocess
 import webcolors  # Import the webcolors library
 
 # Import Supabase manager for cloud storage
-from supabase_manager import supabase_manager
+from helpers.supabase_manager import supabase_manager
 
 # Import the updater module for update functionality
-import updater
+from helpers.updater import updater, check_for_updates  # Import check_for_updates at module level
 
 from version import get_version  # For restarting the app
 
 # Import message bus for centralized message handling
-from message_bus import message_bus, MessageLevel
+from helpers.message_bus import message_bus, MessageLevel
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -44,7 +44,7 @@ LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
 TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
 
 # Use constants from the updater module
-from updater import GITHUB_API_URL, APP_EXECUTABLE, UPDATER_EXECUTABLE
+from helpers.updater import GITHUB_API_URL, APP_EXECUTABLE, UPDATER_EXECUTABLE
 
 def safe_call_after(func, *args, **kwargs):
     """Safely call wx.CallAfter, ensuring wx.App is initialized."""
@@ -302,7 +302,7 @@ class LogAnalyzerFrame(wx.Frame):
     def check_for_updates(self):
         """Check for updates by querying the GitHub API."""
         current_version = get_version()
-        updater.check_for_updates(self, current_version)
+        check_for_updates(self, current_version)
 
     def _add_tab(self, notebook, tab_title, url, params=None):
         """
