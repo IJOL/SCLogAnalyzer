@@ -463,6 +463,9 @@ class LogAnalyzerFrame(wx.Frame):
         button = event.GetEventObject()
         params = button.params
         
+        # Set loading state in the grid
+        self.set_grid_loading(button.grid, True)
+        
         # Resolve callable parameters if necessary
         if params:
             resolved_params = {}
@@ -477,9 +480,6 @@ class LogAnalyzerFrame(wx.Frame):
                 else:
                     resolved_params[key] = value
             params = resolved_params
-        
-        # Set loading state in the grid
-        self.set_grid_loading(button.grid, True)
         
         # Start the fetch in a separate thread
         threading.Thread(
@@ -521,37 +521,46 @@ class LogAnalyzerFrame(wx.Frame):
             target_grid (wx.grid.Grid): Grid to update with the data
         """
         try:
-            if not url:
-                safe_call_after(wx.MessageBox, "No URL configured for this tab.", 
+            # Import data provider at function call time to avoid circular imports
+            from helpers.data_provider import get_data_provider
+            
+            # Use the config_manager as the source of truth for data source
+            use_supabase = self.config_manager.get('use_supabase', False)
+            
+            # If both data sources are improperly configured, log a warning
+            if use_supabase and not supabase_manager.is_connected():
+                message_bus.publish(
+                    content="Supabase connection failed. Falling back to Google Sheets.",
+                    level=MessageLevel.WARNING
+                )
+                use_supabase = False
+                # Update config to reflect the actual state
+                self.config_manager.set('use_supabase', False)
+                self.config_manager.set('use_googlesheet', True)
+                # Update UI to match config
+                safe_call_after(self.supabase_check.Check, False)
+                safe_call_after(self.googlesheet_check.Check, True)
+                
+            # Get the appropriate data provider based on configuration
+            data_provider = get_data_provider(use_supabase=use_supabase)
+            
+            if not data_provider:
+                safe_call_after(wx.MessageBox, 
+                                "No data provider configured. Please set up either Google Sheets or Supabase.", 
                                 "Error", wx.OK | wx.ICON_ERROR)
                 return
                 
-            response = requests.get(url, params=params)
-            if response.status_code != 200:
-                safe_call_after(wx.MessageBox, 
-                                f"Failed to fetch data. HTTP Status: {response.status_code}", 
-                                "Error", wx.OK | wx.ICON_ERROR)
-                return
-
-            data = response.json()
+            # Use the data provider to fetch data
+            data = data_provider.fetch_data(url, params)
+            
             if not isinstance(data, list) or not data:
                 return
 
             # Update the grid with data
             safe_call_after(self.update_sheets_grid, data, target_grid)
-        except requests.RequestException as e:
-            safe_call_after(lambda: message_bus.publish(
-                content=f"Network error while fetching data: {e}",
-                level=MessageLevel.ERROR
-            ))
-        except json.JSONDecodeError:
-            safe_call_after(lambda: message_bus.publish(
-                content="Failed to decode JSON response from server.",
-                level=MessageLevel.ERROR
-            ))
         except Exception as e:
             safe_call_after(lambda: message_bus.publish(
-                content=f"Unexpected error during data fetch: {e}",
+                content=f"Error during data fetch: {e}",
                 level=MessageLevel.ERROR
             ))
         finally:
@@ -1038,14 +1047,38 @@ class LogAnalyzerFrame(wx.Frame):
         """Handle checkbox menu item toggle."""
         menu_item = self.FindItemById(event.GetId())
         if menu_item:
-            menu_item.Check(not menu_item.IsChecked())
-            # Update config when Supabase is toggled
-            if menu_item == self.supabase_check:
-                self.config_manager.set('use_supabase', menu_item.IsChecked())
-                self.config_manager.save_config()
+            # Toggle the check state
+            new_state = not menu_item.IsChecked()
+            menu_item.Check(new_state)
+            
+            # Handle mutually exclusive Supabase and Google Sheets modes
+            if menu_item == self.supabase_check and new_state:
+                # If enabling Supabase, disable Google Sheets
+                self.googlesheet_check.Check(False)
+                self.config_manager.set('use_googlesheet', False)
+                message_bus.publish(
+                    content="Switched to Supabase mode, Google Sheets disabled",
+                    level=MessageLevel.INFO
+                )
+            elif menu_item == self.googlesheet_check and new_state:
+                # If enabling Google Sheets, disable Supabase
+                self.supabase_check.Check(False)
+                self.config_manager.set('use_supabase', False)
+                message_bus.publish(
+                    content="Switched to Google Sheets mode, Supabase disabled",
+                    level=MessageLevel.INFO
+                )
+            
+            # Update config based on which checkbox changed
+            if menu_item == self.discord_check:
+                self.config_manager.set('use_discord', new_state)
+            elif menu_item == self.googlesheet_check:
+                self.config_manager.set('use_googlesheet', new_state)
+            elif menu_item == self.supabase_check:
+                self.config_manager.set('use_supabase', new_state)
                 
                 # Connect or disconnect based on checkbox state
-                if menu_item.IsChecked() and not supabase_manager.is_connected():
+                if new_state and not supabase_manager.is_connected():
                     if supabase_manager.connect():
                         message_bus.publish(
                             content="Connected to Supabase successfully.",
@@ -1053,12 +1086,22 @@ class LogAnalyzerFrame(wx.Frame):
                         )
                     else:
                         message_bus.publish(
-                            content="Failed to connect to Supabase. Check your credentials in .env file.",
+                            content="Failed to connect to Supabase. Check your credentials in config.",
                             level=MessageLevel.ERROR
                         )
                         menu_item.Check(False)  # Uncheck if connection failed
                         self.config_manager.set('use_supabase', False)
-                        self.config_manager.save_config()
+            
+            # Save configuration
+            self.config_manager.save_config()
+            
+            # Update UI if monitoring is active
+            if self.monitoring:
+                self.stop_monitoring()
+                self.start_monitoring()
+                
+            # Update tabs based on data source change
+            self.update_data_source_tabs()
 
     def on_edit_config(self, event):
         """Open the configuration dialog."""
@@ -1444,6 +1487,53 @@ class LogAnalyzerFrame(wx.Frame):
         if hasattr(self, 'GetMenuBar') and self.GetMenuBar():
             self.GetMenuBar().Refresh()
         self.Refresh()
+
+    def update_data_source_tabs(self):
+        """
+        Update tabs based on the current data source (Google Sheets or Supabase).
+        Called when toggling between data sources.
+        """
+        try:
+            # Import our data provider system
+            from helpers.data_provider import get_data_provider
+            
+            # Determine which tabs need to be refreshed
+            active_tabs = []
+            if self.use_supabase and self.supabase_check.IsChecked():
+                message_bus.publish(
+                    content="Updating tabs to use Supabase data source",
+                    level=MessageLevel.INFO
+                )
+                
+                # Refresh all tabs - they'll now use Supabase data
+                for title, (grid, refresh_button) in self.tab_references.items():
+                    active_tabs.append(title)
+                    # Update the URL to indicate Supabase is being used
+                    refresh_button.is_supabase = True
+                    
+            elif self.use_googlesheet and self.googlesheet_check.IsChecked():
+                message_bus.publish(
+                    content="Updating tabs to use Google Sheets data source",
+                    level=MessageLevel.INFO
+                )
+                
+                # Refresh all tabs - they'll now use Google Sheets data
+                for title, (grid, refresh_button) in self.tab_references.items():
+                    active_tabs.append(title)
+                    # Update the URL to indicate Google Sheets is being used
+                    refresh_button.is_supabase = False
+                    
+            # Refresh tabs with the current data source
+            for title in active_tabs:
+                grid, refresh_button = self.tab_references[title]
+                wx.CallLater(300, self.execute_refresh_event, refresh_button)
+                
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error updating data source tabs: {e}",
+                level=MessageLevel.ERROR
+            )
+            self.SetStatusText("Error updating tabs")
 
 def main():
     if os.path.basename(sys.argv[0]) == UPDATER_EXECUTABLE:
