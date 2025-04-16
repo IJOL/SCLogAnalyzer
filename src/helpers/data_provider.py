@@ -10,6 +10,8 @@ class DataProvider(ABC):
     """
     Abstract base class for data providers (Google Sheets or Supabase).
     """
+    SOURCE = "data_provider"
+    
     @abstractmethod
     def insert_data(self, data: Dict[str, Any], table_name: str) -> bool:
         """
@@ -76,12 +78,31 @@ class DataProvider(ABC):
             bool: True if successful, False otherwise
         """
         return self.insert_data(data, table_name)
+    
+    def _log_message(self, content, level="INFO"):
+        """Send message through the message bus"""
+        level_map = {
+            "DEBUG": MessageLevel.DEBUG,
+            "INFO": MessageLevel.INFO,
+            "WARNING": MessageLevel.WARNING,
+            "ERROR": MessageLevel.ERROR,
+            "CRITICAL": MessageLevel.CRITICAL
+        }
+        msg_level = level_map.get(level.upper(), MessageLevel.INFO)
+        
+        message_bus.publish(
+            content=content,
+            level=msg_level,
+            metadata={"source": self.SOURCE}
+        )
         
 
 class GoogleSheetsDataProvider(DataProvider):
     """
     Data provider for Google Sheets.
     """
+    SOURCE = "google_sheets_provider"
+    
     def __init__(self, webhook_url: str):
         """
         Initialize the Google Sheets data provider.
@@ -218,29 +239,14 @@ class GoogleSheetsDataProvider(DataProvider):
         except Exception as e:
             self._log_message(f"Exception processing data for Google Sheets: {e}", "ERROR")
             return False
-    
-    def _log_message(self, content, level="INFO"):
-        """Send message through the message bus"""
-        level_map = {
-            "DEBUG": MessageLevel.DEBUG,
-            "INFO": MessageLevel.INFO,
-            "WARNING": MessageLevel.WARNING,
-            "ERROR": MessageLevel.ERROR,
-            "CRITICAL": MessageLevel.CRITICAL
-        }
-        msg_level = level_map.get(level.upper(), MessageLevel.INFO)
-        
-        message_bus.publish(
-            content=content,
-            level=msg_level,
-            metadata={"source": "google_sheets_provider"}
-        )
         
 
 class SupabaseDataProvider(DataProvider):
     """
     Data provider for Supabase.
     """
+    SOURCE = "supabase_provider"
+    
     def __init__(self):
         """Initialize the Supabase data provider."""
         pass
@@ -349,24 +355,7 @@ class SupabaseDataProvider(DataProvider):
         except Exception as e:
             self._log_message(f"Exception processing data for Supabase: {e}", "ERROR")
             return False
-    
-    def _log_message(self, content, level="INFO"):
-        """Send message through the message bus"""
-        level_map = {
-            "DEBUG": MessageLevel.DEBUG,
-            "INFO": MessageLevel.INFO,
-            "WARNING": MessageLevel.WARNING,
-            "ERROR": MessageLevel.ERROR,
-            "CRITICAL": MessageLevel.CRITICAL
-        }
-        msg_level = level_map.get(level.upper(), MessageLevel.INFO)
         
-        message_bus.publish(
-            content=content,
-            level=msg_level,
-            metadata={"source": "supabase_provider"}
-        )
-
 
 def get_data_provider(config_manager) -> DataProvider:
     """
