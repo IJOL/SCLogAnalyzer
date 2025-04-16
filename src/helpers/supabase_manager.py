@@ -199,9 +199,38 @@ class SupabaseManager:
             
         return table_name in self.existing_tables
     
+    def _execute_sql(self, sql):
+        """
+        Execute raw SQL commands via the run_sql RPC function in Supabase.
+        
+        Args:
+            sql (str): SQL command to execute
+            
+        Returns:
+            tuple: (success, result) where success is a boolean and result contains data or error info
+        """
+        if not self.is_connected():
+            return False, "Not connected to Supabase"
+            
+        try:
+            # Call the run_sql RPC function
+            result = self.supabase.rpc(
+                'run_sql', 
+                {'query': sql}
+            ).execute()
+            
+            # Check for errors
+            if hasattr(result, 'error') and result.error:
+                return False, result.error
+                
+            return True, result.data
+        except Exception as e:
+            log_message(f"Error executing SQL via RPC: {e}", "ERROR")
+            return False, str(e)
+    
     def _create_table(self, table_name, data):
         """
-        Create a new table based on the data structure.
+        Create a new table based on the data structure using raw SQL.
         
         Args:
             table_name (str): The name of the table to create
@@ -214,45 +243,63 @@ class SupabaseManager:
             return False
             
         try:
-            # Since we can't use raw SQL in this Supabase instance,
-            # we'll attempt to create the table by inserting data
-            # and letting Supabase auto-create the table with appropriate types
+            # Generate a CREATE TABLE statement based on the data structure
+            columns = []
             
-            # First, ensure we have the minimum fields needed
-            insert_data = data.copy()
+            # Add id as primary key if not in data
+            columns.append("id UUID PRIMARY KEY DEFAULT gen_random_uuid()")
             
-            # Strip any fields that might cause issues
-            if 'id' in insert_data:
-                del insert_data['id']  # Don't specify ID for new records
-                
-            if 'created_at' in insert_data:
-                del insert_data['created_at']  # Let Supabase handle this
-                
-            # Try to insert the data, which may auto-create the table
-            # Note: This depends on your Supabase configuration allowing table creation
-            # If table auto-creation isn't enabled, this will fail
-            try:
-                result = self.supabase.table(table_name).insert(insert_data).execute()
-                
-                # If we get here without error, table was created or already existed
+            # Add created_at timestamp if not in data
+            columns.append("created_at TIMESTAMPTZ DEFAULT NOW()")
+            
+            # Process other fields in the data
+            for key, value in data.items():
+                # Skip id and created_at which we've already handled
+                if key in ('id', 'created_at'):
+                    continue
+                    
+                # Determine column type based on value type
+                if isinstance(value, int):
+                    columns.append(f"{key} INTEGER")
+                elif isinstance(value, float):
+                    columns.append(f"{key} NUMERIC")
+                elif isinstance(value, bool):
+                    columns.append(f"{key} BOOLEAN")
+                elif isinstance(value, dict) or isinstance(value, list):
+                    columns.append(f"{key} JSONB")
+                else:
+                    # Default to text for strings and other types
+                    columns.append(f"{key} TEXT")
+            
+            # Create the full SQL statement
+            create_table_sql = f"""
+            CREATE TABLE IF NOT EXISTS "{table_name}" (
+                {','.join(columns)}
+            );
+            """
+            
+            # Execute the SQL
+            success, result = self._execute_sql(create_table_sql)
+            
+            if success:
+                # Add to our cache of existing tables
                 self.existing_tables.add(table_name)
-                log_message(f"Created or verified table {table_name} in Supabase", "INFO")
+                log_message(f"Created table {table_name} in Supabase using SQL", "INFO")
                 return True
-            except Exception as e:
-                error_msg = str(e)
-                
-                # If table creation is not enabled, or another error occurred
-                log_message(f"Error creating table through insert: {error_msg}", "ERROR")
+            else:
+                # Log the error but don't use fallback
+                log_message(f"Error creating table via SQL: {result}", "ERROR")
                 return False
         except Exception as e:
             log_message(f"Error creating table {table_name}: {e}", "ERROR")
             return False
         
-    def insert_log(self, data):
+    def insert_data(self,sheet, data):
         """
         Insert game log data into Supabase.
         
         Args:
+            sheet (str): The sheet name to use for the table.
             data (dict): The log data to insert.
             
         Returns:
@@ -262,12 +309,9 @@ class SupabaseManager:
             return False
             
         try:
-            # Determine the table name based on the sheet parameter
-            sheet_name = data.get('sheet')
-            mode_name = data.get('mode')
             
             # Priority: 1. sheet parameter, 2. mode value, 3. default
-            table_base_name = sheet_name or mode_name or "game_logs"
+            table_base_name = sheet or "game_logs"
             
             # Sanitize the table name to be SQL-safe
             table_name = self._sanitize_table_name(table_base_name)
