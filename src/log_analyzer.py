@@ -19,6 +19,7 @@ from helpers.config_utils import get_application_path, get_config_manager
 from helpers.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
 from helpers.event_handlers import Event  # Import Event from event_handlers module
 from helpers.message_bus import message_bus, MessageLevel  # Import at module level
+from helpers.data_provider import get_data_provider  # Import data provider
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -200,27 +201,27 @@ class LogFileHandler(FileSystemEventHandler):
         self.log_file_path = self.config_manager.get('log_file_path')
         self.last_position = 0
         self.actor_state = {}
-        self.google_sheets_queue = queue.Queue()
-        self.supabase_queue = queue.Queue()  # Queue for Supabase operations
+        
+        # Initialize a single data queue instead of separate queues for Google Sheets and Supabase
+        self.data_queue = queue.Queue()
+        
         self.stop_event = threading.Event()
         self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
         self.current_mode = None
         self.version = get_version()
         
+        # Initialize the data provider
+        self.data_provider = get_data_provider(self.config_manager)
+        
         # Create screenshots folder if it doesn't exist
         if not os.path.exists(self.screenshots_folder):
             os.makedirs(self.screenshots_folder)
 
-        # Start Google Sheets thread if not in process_once mode
+        # Start data queue processor thread if not in process_once mode
         if not self.process_once:
-            self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
-            self.google_sheets_thread.daemon = True
-            self.google_sheets_thread.start()
-            
-            # Start Supabase thread if not in process_once mode
-            self.supabase_thread = threading.Thread(target=self.process_supabase_queue)
-            self.supabase_thread.daemon = True
-            self.supabase_thread.start()
+            self.data_thread = threading.Thread(target=self.process_data_queue)
+            self.data_thread.daemon = True
+            self.data_thread.start()
         
         # Compile mode regex patterns
         self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
@@ -287,17 +288,10 @@ class LogFileHandler(FileSystemEventHandler):
 
     def cleanup_threads(self):
         """Ensure all threads are stopped"""
-        # Wait for Google Sheets thread to finish processing remaining items
-        if hasattr(self, 'google_sheets_thread') and self.google_sheets_thread.is_alive():
-            output_message(None, "Waiting for Google Sheets queue to complete...")
-            self.google_sheets_queue.join()
-            # Give it a moment to exit gracefully
-            time.sleep(0.5)
-            
-        # Wait for Supabase thread to finish processing remaining items
-        if hasattr(self, 'supabase_thread') and self.supabase_thread.is_alive():
-            output_message(None, "Waiting for Supabase queue to complete...")
-            self.supabase_queue.join()
+        # Wait for data thread to finish processing remaining items
+        if hasattr(self, 'data_thread') and self.data_thread.is_alive():
+            output_message(None, "Waiting for data queue to complete...")
+            self.data_queue.join()
             # Give it a moment to exit gracefully
             time.sleep(0.5)
 
@@ -366,108 +360,75 @@ class LogFileHandler(FileSystemEventHandler):
         except Exception as e:
             output_message(None, f"Error sending Discord message: {e}")
 
-    def process_google_sheets_queue(self):
-        """Worker thread to process Google Sheets queue"""
+    def process_data_queue(self):
+        """Worker thread to process data queue"""
+        # Define batch parameters
+        max_batch_size = 20  # Maximum number of items to process in one batch
+        max_wait_time = 0.5  # Maximum time to wait for a batch to fill (in seconds)
+        
         while not self.stop_event.is_set():
-            if not self.use_googlesheet:
-                time.sleep(1)
-                continue
             try:
-                queue_data = []
-                try:
-                    # Get queue items with timeout to check stop_event regularly
-                    data, event_type = self.google_sheets_queue.get(timeout=1)
-                    queue_data.append({'data': data, 'sheet': data.get('sheet',self.current_mode or 'None')})  # Use current_mode as sheet
-                    self.google_sheets_queue.task_done()
+                # Collect batch of items
+                batch = []
+                start_time = time.time()
+                
+                # Try to fill the batch up to max_batch_size or until max_wait_time is reached
+                while len(batch) < max_batch_size and (time.time() - start_time) < max_wait_time:
+                    try:
+                        # Try to get an item with a short timeout
+                        data,sheet_name = self.data_queue.get(timeout=0.1)
+                        batch.append({'data': data, 'sheet_name': sheet_name})
+                        
+                        # If queue is empty, don't wait for more items
+                        if self.data_queue.empty():
+                            break
+                    except queue.Empty:
+                        # No items in queue, break if we have at least one item or wait longer
+                        if len(batch) > 0:
+                            break
+                        # If batch is empty, wait longer
+                        time.sleep(0.2)
+                        
+                # Process the collected batch if not empty
+                if batch:
+                    self._log_message(f"Processing batch of {len(batch)} items", "DEBUG")                    
+                    # Process each event type batch
+                    if self.data_provider.process_data(batch):
+                        self._log_message(f"Successfully processed batch of {len(data_batch)} {event_type} items", "DEBUG")
+                    else:
+                        self._log_message(f"Failed to process batch of {len(data_batch)} {event_type} items", "ERROR")
                     
-                    # Get any additional items that might be in the queue
-                    while not self.google_sheets_queue.empty():
-                        data, event_type = self.google_sheets_queue.get_nowait()
-                        queue_data.append({'data': data, 'sheet': data.get('sheet',self.current_mode or 'None')})  # Use current_mode as sheet
-                        self.google_sheets_queue.task_done()
-                except queue.Empty:
-                    # No items in queue, just continue loop
-                    pass
+                    # Mark all items as done
+                    for _ in range(len(batch)):
+                        self.data_queue.task_done()
                 
-                if queue_data:
-                    self._send_to_google_sheets(queue_data)
             except Exception as e:
-                output_message(None, f"Exception in Google Sheets worker thread: {e}")
+                self._log_message(f"Exception in data queue worker thread: {e}", "ERROR")
+                logging.error(f"Exception in data queue worker thread: {str(e)}")
+                logging.error(traceback.format_exc())
         
-        output_message(None, "Google Sheets worker thread stopped")
+        self._log_message("Data queue worker thread stopped", "INFO")
 
-    def _send_to_google_sheets(self, queue_data):
-        """Send data to Google Sheets via webhook"""
-        if not self.use_googlesheet:
-            return
-
-        try:
-            payload =  queue_data
-            response = requests.post(self.google_sheets_webhook, json=payload)
-            if response.status_code == 200:
-                output_message(None, "Data sent to Google Sheets successfully")
-            else:
-                output_message(None, f"Error sending data to Google Sheets: {response.status_code} - {response.text}")
-        except Exception as e:
-            output_message(None, f"Exception sending data to Google Sheets: {e}")
-
-    def update_google_sheets(self, data, event_type):
-        """
-        Add data to Google Sheets queue, including state information.
-
-        Args:
-            data (dict): The data to send.
-            event_type (str): The type of event triggering the update.
-        """
-        if not self.use_googlesheet:
-            return False
-
-        # Add state data to the payload
-        data_with_state = self.add_state_data(data)
-        self.google_sheets_queue.put((data_with_state, event_type))
-        return True
-
-    def process_supabase_queue(self):
-        """Worker thread to process Supabase queue"""
-        while not self.stop_event.is_set():
-            if not self.use_supabase or not supabase_manager.is_connected():
-                time.sleep(1)
-                continue
-                
-            try:
-                # Try to get a task from the queue
-                try:
-                    data, event_type = self.supabase_queue.get(timeout=1)
-                    self._send_to_supabase(data, event_type)
-                    self.supabase_queue.task_done()
-                except queue.Empty:
-                    # No items in queue, just continue loop
-                    pass
-            except Exception as e:
-                output_message(None, f"Exception in Supabase worker thread: {e}")
+    def _log_message(self, content, level="INFO"):
+        """Send message through the message bus"""
+        level_map = {
+            "DEBUG": MessageLevel.DEBUG,
+            "INFO": MessageLevel.INFO,
+            "WARNING": MessageLevel.WARNING,
+            "ERROR": MessageLevel.ERROR,
+            "CRITICAL": MessageLevel.CRITICAL
+        }
+        msg_level = level_map.get(level.upper(), MessageLevel.INFO)
         
-        output_message(None, "Supabase worker thread stopped")
+        message_bus.publish(
+            content=content,
+            level=msg_level,
+            metadata={"source": "log_analyzer"}
+        )
 
-    def _send_to_supabase(self, data, event_type):
-        """Send data to Supabase"""
-        if not self.use_supabase or not supabase_manager.is_connected():
-            return False
-            
-        try:
-            # Insert log data into Supabase
-            if supabase_manager.insert_log(data):
-                output_message(None, "Data sent to Supabase successfully")
-                return True
-            else:
-                output_message(None, "Error sending data to Supabase")
-                return False
-        except Exception as e:
-            output_message(None, f"Exception sending data to Supabase: {e}")
-            return False
-
-    def update_supabase(self, data, event_type):
+    def update_data_queue(self, data, event_type):
         """
-        Add data to Supabase queue, including state information.
+        Add data to the data queue, including state information.
 
         Args:
             data (dict): The data to send.
@@ -476,12 +437,9 @@ class LogFileHandler(FileSystemEventHandler):
         Returns:
             bool: True if queued successfully, False otherwise.
         """
-        if not self.use_supabase:
-            return False
-
         # Add state data to the payload
         data_with_state = self.add_state_data(data)
-        self.supabase_queue.put((data_with_state, event_type))
+        self.data_queue.put((data_with_state, event_type))
         return True
 
     def on_modified(self, event):
@@ -849,13 +807,9 @@ class LogFileHandler(FileSystemEventHandler):
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)
     
-            # Send to Google Sheets if enabled and pattern is in the mapping
+            # Send to data queue
             if send_message and pattern_name in self.google_sheets_mapping:
-                self.update_google_sheets(data, pattern_name)
-                
-            # Send to Supabase if enabled
-            if send_message and self.use_supabase:
-                self.update_supabase(data, pattern_name)
+                self.update_data_queue(data, pattern_name)
     
             return True, data
         return False, None
@@ -882,7 +836,7 @@ def signal_handler(signum, frame):
 
 def stop_monitor(event_handler, observer):
     """
-    Stop the observer and Google Sheets thread cleanly.
+    Stop the observer and data thread cleanly.
     
     Args:
         event_handler: The LogFileHandler instance.

@@ -47,6 +47,35 @@ class DataProvider(ABC):
             bool: True if connected, False otherwise
         """
         pass
+    
+    @abstractmethod
+    def process_data(self, data) -> bool:
+        """
+        Process data from the queue.
+        
+        Args:
+            data: list of dictionaries with 2 elements sheet and data
+            event_type: The type of event that triggered this data
+            
+        Returns:
+            bool: True if processing was successful, False otherwise
+        """
+        pass
+    
+    def send_data(self, data: Dict[str, Any], table_name: str) -> bool:
+        """
+        Directly send data to the data sink.
+        This method should be used when immediate sending is required
+        (bypassing queues).
+        
+        Args:
+            data: Dictionary containing the data to insert
+            table_name: The name of the table/sheet to insert into
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        return self.insert_data(data, table_name)
         
 
 class GoogleSheetsDataProvider(DataProvider):
@@ -159,6 +188,37 @@ class GoogleSheetsDataProvider(DataProvider):
         """
         return bool(self.webhook_url)
     
+    def process_data(self, data) -> bool:
+        """
+        Process data from the queue for Google Sheets.
+        
+        Args:
+            data: Array of tuples (data,sheet_name) 
+            event_type: The type of event that triggered this data
+            
+        Returns:
+            bool: True if processing was successful, False otherwise
+        """
+        try:
+            # Check if data is a list (batch) or single item
+            # Handle batch of data
+            if not data:
+                return True  # Empty batch is considered successful
+                
+            
+            # Send the batch data to Google Sheets via webhook
+            response = requests.post(self.webhook_url, json=data)
+            
+            if response.status_code == 200:
+                self._log_message(f"Batch of {len(data)} items sent to Google Sheets successfully", "DEBUG")
+                return True
+            else:
+                self._log_message(f"Error sending batch data to Google Sheets: HTTP {response.status_code}", "ERROR")
+                return False
+        except Exception as e:
+            self._log_message(f"Exception processing data for Google Sheets: {e}", "ERROR")
+            return False
+    
     def _log_message(self, content, level="INFO"):
         """Send message through the message bus"""
         level_map = {
@@ -254,6 +314,41 @@ class SupabaseDataProvider(DataProvider):
             bool: True if connected, False otherwise
         """
         return supabase_manager.is_connected()
+    
+    def process_data(self, data) -> bool:
+        """
+        Process data from the queue for Supabase.
+        
+        Args:
+            data: Array of tuples with (data, sheet_name)
+            event_type: The type of event that triggered this data
+            
+        Returns:
+            bool: True if processing was successful, False otherwise
+        """
+        try:
+            if not data:
+                return True  # Empty batch is considered successful
+            
+            success_count = 0
+            total_count = len(data)
+            
+            # Process each item in the batch
+            for data,sheet_name in data:
+                # Insert the data into Supabase
+                if supabase_manager.insert_data(sheet_name, data):
+                    success_count += 1
+            
+            # Log success rate
+            if success_count == total_count:
+                self._log_message(f"All {total_count} items in batch successfully processed for Supabase", "INFO")
+                return True
+            else:
+                self._log_message(f"Partially successful batch processing: {success_count}/{total_count} items for Supabase", "WARNING")
+                return success_count > 0  # Return true if at least one succeeded
+        except Exception as e:
+            self._log_message(f"Exception processing data for Supabase: {e}", "ERROR")
+            return False
     
     def _log_message(self, content, level="INFO"):
         """Send message through the message bus"""

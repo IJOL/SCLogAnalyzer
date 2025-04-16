@@ -240,8 +240,16 @@ class DataDisplayManager:
                     form_data[field] = control.GetValue()
             form_data["sheet"] = sheet  # Add the sheet name to the form data
             
-            # Use log_analyzer's update_google_sheets method to send data
-            success = self.parent.monitoring_service.event_handler.update_google_sheets(form_data, sheet)
+            # Send data to the queue via the event handler
+            if not hasattr(self.parent, 'monitoring_service') or not hasattr(self.parent.monitoring_service, 'event_handler'):
+                wx.MessageBox("Monitoring service is not available. Please try again later.", 
+                             "Error", wx.OK | wx.ICON_ERROR)
+                return
+                
+            event_handler = self.parent.monitoring_service.event_handler
+            
+            # Use the unified data queue
+            success = event_handler.update_data_queue(form_data, sheet)
             
             if success:
                 wx.MessageBox("Form submitted successfully.", "Success", wx.OK | wx.ICON_INFORMATION)
