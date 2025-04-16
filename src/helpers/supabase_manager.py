@@ -59,6 +59,7 @@ class SupabaseManager:
         self.existing_tables = set()  # Cache for existing table names
         self.table_cache_time = 0  # Last time the table cache was updated
         self.table_cache_ttl = 300  # Cache TTL in seconds (5 minutes)
+        self.connection_attempted = False  # Track if connection has been attempted
         
     def connect(self):
         """
@@ -67,6 +68,12 @@ class SupabaseManager:
         Returns:
             bool: True if connection is successful, False otherwise.
         """
+        # If we've already tried connecting, don't try again unless explicitly asked to reconnect
+        if self.connection_attempted and self.is_initialized:
+            return True
+            
+        self.connection_attempted = True
+        
         try:
             # Get the config manager
             config_manager = get_config_manager()
@@ -82,7 +89,15 @@ class SupabaseManager:
             # Create client without any additional parameters that might cause issues
             self.supabase = create_client(self.supabase_url, self.supabase_key)
             self.is_initialized = True
-            log_message("Connected to Supabase successfully.", "INFO")
+            
+            # Report success through message bus
+            if message_bus:
+                message_bus.publish(
+                    content="Connected to Supabase successfully.",
+                    level=MessageLevel.INFO
+                )
+            else:
+                print("Connected to Supabase successfully.")
             
             # Initialize table cache
             self._refresh_table_cache()
@@ -92,6 +107,12 @@ class SupabaseManager:
             log_message(f"Error connecting to Supabase: {e}", "ERROR")
             self.is_initialized = False
             return False
+            
+    def reconnect(self):
+        """Force a reconnection to Supabase even if already connected."""
+        self.is_initialized = False
+        self.connection_attempted = False
+        return self.connect()
             
     def is_connected(self):
         """
