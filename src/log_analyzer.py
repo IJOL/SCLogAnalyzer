@@ -394,9 +394,9 @@ class LogFileHandler(FileSystemEventHandler):
                     self._log_message(f"Processing batch of {len(batch)} items", "DEBUG")                    
                     # Process each event type batch
                     if self.data_provider.process_data(batch):
-                        self._log_message(f"Successfully processed batch of {len(data_batch)} {event_type} items", "DEBUG")
+                        self._log_message(f"Successfully processed batch of {len(batch)} items", "DEBUG")
                     else:
-                        self._log_message(f"Failed to process batch of {len(data_batch)} {event_type} items", "ERROR")
+                        self._log_message(f"Failed to process batch of {len(batch)} items", "ERROR")
                     
                     # Mark all items as done
                     for _ in range(len(batch)):
