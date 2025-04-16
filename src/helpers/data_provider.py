@@ -12,19 +12,6 @@ class DataProvider(ABC):
     """
     SOURCE = "data_provider"
     
-    @abstractmethod
-    def insert_data(self, data: Dict[str, Any], table_name: str) -> bool:
-        """
-        Insert data into the specified table.
-        
-        Args:
-            data: Dictionary containing the data to insert
-            table_name: The name of the table/sheet to insert into
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        pass
     
     @abstractmethod
     def fetch_data(self, table_name: str, username: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -64,21 +51,6 @@ class DataProvider(ABC):
         """
         pass
     
-    def send_data(self, data: Dict[str, Any], table_name: str) -> bool:
-        """
-        Directly send data to the data sink.
-        This method should be used when immediate sending is required
-        (bypassing queues).
-        
-        Args:
-            data: Dictionary containing the data to insert
-            table_name: The name of the table/sheet to insert into
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        return self.insert_data(data, table_name)
-    
     def _log_message(self, content, level="INFO"):
         """Send message through the message bus"""
         level_map = {
@@ -111,40 +83,7 @@ class GoogleSheetsDataProvider(DataProvider):
             webhook_url: The Google Sheets webhook URL
         """
         self.webhook_url = webhook_url
-        
-    def insert_data(self, data: Dict[str, Any], table_name: str) -> bool:
-        """
-        Insert data into Google Sheets using the webhook.
-        
-        Args:
-            data: Dictionary containing the data to insert
-            table_name: The sheet name to insert into
             
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        if not self.webhook_url:
-            self._log_message("Google Sheets webhook URL is not set", "ERROR")
-            return False
-        
-        try:
-            # Ensure the sheet parameter is set
-            if 'sheet' not in data:
-                data['sheet'] = table_name
-                
-            # Send the data to Google Sheets via webhook
-            response = requests.post(self.webhook_url, json=data)
-            
-            if response.status_code == 200:
-                self._log_message(f"Data sent to Google Sheets successfully", "INFO")
-                return True
-            else:
-                self._log_message(f"Error sending data to Google Sheets: HTTP {response.status_code}", "ERROR")
-                return False
-        except Exception as e:
-            self._log_message(f"Exception sending data to Google Sheets: {e}", "ERROR")
-            return False
-    
     def fetch_data(self, table_name: str, username: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Fetch data from Google Sheets.
@@ -239,7 +178,7 @@ class GoogleSheetsDataProvider(DataProvider):
         except Exception as e:
             self._log_message(f"Exception processing data for Google Sheets: {e}", "ERROR")
             return False
-        
+
 
 class SupabaseDataProvider(DataProvider):
     """
@@ -251,27 +190,6 @@ class SupabaseDataProvider(DataProvider):
         """Initialize the Supabase data provider."""
         pass
         
-    def insert_data(self, data: Dict[str, Any], table_name: str) -> bool:
-        """
-        Insert data into Supabase.
-        
-        Args:
-            data: Dictionary containing the data to insert
-            table_name: The table name to insert into
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        if not supabase_manager.is_connected():
-            return False
-            
-        # Data already has the necessary information for insert_log
-        # Just ensure the sheet parameter is set
-        if 'sheet' not in data and table_name:
-            data['sheet'] = table_name
-            
-        return supabase_manager.insert_log(data)
-    
     def fetch_data(self, table_name: str, username: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Fetch data from Supabase.
@@ -354,8 +272,7 @@ class SupabaseDataProvider(DataProvider):
                 return success_count > 0  # Return true if at least one succeeded
         except Exception as e:
             self._log_message(f"Exception processing data for Supabase: {e}", "ERROR")
-            return False
-        
+            return False        
 
 def get_data_provider(config_manager) -> DataProvider:
     """
