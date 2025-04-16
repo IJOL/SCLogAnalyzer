@@ -377,7 +377,7 @@ class LogFileHandler(FileSystemEventHandler):
                     try:
                         # Try to get an item with a short timeout
                         data,sheet_name = self.data_queue.get(timeout=0.1)
-                        batch.append({'data': data, 'sheet': sheet_name})
+                        batch.append({'data': data, 'sheet': sheet_name if not data.get('sheet') else data['sheet']})
                         
                         # If queue is empty, don't wait for more items
                         if self.data_queue.empty():
