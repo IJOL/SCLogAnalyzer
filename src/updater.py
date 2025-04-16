@@ -205,22 +205,77 @@ def update_application():
     app_executable = sys.argv[2]
 
     # Wait for the main application to exit
+    print("Waiting for the main application to exit...")
     time.sleep(5)
 
     # Replace the original executable with the updated one
     src_file = os.path.abspath(sys.argv[0])  # This script itself (SCLogAnalyzer_updater.exe)
     dest_file = os.path.join(target_dir, app_executable)
 
+    # Retry parameters
+    max_attempts = 5
+    retry_delay = 2  # seconds
+    attempt = 0
+    
+    while attempt < max_attempts:
+        attempt += 1
+        try:
+            print(f"Attempt {attempt}/{max_attempts} to replace the executable...")
+            
+            # Try to check if the file is still in use
+            try:
+                # Try to open the destination file with exclusive access
+                with open(dest_file, 'a+b') as test_file:
+                    # If we get here, the file is not locked
+                    pass
+            except PermissionError:
+                if attempt < max_attempts:
+                    print(f"File {dest_file} is still in use. Waiting {retry_delay} seconds before retry...")
+                    time.sleep(retry_delay)
+                    # Increase the delay for next attempt with a backoff strategy
+                    retry_delay *= 1.5
+                    continue
+                else:
+                    raise Exception("File is still in use after maximum retries")
+            
+            # Try to replace the file
+            if os.path.exists(dest_file):
+                os.unlink(dest_file)  # Force delete if exists
+                print(f"Removed old executable: {dest_file}")
+            
+            shutil.copy2(src_file, dest_file)  # Use copy2 to preserve metadata
+            print(f"Replaced {dest_file} successfully.")
+            break  # Success, exit the retry loop
+            
+        except Exception as e:
+            print(f"Attempt {attempt} failed: {e}")
+            if attempt < max_attempts:
+                wait_time = retry_delay
+                print(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                # Increase the delay for next attempt with a backoff strategy
+                retry_delay *= 1.5
+            else:
+                print(f"Failed to replace {dest_file} after {max_attempts} attempts: {e}")
+                sys.exit(1)
+    
+    # Cleanup the updater file
     try:
-        shutil.move(src_file, dest_file)
-        print(f"Replaced {dest_file} successfully.")
+        # Small delay to ensure the copy operation is complete
+        time.sleep(1)
+        os.remove(src_file)
+        print(f"Removed updater file: {src_file}")
     except Exception as e:
-        print(f"Failed to replace {dest_file}: {e}")
-        sys.exit(1)
+        print(f"Note: Could not remove updater file: {e}")
+        # Continue anyway as this is not critical
 
-    # Restart the application
+    # Restart the application using subprocess instead of execv for better Windows compatibility
     try:
-        os.execv(dest_file, [dest_file])
+        # Start the application as a new process
+        subprocess.Popen([dest_file])
+        print(f"Successfully started {dest_file}")
+        # Exit the updater process
+        sys.exit(0)
     except Exception as e:
         print(f"Failed to restart the application: {e}")
         sys.exit(1)
