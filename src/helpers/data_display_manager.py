@@ -386,7 +386,7 @@ class DataDisplayManager:
 
         try:
             # Send the mock data to Google Sheets
-            success = self.parent.monitoring_service.event_handler.update_google_sheets(mock_data, "SC_Default")
+            success = self.parent.monitoring_service.event_handler.update_data_queue(mock_data, "SC_Default")
             if success:
                 wx.MessageBox("Test entry sent successfully to Google Sheets.", "Success", wx.OK | wx.ICON_INFORMATION)
             else:
