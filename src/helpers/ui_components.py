@@ -21,14 +21,13 @@ class TabCreator:
         self.parent = parent_frame
         self.tab_references = {}
         
-    def _add_tab(self, notebook, tab_title, url, params=None):
+    def _add_tab(self, notebook, tab_title, params=None):
         """
         Create a new tab with a grid and a refresh button.
 
         Args:
             notebook (wx.Notebook): The notebook to add the tab to.
             tab_title (str): The title of the new tab.
-            url (str): The URL to fetch JSON data from.
             params (dict, optional): Parameters to pass to the request.
             
         Returns:
@@ -59,8 +58,7 @@ class TabCreator:
         # Add the new tab to the notebook
         notebook.AddPage(new_tab, tab_title)
 
-        # Store the URL and params directly on objects
-        refresh_button.url = url
+        # Store only the params directly on the button object
         refresh_button.params = params
         refresh_button.grid = grid
 
@@ -72,12 +70,11 @@ class TabCreator:
 
         return grid, refresh_button  # Return the grid for further updates
 
-    def add_tab(self, url, tab_title, params=None, top_panel=None):
+    def add_tab(self, tab_title, params=None, top_panel=None):
         """
         Add a new tab to the notebook with a grid and optional top panel.
 
         Args:
-            url (str): The URL to fetch JSON data from.
             tab_title (str): The title of the new tab.
             params (dict, optional): A dictionary of parameters to pass to the request.
             top_panel (wx.Panel, optional): A panel to place above the grid (e.g., a form).
@@ -92,7 +89,7 @@ class TabCreator:
             return grid, refresh_button
         
         # If tab doesn't exist, use _add_tab to create it
-        grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, url, params)
+        grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, params)
 
         if grid and top_panel:
             # Add the top panel to the tab's sizer
@@ -104,12 +101,11 @@ class TabCreator:
         # Trigger initial refresh if the grid was created
         return grid, refresh_button
         
-    def add_form_tab(self, url, tab_title, form_fields={}, params=None):
+    def add_form_tab(self, tab_title, form_fields={}, params=None):
         """
         Add a new tab with a form at the top and a grid at the bottom.
 
         Args:
-            url (str): The URL to fetch data for the grid.
             tab_title (str): The title of the new tab.
             form_fields (dict): A dictionary where keys are field names and values are input types.
             params (dict, optional): Parameters to pass to the request.
@@ -124,7 +120,7 @@ class TabCreator:
             return grid, refresh_button
                 
         # Create the base tab if it doesn't exist
-        grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, url, params)
+        grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, params)
 
         if grid:
             # Use the grid's parent as the correct parent for the form panel
@@ -176,9 +172,9 @@ class TabCreator:
             parent_sizer.Insert(0, form_panel, 0, wx.EXPAND | wx.ALL, 5)
             parent_panel.Layout()
 
-            # Bind the submit button
+            # Bind the submit button - pass None instead of URL
             submit_button.Bind(wx.EVT_BUTTON, lambda event: self.parent.on_form_submit(
-                event, url, refresh_button, form_controls, params.get("sheet", "")))
+                event, None, refresh_button, form_controls, params.get("sheet", "")))
                 
             self.tab_references[tab_title] = (grid, refresh_button)
         return grid, refresh_button

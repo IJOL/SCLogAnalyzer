@@ -57,6 +57,9 @@ class LogAnalyzerFrame(wx.Frame):
         self.mode = "None"
         self.debug_mode = False  # Flag to track if debug mode is active
         
+        # Define a consistent name for log message subscription
+        self.log_subscription_name = "gui_main"
+        
         # Initialize manager and service objects
         self.config_manager = get_config_manager(in_gui=True)
         self.tab_creator = TabCreator(self)
@@ -83,7 +86,7 @@ class LogAnalyzerFrame(wx.Frame):
         log_analyzer.main.gui_log_handler = self.append_log_message
         
         # Initialize message bus subscription
-        message_bus.subscribe("gui_main", self._append_log_message_from_bus)
+        message_bus.subscribe(self.log_subscription_name, self._append_log_message_from_bus)
         
         # Initialize variables for monitoring
         self.observer = None
@@ -342,6 +345,7 @@ class LogAnalyzerFrame(wx.Frame):
             username (str): The new username.
             old_username (str): The previous username.
         """
+        # Update the stored username
         self.username = username
         self.update_dynamic_labels()
         for tab_title, (grid, refresh_button) in self.tab_creator.tab_references.items():
@@ -696,6 +700,10 @@ class LogAnalyzerFrame(wx.Frame):
         """Update UI elements based on debug mode state"""
         if hasattr(self, 'test_google_sheets_button'):
             self.test_google_sheets_button.Show(self.debug_mode)
+            
+        # Update log level filtering based on debug mode
+        if hasattr(self, 'data_manager'):
+            self.data_manager.set_debug_mode(self.debug_mode)
             
         # Force layout update
         if hasattr(self, 'log_page') and self.log_page:

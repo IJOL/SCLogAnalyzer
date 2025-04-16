@@ -111,30 +111,40 @@ class GoogleSheetsDataProvider(DataProvider):
             return []
             
         try:
-            # Prepare query parameters
-            params = {"sheet": table_name}
+            # Prepare query parameters - the webhook expects 'sheet' parameter
+            params = {}
+            if table_name:
+                params["sheet"] = table_name
             if username:
                 params["username"] = username
                 
-            # Get data from Google Sheets
+            # Log request details for debugging
+            self._log_message(f"Fetching from Google Sheets. URL: {self.webhook_url}, Params: {params}", "DEBUG")
+                
+            # Get data from Google Sheets - simple GET request
             response = requests.get(self.webhook_url, params=params)
             
             if response.status_code != 200:
-                self._log_message(f"Failed to fetch data from Google Sheets. HTTP Status: {response.status_code}", "ERROR")
+                self._log_message(f"Failed to fetch data from Google Sheets. HTTP Status: {response.status_code}, Response: {response.text[:100]}", "ERROR")
                 return []
                 
             # Parse the JSON response
-            data = response.json()
-            if not isinstance(data, list):
-                self._log_message("Invalid data format received from Google Sheets", "ERROR")
+            try:
+                data = response.json()
+                self._log_message(f"Received response of type {type(data).__name__} from Google Sheets", "DEBUG")
+            except json.JSONDecodeError:
+                self._log_message(f"Invalid JSON response from Google Sheets: {response.text[:100]}", "ERROR")
                 return []
                 
+            # Google Apps Script returns a direct array of objects
+            if not isinstance(data, list):
+                self._log_message(f"Invalid data format received from Google Sheets. Expected list, got {type(data).__name__}", "ERROR")
+                return []
+                
+            self._log_message(f"Successfully fetched {len(data)} records from Google Sheets", "DEBUG")
             return data
         except requests.RequestException as e:
             self._log_message(f"Network error while fetching data from Google Sheets: {e}", "ERROR")
-            return []
-        except json.JSONDecodeError:
-            self._log_message("Failed to decode JSON response from Google Sheets", "ERROR")
             return []
         except Exception as e:
             self._log_message(f"Unexpected error fetching data from Google Sheets: {e}", "ERROR")

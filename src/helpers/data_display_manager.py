@@ -20,13 +20,60 @@ class DataDisplayManager:
             parent_frame: The parent frame that contains the grids
         """
         self.parent = parent_frame
+        # Initialize debug mode to False by default
+        self.debug_mode = False
+        # Set default log level filter to INFO on startup
+        self._set_log_level_filter(MessageLevel.INFO)
     
-    def fetch_and_update(self, url, params, target_grid):
+    def _set_log_level_filter(self, level):
         """
-        Fetch data from URL and update the target grid.
+        Set the log level filter for the main log display.
         
         Args:
-            url (str): URL to fetch data from
+            level (MessageLevel): Minimum message level to display
+        """
+        # Set filter on the message bus for the main frame's log subscription
+        if hasattr(self.parent, 'log_subscription_name'):
+            message_bus.set_filter(
+                self.parent.log_subscription_name,
+                'level',
+                level
+            )
+    
+    def set_debug_mode(self, enabled):
+        """
+        Enable or disable debug mode, affecting log level visibility.
+        
+        Args:
+            enabled (bool): True to enable debug mode, False to disable
+        """
+        self.debug_mode = enabled
+        
+        # Update the log level filter based on debug mode
+        if enabled:
+            # Show all messages including DEBUG when debug mode is on
+            self._set_log_level_filter(MessageLevel.DEBUG)
+            message_bus.publish(
+                content="Debug mode enabled - showing all log levels",
+                level=MessageLevel.INFO
+            )
+        else:
+            # Only show INFO and above when debug mode is off
+            self._set_log_level_filter(MessageLevel.INFO)
+            message_bus.publish(
+                content="Debug mode disabled - hiding DEBUG level messages",
+                level=MessageLevel.INFO
+            )
+        
+        # Save debug mode in configuration if available
+        if hasattr(self.parent, 'config_manager'):
+            self.parent.config_manager.set("debug_mode", enabled)
+    
+    def fetch_and_update(self, params, target_grid):
+        """
+        Fetch data based on parameters and update the target grid.
+        
+        Args:
             params (dict): Parameters for the request
             target_grid (wx.grid.Grid): Grid to update with the data
         """
@@ -37,7 +84,13 @@ class DataDisplayManager:
             # Use the config_manager as the source of truth for data source
             use_supabase = self.parent.config_manager.get("use_supabase", False)
             
-            # If both data sources are improperly configured, log a warning
+            # Log which data source we're attempting to use
+            message_bus.publish(
+                content=f"Attempting to fetch data using {'Supabase' if use_supabase else 'Google Sheets'}",
+                level=MessageLevel.DEBUG
+            )
+            
+            # If Supabase is configured but not connected, fall back to Google Sheets
             if use_supabase and not supabase_manager.is_connected():
                 message_bus.publish(
                     content="Supabase connection failed. Falling back to Google Sheets.",
@@ -52,16 +105,55 @@ class DataDisplayManager:
                 safe_call_after(self.parent.googlesheet_check.Check, True)
                 
             # Get the appropriate data provider based on configuration
-            data_provider = get_data_provider(use_supabase=use_supabase)
+            data_provider = get_data_provider(self.parent.config_manager)
             
             if not data_provider:
+                message_bus.publish(
+                    content="No data provider available",
+                    level=MessageLevel.ERROR
+                )
                 safe_call_after(wx.MessageBox, 
                                 "No data provider configured. Please set up either Google Sheets or Supabase.", 
                                 "Error", wx.OK | wx.ICON_ERROR)
                 return
                 
-            # Use the data provider to fetch data
-            data = data_provider.fetch_data(url, params)
+            # Log the actual data provider type we're using
+            message_bus.publish(
+                content=f"Using data provider: {data_provider.__class__.__name__}",
+                level=MessageLevel.DEBUG
+            )
+            
+            # Default sheet name
+            sheet_name = "Resumen"
+            username = None
+            
+            # Extract sheet name from params if available
+            if params:
+                if "sheet" in params and params["sheet"]:
+                    sheet_name = params["sheet"]
+                if "username" in params:
+                    username = params["username"]
+            
+            # Log the request parameters
+            message_bus.publish(
+                content=f"Fetching data from sheet '{sheet_name}' with username filter: {username}",
+                level=MessageLevel.DEBUG
+            )
+                
+            # Use the data provider to fetch data with the sheet name and username
+            data = data_provider.fetch_data(sheet_name, username)
+            
+            # Log the result
+            if data:
+                message_bus.publish(
+                    content=f"Fetched {len(data)} records from data source",
+                    level=MessageLevel.DEBUG
+                )
+            else:
+                message_bus.publish(
+                    content="No data returned from data source",
+                    level=MessageLevel.WARNING
+                )
             
             if not isinstance(data, list) or not data:
                 return
@@ -84,7 +176,7 @@ class DataDisplayManager:
     def on_refresh_tab(self, event):
         """
         Handle refresh button click.
-        Extracts URL and grid from the button and refreshes data.
+        Extracts grid and params from the button and refreshes data.
         
         Args:
             event: The button click event
@@ -113,7 +205,7 @@ class DataDisplayManager:
         # Start the fetch in a separate thread
         threading.Thread(
             target=self.fetch_and_update, 
-            args=(button.url, params, button.grid), 
+            args=(params, button.grid), 
             daemon=True
         ).start()
     
@@ -123,7 +215,7 @@ class DataDisplayManager:
 
         Args:
             event (wx.Event): The event object.
-            url (str): The URL to send the form data to.
+            url (str): The URL to send the form data to (deprecated, kept for compatibility).
             refresh_button (wx.Button): The refresh button for the grid.
             form_controls (dict): Dictionary of form controls.
             sheet (str): The sheet name to update.
@@ -198,38 +290,14 @@ class DataDisplayManager:
             tab_creator = self.parent.tab_creator
             
             if not len(tab_creator.tab_references):
-                required_tabs = [
-                    {"title": "Stats", "params": None},
-                    {"title": "SC Default", "params": {"sheet": "SC_Default", "username": lambda self: self.username}},
-                    {
-                        "title": "SC Squadrons Battle", 
-                        "params": {"sheet": "EA_SquadronBattle", "username": lambda self: self.username}
-                    },
-                    {
-                        "title": "Materials", 
-                        "params": {"sheet": "Materials", "username": lambda self: self.username}, 
-                        "form_fields": {"Material": "text", "Qty": "number", "committed": "check"}
-                    }
-                ]
-                # First, create any missing tabs
+                # If no tabs exist yet, create them
+                required_tabs = self._get_required_tab_configs()
+                
+                # Create each tab
                 for tab_info in required_tabs:
-                    title = tab_info["title"]
-                    # Create the tab if it doesn't exist
-                    if "form_fields" in tab_info:
-                        tab_creator.add_form_tab(
-                            google_sheets_webhook, 
-                            title, 
-                            params=tab_info["params"], 
-                            form_fields=tab_info["form_fields"]
-                        )
-                    else:
-                        tab_creator.add_tab(
-                            google_sheets_webhook, 
-                            title, 
-                            params=tab_info["params"]
-                        )
+                    self._create_single_tab(tab_info)
             else:            
-                # Now refresh all tabs
+                # If tabs already exist, just refresh them
                 for title, tab_components in tab_creator.tab_references.items():
                     if title in refresh_tabs or len(refresh_tabs) == 0:
                         self.execute_refresh_event(tab_components[1])
@@ -346,20 +414,8 @@ class DataDisplayManager:
                     level=MessageLevel.INFO
                 )
                 
-                # Define required tabs with their configuration
-                required_tabs = [
-                    {"title": "Stats", "params": None},
-                    {"title": "SC Default", "params": {"sheet": "SC_Default", "username": lambda self: self.username}},
-                    {
-                        "title": "SC Squadrons Battle", 
-                        "params": {"sheet": "EA_SquadronBattle", "username": lambda self: self.username}
-                    },
-                    {
-                        "title": "Materials", 
-                        "params": {"sheet": "Materials", "username": lambda self: self.username}, 
-                        "form_fields": {"Material": "text", "Qty": "number", "committed": "check"}
-                    }
-                ]
+                # Get required tabs with their configuration from the centralized method
+                required_tabs = self._get_required_tab_configs()
                 
                 # Create each tab asynchronously 
                 for i, tab_info in enumerate(required_tabs):
@@ -390,19 +446,16 @@ class DataDisplayManager:
             self.parent.SetStatusText(f"Creating tab: {title}...")
             
             tab_creator = self.parent.tab_creator
-            google_sheets_webhook = self.parent.config_manager.get("google_sheets_webhook", "")
             
             # Create the tab based on its type
             if "form_fields" in tab_info:
                 tab_creator.add_form_tab(
-                    google_sheets_webhook, 
                     title,
                     params=tab_info["params"],
                     form_fields=tab_info["form_fields"]
                 )
             else:
                 tab_creator.add_tab(
-                    google_sheets_webhook, 
                     title, 
                     params=tab_info["params"]
                 )
@@ -429,6 +482,21 @@ class DataDisplayManager:
             self.parent.SetStatusText("Loading tab data...")
             tab_creator = self.parent.tab_creator
             
+            # Don't refresh if username is Unknown or not set
+            current_username = getattr(self.parent, "username", None)
+            if current_username is None or current_username == "Unknown":
+                message_bus.publish(
+                    content="Skipping initial data load until valid username is available",
+                    level=MessageLevel.INFO
+                )
+                self.parent.SetStatusText("Waiting for user login...")
+                return
+                
+            message_bus.publish(
+                content=f"Loading data for user: {current_username}",
+                level=MessageLevel.INFO
+            )
+            
             for title, (grid, refresh_button) in tab_creator.tab_references.items():
                 # Stagger refresh calls to prevent simultaneous requests
                 wx.CallLater(300, self.execute_refresh_event, refresh_button)
@@ -449,4 +517,20 @@ class DataDisplayManager:
             "SC Default", 
             "SC Squadrons Battle", 
             "Materials"
+        ]
+
+    def _get_required_tab_configs(self):
+        """Get the list of tab configurations - centralized for maintainability"""
+        return [
+            {"title": "Stats", "params": {"sheet": "Resumen"}},
+            {"title": "SC Default", "params": {"sheet": "SC_Default", "username": lambda self: self.username}},
+            {
+                "title": "SC Squadrons Battle", 
+                "params": {"sheet": "EA_SquadronBattle", "username": lambda self: self.username}
+            },
+            {
+                "title": "Materials", 
+                "params": {"sheet": "Materials", "username": lambda self: self.username}, 
+                "form_fields": {"Material": "text", "Qty": "number", "committed": "check"}
+            }
         ]
