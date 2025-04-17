@@ -16,7 +16,7 @@ from .ui_components import TabCreator, GridManager, DynamicLabels, NumericValida
 from .monitoring_service import MonitoringService
 from .data_display_manager import DataDisplayManager
 from .window_state_manager import WindowStateManager, is_app_in_startup
-from .gui_module import RedirectText, ConfigDialog, ProcessDialog, TaskBarIcon, AboutDialog
+from .gui_module import ConfigDialog, ProcessDialog, TaskBarIcon, AboutDialog
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
 from .supabase_manager import supabase_manager
@@ -89,7 +89,6 @@ class LogAnalyzerFrame(wx.Frame):
         self.config_manager.renew_config()
         
         # Set up stdout redirection
-        sys.stdout = RedirectText(self.log_text)
 
         # Create taskbar icon
         self.taskbar_icon = TaskBarIcon(self, TASKBAR_ICON_TOOLTIP)
