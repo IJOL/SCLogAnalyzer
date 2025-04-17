@@ -388,19 +388,18 @@ class ConfigManager:
 
     def setup_data_providers(self):
         """
-        Configure data providers ensuring mutual exclusivity between Supabase and Google Sheets.
-        Connects to Supabase if enabled and falls back to Google Sheets if connection fails.
+        Configure data providers based on the datasource configuration.
+        Connects to Supabase if that's the selected datasource and falls back to Google Sheets if connection fails.
         
         Returns:
             bool: True if at least one data provider is successfully set up
         """
         with self._lock:
-            # Ensure mutual exclusivity between Supabase and Google Sheets
-            if self.get('use_supabase', False):
-                self.set('use_googlesheet', False)
+            # Get the selected data source (default to "googlesheets")
+            datasource = self.get('datasource', 'googlesheets')
             
-            # Connect to Supabase if credentials are available and it's enabled
-            if self.get('use_supabase', False):
+            # Connect to Supabase if it's the selected datasource
+            if datasource == 'supabase':
                 try:
                     from .supabase_manager import supabase_manager
                     if supabase_manager.connect():
@@ -417,30 +416,28 @@ class ConfigManager:
                             metadata={"source": "config_manager"}
                         )
                         # Fall back to Google Sheets if Supabase connection fails
-                        self.set('use_supabase', False)
-                        self.set('use_googlesheet', True)
+                        self.set('datasource', 'googlesheets')
                 except ImportError:
                     message_bus.publish(
                         content="Supabase manager not available. Falling back to Google Sheets.",
                         level=MessageLevel.WARNING,
                         metadata={"source": "config_manager"}
                     )
-                    self.set('use_supabase', False)
-                    self.set('use_googlesheet', True)
+                    self.set('datasource', 'googlesheets')
             
-            # Apply dynamic configuration if Google Sheets is enabled and webhook is available
+            # Apply dynamic configuration if Google Sheets is the selected datasource and webhook is available
             google_sheets_webhook = self.get('google_sheets_webhook', '')
-            if self.get('use_googlesheet', True) and self.is_valid_url(google_sheets_webhook):
+            if datasource == 'googlesheets' and self.is_valid_url(google_sheets_webhook):
                 if self.apply_dynamic_config(google_sheets_webhook):
                     return True
             
-            return self.get('use_googlesheet', True) or self.get('use_supabase', False)
+            return datasource in ['googlesheets', 'supabase']
 
     def get_all(self):
         """Get a copy of the entire configuration dictionary."""
         with self._lock:
             filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
-                                               'live_discord_webhook', 'ac_discord_webhook','renew'])
+                                               'live_discord_webhook', 'ac_discord_webhook','version'])
             return filtered_config
     
     def update(self, new_config):

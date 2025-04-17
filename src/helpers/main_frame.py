@@ -452,34 +452,28 @@ class LogAnalyzerFrame(wx.Frame):
             new_state = not menu_item.IsChecked()
             menu_item.Check(new_state)
             
-            # Handle mutually exclusive Supabase and Google Sheets modes
-            if menu_item == self.supabase_check and new_state:
-                # If enabling Supabase, disable Google Sheets
-                self.googlesheet_check.Check(False)
-                self.config_manager.set('use_googlesheet', False)
-                message_bus.publish(
-                    content="Switched to Supabase mode, Google Sheets disabled",
-                    level=MessageLevel.INFO
-                )
-            elif menu_item == self.googlesheet_check and new_state:
-                # If enabling Google Sheets, disable Supabase
-                self.supabase_check.Check(False)
-                self.config_manager.set('use_supabase', False)
-                message_bus.publish(
-                    content="Switched to Google Sheets mode, Supabase disabled",
-                    level=MessageLevel.INFO
-                )
-            
-            # Update config based on which checkbox changed
+            # Update configuration based on which checkbox changed
             if menu_item == self.discord_check:
                 self.config_manager.set('use_discord', new_state)
             elif menu_item == self.googlesheet_check:
-                self.config_manager.set('use_googlesheet', new_state)
+                # Update datasource to googlesheets
+                self.config_manager.set('datasource', 'googlesheets')
+                # Ensure mutual exclusivity with supabase
+                self.supabase_check.Check(False)
+                message_bus.publish(
+                    content="Switched to Google Sheets mode",
+                    level=MessageLevel.INFO
+                )
             elif menu_item == self.supabase_check:
-                self.config_manager.set('use_supabase', new_state)
+                # Update datasource to supabase
+                self.config_manager.set('datasource', 'supabase')
+                # Ensure mutual exclusivity with Google Sheets
+                self.googlesheet_check.Check(False)
+                message_bus.publish(
+                    content="Switched to Supabase mode",
+                    level=MessageLevel.INFO
+                )
                 
-                # We don't handle connection directly here - let the data provider handle it
-            
             # Save configuration
             self.config_manager.save_config()
             
@@ -489,7 +483,7 @@ class LogAnalyzerFrame(wx.Frame):
                 self.monitoring_service.start_monitoring()
                 
             # Update tabs based on data source change
-            self.data_manager.update_data_source_tabs()
+            wx.CallAfter(self.data_manager.update_data_source_tabs)
     
     def on_edit_config(self, event):
         """Open the configuration dialog."""
@@ -736,10 +730,6 @@ def main():
     # The frame initialization will handle the update_debug_ui_visibility call
     if is_script:
         frame.debug_mode = True
-        # Make sure the data_manager also knows we're in debug mode
-        if hasattr(frame, 'data_manager'):
-            frame.data_manager.set_debug_mode(True)
-        # Force update of debug UI elements
         frame.update_debug_ui_visibility()
     
     frame.Show()

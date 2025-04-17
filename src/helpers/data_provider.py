@@ -788,7 +788,7 @@ class SupabaseDataProvider(DataProvider):
 def get_data_provider(config_manager) -> DataProvider:
     """
     Factory function to get the appropriate data provider based on configuration.
-    Returns a single data provider based on configuration settings with mutual exclusivity.
+    Returns a single data provider based on the datasource configuration.
     
     Args:
         config_manager: The configuration manager instance
@@ -796,22 +796,11 @@ def get_data_provider(config_manager) -> DataProvider:
     Returns:
         A DataProvider instance (either Supabase or Google Sheets)
     """
-    use_supabase = config_manager.get('use_supabase', False)
-    use_googlesheet = config_manager.get('use_googlesheet', True)
+    # Get the configured datasource (default to googlesheets)
+    datasource = config_manager.get('datasource', 'googlesheets')
     
-    # Ensure mutual exclusivity - if Supabase is enabled, disable Google Sheets
-    if use_supabase:
-        use_googlesheet = False
-        # Update the config to reflect this change
-        config_manager.set('use_googlesheet', False)
-    
-    # If both are somehow disabled, default to Google Sheets
-    if not use_supabase and not use_googlesheet:
-        use_googlesheet = True
-        config_manager.set('use_googlesheet', True)
-    
-    # Primary check for Supabase - use if enabled and connected
-    if use_supabase:
+    # Return the appropriate data provider based on the datasource value
+    if datasource == 'supabase':
         # Try to connect to Supabase if not already connected
         if not supabase_manager.is_connected():
             if not supabase_manager.connect():
@@ -820,9 +809,8 @@ def get_data_provider(config_manager) -> DataProvider:
                     level=MessageLevel.WARNING
                 )
                 # If Supabase connection fails, fall back to Google Sheets
-                use_googlesheet = True
-                config_manager.set('use_googlesheet', True)
-                config_manager.set('use_supabase', False)
+                datasource = 'googlesheets'
+                config_manager.set('datasource', 'googlesheets')
             else:
                 return SupabaseDataProvider(
                     max_retries=config_manager.get('data_provider_max_retries', 3),
@@ -834,8 +822,8 @@ def get_data_provider(config_manager) -> DataProvider:
                 retry_delay=config_manager.get('data_provider_retry_delay', 1.0)
             )
     
-    # Use Google Sheets if enabled or if Supabase failed
-    if use_googlesheet:
+    # Use Google Sheets if that's the selected datasource or if Supabase failed
+    if datasource == 'googlesheets':
         google_sheets_webhook = config_manager.get('google_sheets_webhook', '')
         if google_sheets_webhook:
             return GoogleSheetsDataProvider(

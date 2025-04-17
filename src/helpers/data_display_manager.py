@@ -4,6 +4,7 @@ import wx.grid
 import threading
 import json
 import time
+import traceback
 from typing import Dict, Any, List, Callable, Optional
 from .message_bus import message_bus, MessageLevel
 from .supabase_manager import supabase_manager
@@ -310,12 +311,11 @@ class DataDisplayManager:
             # Let ConfigManager handle data provider setup properly
             self.parent.config_manager.setup_data_providers()
             
-            # Update UI checkboxes to reflect the ConfigManager state
+            # Update UI checkboxes to reflect the current datasource setting
             if hasattr(self.parent, 'supabase_check') and hasattr(self.parent, 'googlesheet_check'):
-                use_supabase = self.parent.config_manager.get("use_supabase", False)
-                use_googlesheet = self.parent.config_manager.get("use_googlesheet", True)
-                self.parent.supabase_check.Check(use_supabase)
-                self.parent.googlesheet_check.Check(use_googlesheet)
+                datasource = self.parent.config_manager.get("datasource", "googlesheets")
+                self.parent.supabase_check.Check(datasource == "supabase")
+                self.parent.googlesheet_check.Check(datasource == "googlesheets")
             
             # Import our data provider system
             from .data_provider import get_data_provider
@@ -325,27 +325,25 @@ class DataDisplayManager:
             
             if data_provider.is_connected():
                 message_bus.publish(
-                    content=f"Updating tabs with data provider: {data_provider.__class__.__name__}",
-                    level=MessageLevel.DEBUG
+                    content=f"Using data provider: {data_provider.__class__.__name__}",
+                    level=MessageLevel.INFO
                 )
-                
-                # Refresh all tabs with the current data provider
-                tab_creator = self.parent.tab_creator
-                for title, (grid, refresh_button) in tab_creator.tab_references.items():
-                    # Stagger the refresh calls to prevent overwhelming the data provider
-                    wx.CallLater(300, self.execute_refresh_event, refresh_button)
+                # Recreate tabs with the current data provider
+                wx.CallAfter(self.update_google_sheets_tabs)
             else:
                 message_bus.publish(
-                    content="No data provider is connected, tabs will not display data",
+                    content=f"Data provider is not properly connected: {data_provider.__class__.__name__}",
                     level=MessageLevel.WARNING
                 )
-                
         except Exception as e:
             message_bus.publish(
                 content=f"Error updating data source tabs: {e}",
                 level=MessageLevel.ERROR
             )
-            self.parent.SetStatusText("Error updating tabs")
+            message_bus.publish(
+                content=traceback.format_exc(),
+                level=MessageLevel.DEBUG
+            )
     
     def test_data_provider(self):
         """Handle testing the currently active data provider."""

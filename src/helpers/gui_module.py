@@ -212,9 +212,45 @@ class ConfigDialog(wx.Frame):
         """Helper method to add the general configuration tab."""
         panel = wx.Panel(notebook)
         sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        # Track which keys have been handled with special controls
+        special_keys_handled = set()
+        
+        # Add data source selection dropdown first
+        # This will replace the separate use_googlesheet and use_supabase boolean flags
+        datasource_label = wx.StaticText(panel, label="Data Source")
+        datasource_choices = ["googlesheets", "supabase"]
+        
+        # Get current datasource value or default to googlesheets
+        current_datasource = config_data.get("datasource", "googlesheets")
+        
+        datasource_control = wx.Choice(panel, choices=datasource_choices)
+        # Set the selected choice
+        if current_datasource in datasource_choices:
+            datasource_control.SetStringSelection(current_datasource)
+        else:
+            datasource_control.SetSelection(0)  # Default to googlesheets
+            
+        # Store the control for later retrieval
+        self.general_controls["datasource"] = datasource_control
+        
+        # Create a row for the datasource dropdown
+        row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        row_sizer.Add(datasource_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        row_sizer.Add(datasource_control, 1, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(row_sizer, 0, wx.EXPAND)
+        
+        # Mark these keys as handled since we're replacing them with the datasource dropdown
+        special_keys_handled.add("use_googlesheet")
+        special_keys_handled.add("use_supabase")
+        special_keys_handled.add("datasource")
+        
+        # Process other configuration keys
         for key, value in config_data.items():
-            if key == "username":
-                continue  # Skip username-related logic
+            # Skip keys we've already handled with special controls
+            if key in special_keys_handled or key == "username":
+                continue
+                
             if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
                 label = wx.StaticText(panel, label=key)
                 control = wx.CheckBox(panel) if isinstance(value, bool) else wx.TextCtrl(panel, value=str(value))
@@ -244,7 +280,7 @@ class ConfigDialog(wx.Frame):
         """Save configuration using the ConfigManager."""
         # Save general config values 
         for key, control in self.general_controls.items():
-            value = control.GetValue() if isinstance(control, wx.CheckBox) else control.GetValue()
+            value = control.GetStringSelection() if isinstance(control, wx.Choice) else control.GetValue()
             self.config_manager.set(key, value)
 
         # Save regex patterns data
@@ -367,7 +403,7 @@ class AboutDialog(wx.Dialog):
             from version import COMMIT_MESSAGES
             if COMMIT_MESSAGES:
                 commits_label = wx.StaticText(panel, label="Recent Changes:")
-                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_BOLD))
+                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
                 sizer.Add(commits_label, 0, wx.ALL | wx.ALIGN_LEFT, 5)
                 
                 # Create a scrolled window for commit messages with fixed height
