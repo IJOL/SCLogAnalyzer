@@ -173,7 +173,7 @@ class TabCreator:
             parent_panel.Layout()
 
             # Bind the submit button - pass None instead of URL
-            submit_button.Bind(wx.EVT_BUTTON, lambda event: self.parent.on_form_submit(
+            submit_button.Bind(wx.EVT_BUTTON, lambda event: self.parent.data_manager.on_form_submit(
                 event, None, refresh_button, form_controls, params.get("sheet", "")))
                 
             self.tab_references[tab_title] = (grid, refresh_button)
