@@ -20,29 +20,6 @@ from .message_bus import message_bus, MessageLevel  # Direct import from same di
 
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
-class RedirectText:
-    """Class to redirect stdout to the message bus."""
-    def __init__(self, text_ctrl):
-        self.text_ctrl = text_ctrl
-
-    def write(self, string):
-        """Publish the string to the message bus."""
-        if string and string.strip():  # Skip empty strings
-            try:
-                # Use the module-level import of message_bus
-                message_bus.publish(
-                    content=string,
-                    level=MessageLevel.INFO,
-                    metadata={'from_stdout': True}
-                )
-            except ImportError:
-                # Fallback to direct writing if message_bus isn't available
-                wx.CallAfter(self.text_ctrl.AppendText, string)
-
-    def flush(self):
-        pass
-
-
 class KeyValueGrid(wx.Panel):
     """A reusable grid for editing key-value pairs."""
     def __init__(self, parent, title, data, key_choices=None):
@@ -158,7 +135,9 @@ class ConfigDialog(wx.Frame):
         self.add_general_tab(notebook, "General Config", self.config_data)
         self.regex_patterns_grid = self.add_tab(notebook, "Regex Patterns", "regex_patterns")
         regex_keys = list(self.config_data.get("regex_patterns", {}).keys())
-        regex_keys.append("mode_change")  # Add the fixed option
+        regex_keys.append("mode_change")  # Add fixed options
+        regex_keys.append("startup")
+        regex_keys.append("shard_info")
         self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
         self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
         self.colors_grid = self.add_colors_tab(notebook, "Colors", self.config_data.get("colors", {}))  # Add colors tab
