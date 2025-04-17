@@ -267,20 +267,20 @@ class DataDisplayManager:
     
     def update_google_sheets_tabs(self, refresh_tabs=[]):
         """
-        Update Google Sheets tabs based on current configuration.
+        Update data tabs based on current configuration.
         
         Args:
             refresh_tabs (list): List of tab titles to refresh, empty for all tabs
         """
-        # Only use ConfigManager to determine if Google Sheets is enabled
+        # Get the datasource and webhook URL from ConfigManager
+        datasource = self.parent.config_manager.get("datasource", "googlesheets")
         google_sheets_webhook = self.parent.config_manager.get("google_sheets_webhook", "")
-        use_googlesheet = self.parent.config_manager.get("use_googlesheet", True)
         
         # Update UI to match ConfigManager state
         if hasattr(self.parent, 'googlesheet_check'):
-            self.parent.googlesheet_check.Check(use_googlesheet)
+            self.parent.googlesheet_check.Check(datasource == "googlesheets")
         
-        if google_sheets_webhook and use_googlesheet:
+        if google_sheets_webhook and datasource == "googlesheets":
             # Define the tabs we want to ensure exist
             tab_creator = self.parent.tab_creator
             
@@ -298,7 +298,7 @@ class DataDisplayManager:
                         self.execute_refresh_event(tab_components[1])
         else:
             message_bus.publish(
-                content="Google Sheets integration is disabled or not configured",
+                content=f"Data tabs not available - datasource: {datasource}, webhook configured: {bool(google_sheets_webhook)}",
                 level=MessageLevel.INFO
             )
     
@@ -411,12 +411,12 @@ class DataDisplayManager:
         Separated from async_init_tabs to allow different timing options.
         """
         try:
-            # Only rely on ConfigManager for determining if Google Sheets is enabled
+            # Get the datasource from ConfigManager
+            datasource = self.parent.config_manager.get("datasource", "googlesheets")
             google_sheets_webhook = self.parent.config_manager.get("google_sheets_webhook", "")
-            use_googlesheet = self.parent.config_manager.get("use_googlesheet", True)
             
-            # Only proceed if Google Sheets is enabled in the ConfigManager
-            if google_sheets_webhook and use_googlesheet:
+            # Only proceed if Google Sheets is the selected datasource and webhook is configured
+            if datasource == "googlesheets" and google_sheets_webhook:
                 # Log that we're starting to create tabs
                 message_bus.publish(
                     content="Creating data tabs...",
@@ -428,18 +428,8 @@ class DataDisplayManager:
                 
                 # Create each tab asynchronously 
                 for i, tab_info in enumerate(required_tabs):
-                    # Use another delayed call to stagger tab creation
-                    wx.CallLater(200 * i, self._create_single_tab, tab_info)
-                
-                # After all tabs are scheduled for creation, update status
-                wx.CallLater(200 * len(required_tabs) + 500, 
-                             lambda: self.parent.SetStatusText("All tabs created"))
-            else:
-                self.parent.SetStatusText("Google Sheets integration disabled")
-                
-                # Update UI to match ConfigManager state if needed
-                if hasattr(self.parent, 'googlesheet_check'):
-                    self.parent.googlesheet_check.Check(use_googlesheet)
+                    # Add a small delay between tab creation for smoother UI experience
+                    wx.CallLater(100 * (i + 1), self._create_single_tab, tab_info)
         except Exception as e:
             message_bus.publish(
                 content=f"Error creating tabs: {e}",

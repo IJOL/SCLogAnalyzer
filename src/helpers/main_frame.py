@@ -355,9 +355,12 @@ class LogAnalyzerFrame(wx.Frame):
         try:
             # 1. Load configuration values from ConfigManager
             self.default_log_file_path = self.log_file_path
-            self.discord_check.Check(self.use_discord)
-            self.googlesheet_check.Check(self.use_googlesheet)
-            self.supabase_check.Check(self.use_supabase)
+            self.discord_check.Check(self.config_manager.get('use_discord', False))
+            
+            # Get the datasource and set UI accordingly
+            datasource = self.config_manager.get('datasource', 'googlesheets')
+            self.googlesheet_check.Check(datasource == 'googlesheets')
+            self.supabase_check.Check(datasource == 'supabase')
             
             # 3. Validate critical settings and prompt for missing ones
             missing_settings = []
@@ -366,26 +369,34 @@ class LogAnalyzerFrame(wx.Frame):
             elif not os.path.exists(self.default_log_file_path):
                 missing_settings.append("Log file path does not exist")
                 
-            if not self.google_sheets_webhook:
+            if datasource == 'googlesheets' and not self.config_manager.get('google_sheets_webhook', ''):
                 missing_settings.append("Google Sheets webhook URL")
-                self.googlesheet_check.Check(False)  # Uncheck Google Sheets usage
                 
-            if not self.discord_webhook_url:
-                missing_settings.append("Discord webhook URL")
+            if datasource == 'supabase' and (
+                not self.config_manager.get('supabase_url', '') or 
+                not self.config_manager.get('supabase_key', '')
+            ):
+                missing_settings.append("Supabase credentials")
+                
+            if not self.config_manager.get('discord_webhook_url', ''):
                 self.discord_check.Check(False)  # Uncheck Discord usage
-
+                
             if missing_settings:
-                wx.MessageBox(
-                    f"The following settings are missing or invalid: {', '.join(missing_settings)}.\n"
-                    "Please configure them to start safely.",
-                    "Configuration Required",
-                    wx.OK | wx.ICON_WARNING
+                warning = ", ".join(missing_settings)
+                message_bus.publish(
+                    content=f"Missing or invalid settings: {warning}",
+                    level=MessageLevel.WARNING
                 )
-                self.on_edit_config(None)  # Show the configuration dialog modal
-            
+                
+                # Give the user time to see the message in the log
+                wx.CallLater(1000, lambda: wx.MessageBox(
+                    f"Please check your configuration. The following settings need attention:\n\n{warning}",
+                    "Configuration Warning",
+                    wx.OK | wx.ICON_WARNING
+                ))
         except Exception as e:
             message_bus.publish(
-                content=f"Error initializing configuration: {e}",
+                content=f"Error in initialize_config: {e}",
                 level=MessageLevel.ERROR
             )
     
@@ -522,7 +533,8 @@ class LogAnalyzerFrame(wx.Frame):
         if self.config_dialog.config_saved:
             self.initialize_config()
             # If Supabase was enabled, try to connect and verify connection
-            if self.use_supabase:
+            datasource = self.config_manager.get('datasource', 'googlesheets')
+            if datasource == 'supabase':
                 if not supabase_manager.is_connected():
                     connection_result = supabase_manager.connect()
                     if connection_result:
@@ -545,8 +557,7 @@ class LogAnalyzerFrame(wx.Frame):
                         # Fall back to Google Sheets
                         self.supabase_check.Check(False)
                         self.googlesheet_check.Check(True)
-                        self.config_manager.set('use_supabase', False)
-                        self.config_manager.set('use_googlesheet', True)
+                        self.config_manager.set('datasource', 'googlesheets')
                         self.config_manager.save_config()
             
             # Restart monitoring if it was active

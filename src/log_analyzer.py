@@ -852,7 +852,7 @@ def stop_monitor(event_handler, observer):
     event_handler.stop()
     output_message(None, "Monitor stopped successfully")
 
-def startup(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, use_supabase=None, log_file_path=None, **kwargs):
+def startup(process_all=False, use_discord=None, process_once=False, datasource=None, log_file_path=None, **kwargs):
     """
     Initialize the log analyzer infrastructure and allow the caller to pass event subscriptions via kwargs.
 
@@ -860,8 +860,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         process_all: Whether to process the entire log file.
         use_discord: Whether to use Discord for notifications.
         process_once: Whether to process the log file once and exit.
-        use_googlesheet: Whether to use Google Sheets for data storage.
-        use_supabase: Whether to use Supabase for data storage.
+        datasource: The data source to use ('googlesheets' or 'supabase').
         log_file_path: Path to the log file.
         kwargs: Additional arguments for event subscriptions or configurations.
     """
@@ -883,8 +882,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
             process_all=process_all,
             use_discord=use_discord,
             process_once=process_once,
-            use_googlesheet=use_googlesheet,
-            use_supabase=use_supabase,
+            datasource=datasource,
             log_file_path=log_file_path
         )
         
@@ -910,7 +908,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         # Log monitoring status just before starting the observer
         output_message(None, f"Monitoring log file: {config_manager.get('log_file_path')}")
         output_message(None, f"Sending updates to {'Discord webhook' if event_handler.use_discord else 'stdout'}")
-        output_message(None, f"Data provider: {'Supabase' if config_manager.get('use_supabase', False) else 'Google Sheets'}")
+        output_message(None, f"Data provider: {config_manager.get('datasource', 'googlesheets')}")
 
         # Create an observer
         observer = Observer()
@@ -928,9 +926,9 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         logging.error("Stack trace:\n%s", traceback.format_exc())
         raise
 
-def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, use_supabase=None, log_file_path=None):
+def main(process_all=False, use_discord=None, process_once=False, datasource=None, log_file_path=None):
     try:
-        event_handler, observer = startup(process_all, use_discord, process_once, use_googlesheet, use_supabase, log_file_path)
+        event_handler, observer = startup(process_all, use_discord, process_once, datasource, log_file_path)
 
         # If in GUI mode, start the observer in a separate thread and return immediately
         if hasattr(main, 'in_gui') and main.in_gui:
@@ -973,13 +971,12 @@ if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
         print(f"SC Log Analyzer v{get_version()}")
-        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng] [--no-supabase | -ns] [--debug | -d]")
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--datasource <googlesheets|supabase>] [--debug | -d]")
         print("Options:")
         print("  --process-all, -p    Skip processing entire log file (overrides config)")
         print("  --no-discord, -nd    Do not send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
-        print("  --no-googlesheet, -ng    Do not send output to Google Sheets webhook")
-        print("  --no-supabase, -ns   Do not send output to Supabase")
+        print("  --datasource <googlesheets|supabase>    Specify the data source to use")
         print("  --debug, -d          Enable debug mode (e.g., save cropped images)")
         print(f"Version: {get_version()}")
         sys.exit(0)
@@ -987,8 +984,11 @@ if __name__ == "__main__":
     process_all = '--process-all' in sys.argv or '-p' in sys.argv
     use_discord = not ('--no-discord' in sys.argv or '-nd' in sys.argv)
     process_once = '--process-once' in sys.argv or '-o' in sys.argv
-    use_googlesheet = not ('--no-googlesheet' in sys.argv or '-ng' in sys.argv)
-    use_supabase = not ('--no-supabase' in sys.argv or '-ns' in sys.argv)
+    datasource = None
+    if '--datasource' in sys.argv:
+        datasource_index = sys.argv.index('--datasource') + 1
+        if datasource_index < len(sys.argv):
+            datasource = sys.argv[datasource_index]
     debug_mode = '--debug' in sys.argv or '-d' in sys.argv
 
     # Set debug mode globally
@@ -996,4 +996,4 @@ if __name__ == "__main__":
 
     # Show version info on startup
     print(f"SC Log Analyzer v{get_version()} starting...")
-    main(process_all, use_discord, process_once, use_googlesheet, use_supabase)
+    main(process_all, use_discord, process_once, datasource)

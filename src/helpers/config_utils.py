@@ -455,7 +455,7 @@ class ConfigManager:
                      - process_all: Whether to process the entire log file
                      - use_discord: Whether to use Discord for notifications
                      - process_once: Whether to process the log file once and exit
-                     - use_googlesheet: Whether to use Google Sheets for data storage
+                     - datasource: Data source to use ('googlesheets' or 'supabase')
                      - log_file_path: Path to the log file
             
         Returns:
@@ -473,8 +473,6 @@ class ConfigManager:
                 # key: (kwargs_key, config_default, special_handling_function)
                 'use_discord': ('use_discord', True, 
                                lambda: self.is_valid_url(self._config.get('discord_webhook_url', ''))),
-                'use_googlesheet': ('use_googlesheet', True,
-                                  lambda: self.is_valid_url(self._config.get('google_sheets_webhook', ''))),
                 'process_once': ('process_once', False,
                                lambda: bool(self._config.get('process_once', False)))
             }
@@ -487,6 +485,21 @@ class ConfigManager:
                 else:
                     self._config[config_key] = validate_fn()
             
+            # Handle datasource parameter
+            if 'datasource' in kwargs:
+                self._config['datasource'] = kwargs['datasource']
+            elif not self._config.get('datasource'):
+                # Default to googlesheets if not specified
+                self._config['datasource'] = 'googlesheets'
+                
+            # Ensure datasource is valid
+            if self._config['datasource'] not in ['googlesheets', 'supabase']:
+                self._config['datasource'] = 'googlesheets'
+                message_bus.publish(
+                    content="Invalid datasource specified, using 'googlesheets'",
+                    level=MessageLevel.WARNING
+                )
+            
             # Handle process_all with its special reversed logic
             if 'process_all' in kwargs:
                 # -p flag (False) means don't process all (force incremental)
@@ -496,7 +509,7 @@ class ConfigManager:
             
             # Apply all other parameters directly
             for key, value in kwargs.items():
-                if key not in ['process_all', 'use_discord', 'process_once', 'use_googlesheet', 'log_file_path']:
+                if key not in ['process_all', 'use_discord', 'process_once', 'datasource', 'log_file_path']:
                     self._config[key] = value
             
             return self._config

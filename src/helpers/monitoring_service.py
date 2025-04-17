@@ -42,24 +42,24 @@ class MonitoringService:
             self.monitoring = False
             return
 
+        # Get parameters from configuration manager (source of truth)
         process_all = True  # Always process the entire log
-        use_discord = self.parent.discord_check.IsChecked()
-        use_googlesheet = self.parent.googlesheet_check.IsChecked()
-        use_supabase = self.parent.supabase_check.IsChecked()
+        use_discord = self.parent.config_manager.get('use_discord', False)
+        datasource = self.parent.config_manager.get('datasource', 'googlesheets')
         
         # Delay the start of monitoring to ensure UI is fully loaded
         if delay_ms > 0:
             wx.CallLater(delay_ms, self._start_monitoring_thread, log_file, process_all, 
-                        use_discord, use_googlesheet, use_supabase)
+                        use_discord, datasource)
             # Use message bus instead of direct AppendText
             message_bus.publish(
                 content=f"Monitoring will start in {delay_ms/1000:.1f} seconds...",
                 level=MessageLevel.INFO
             )
         else:
-            self._start_monitoring_thread(log_file, process_all, use_discord, use_googlesheet, use_supabase)
+            self._start_monitoring_thread(log_file, process_all, use_discord, datasource)
     
-    def _start_monitoring_thread(self, log_file, process_all, use_discord, use_googlesheet, use_supabase):
+    def _start_monitoring_thread(self, log_file, process_all, use_discord, datasource):
         """
         Start the actual monitoring thread after any delay.
         
@@ -67,8 +67,7 @@ class MonitoringService:
             log_file (str): Path to the log file to monitor
             process_all (bool): Whether to process the entire log
             use_discord (bool): Whether to use Discord integration
-            use_googlesheet (bool): Whether to use Google Sheets integration
-            use_supabase (bool): Whether to use Supabase integration
+            datasource (str): The datasource to use ('googlesheets' or 'supabase')
         """
         if not self.monitoring:  # Check if monitoring was canceled during delay
             return
@@ -82,12 +81,12 @@ class MonitoringService:
         # Run in a separate thread to keep UI responsive
         thread = threading.Thread(
             target=self.run_monitoring, 
-            args=(log_file, process_all, use_discord, use_googlesheet, use_supabase)
+            args=(log_file, process_all, use_discord, datasource)
         )
         thread.daemon = True
         thread.start()
     
-    def run_monitoring(self, log_file, process_all, use_discord, use_googlesheet, use_supabase):
+    def run_monitoring(self, log_file, process_all, use_discord, datasource):
         """
         Run monitoring in a separate thread.
         
@@ -95,8 +94,7 @@ class MonitoringService:
             log_file (str): Path to the log file to monitor
             process_all (bool): Whether to process the entire log
             use_discord (bool): Whether to use Discord integration
-            use_googlesheet (bool): Whether to use Google Sheets integration
-            use_supabase (bool): Whether to use Supabase integration
+            datasource (str): The datasource to use ('googlesheets' or 'supabase')
         """
         try:
             # Call startup with event subscriptions passed as kwargs
@@ -104,8 +102,7 @@ class MonitoringService:
                 process_all=process_all,
                 use_discord=use_discord,
                 process_once=False,
-                use_googlesheet=use_googlesheet,
-                use_supabase=use_supabase,
+                datasource=datasource,
                 log_file_path=log_file,
                 on_shard_version_update=self.parent.on_shard_version_update,
                 on_mode_change=self.parent.on_mode_change,
@@ -185,14 +182,18 @@ class MonitoringService:
         self.parent.process_log_button.Enable(False)
         self.parent.monitor_button.Enable(False)
         
+        # Get parameters from configuration manager (source of truth)
+        use_discord = self.parent.config_manager.get('use_discord', False)
+        datasource = self.parent.config_manager.get('datasource', 'googlesheets')
+        
         thread = threading.Thread(
             target=self.run_process_log_thread, 
-            args=(log_file, True, False, False)
+            args=(log_file, True, use_discord, datasource)
         )
         thread.daemon = True
         thread.start()
 
-    def run_process_log_thread(self, log_file, process_all, use_discord, use_googlesheet):
+    def run_process_log_thread(self, log_file, process_all, use_discord, datasource):
         """
         Run log analysis in thread.
         
@@ -200,7 +201,7 @@ class MonitoringService:
             log_file (str): Path to the log file to process
             process_all (bool): Whether to process the entire log
             use_discord (bool): Whether to use Discord integration
-            use_googlesheet (bool): Whether to use Google Sheets integration
+            datasource (str): The datasource to use ('googlesheets' or 'supabase')
         """
         try:
             # Call main with process_once=True
@@ -208,7 +209,7 @@ class MonitoringService:
                 process_all=process_all,
                 use_discord=use_discord,
                 process_once=True,
-                use_googlesheet=use_googlesheet,
+                datasource=datasource,
                 log_file_path=log_file
             )
             wx.CallAfter(self.parent.SetStatusText, "Processing completed")
