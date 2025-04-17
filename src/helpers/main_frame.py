@@ -559,15 +559,9 @@ class LogAnalyzerFrame(wx.Frame):
         """Handle the configuration dialog's close event."""
         # Process the event first
         event.Skip()
-        
-        # Check if config was saved (i.e., Accept was clicked, not Cancel)
-        config_saved = False
-        if hasattr(self, 'config_dialog') and self.config_dialog:
-            config_saved = getattr(self.config_dialog, 'config_saved', False)
-        
         # Only reload configuration if changes were saved
-        self.initialize_config()
-        if config_saved:
+        if self.config_dialog.config_saved:
+            self.initialize_config()
             # If Supabase was enabled, try to connect and verify connection
             if self.use_supabase:
                 if not supabase_manager.is_connected():
