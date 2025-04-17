@@ -78,10 +78,6 @@ class LogAnalyzerFrame(wx.Frame):
         # Set flag for GUI mode in log_analyzer
         log_analyzer.main.in_gui = True
         
-        # Connect to Supabase if enabled
-        if self.use_supabase and not supabase_manager.is_connected():
-            supabase_manager.connect()
-        
         # Set up a custom log handler for GUI
         log_analyzer.main.gui_log_handler = self.append_log_message
         
@@ -95,6 +91,9 @@ class LogAnalyzerFrame(wx.Frame):
         # Initialize configuration and settings
         self.initialize_config()
         self.config_manager.renew_config()
+        
+        # Explicitly attempt to connect to Supabase if configured
+        self._ensure_supabase_connection()
         
         # Set up stdout redirection
         sys.stdout = RedirectText(self.log_text)
@@ -367,19 +366,20 @@ class LogAnalyzerFrame(wx.Frame):
             self.googlesheet_check.Check(self.use_googlesheet)
             self.supabase_check.Check(self.use_supabase)
             
-            # Connect to Supabase if enabled
+            # Try to connect to Supabase if enabled
             if self.use_supabase:
-                if supabase_manager.is_connected():
-                    message_bus.publish(
-                        content="Connected to Supabase successfully.",
-                        level=MessageLevel.INFO
-                    )
-                else:
-                    message_bus.publish(
-                        content="Failed to connect to Supabase. Check your credentials in .env file.",
-                        level=MessageLevel.ERROR
-                    )
-                    self.supabase_check.Check(False)  # Uncheck if connection failed
+                from .supabase_manager import supabase_manager
+                if not supabase_manager.is_connected():
+                    connection_result = supabase_manager.connect()
+                    if not connection_result:
+                        # If connection failed, uncheck the Supabase option and update config
+                        self.supabase_check.Check(False)
+                        self.config_manager.set('use_supabase', False)
+                        self.config_manager.save_config()
+                        message_bus.publish(
+                            content="Failed to connect to Supabase. Check your credentials in config.",
+                            level=MessageLevel.ERROR
+                        )
             
             # 3. Validate critical settings and prompt for missing ones
             missing_settings = []
@@ -568,10 +568,41 @@ class LogAnalyzerFrame(wx.Frame):
         # Only reload configuration if changes were saved
         self.initialize_config()
         if config_saved:
+            # If Supabase was enabled, try to connect and verify connection
+            if self.use_supabase:
+                if not supabase_manager.is_connected():
+                    connection_result = supabase_manager.connect()
+                    if connection_result:
+                        wx.MessageBox(
+                            "Successfully connected to Supabase.",
+                            "Connection Success",
+                            wx.OK | wx.ICON_INFORMATION
+                        )
+                        message_bus.publish(
+                            content="Connected to Supabase successfully after config change.",
+                            level=MessageLevel.INFO
+                        )
+                    else:
+                        wx.MessageBox(
+                            "Failed to connect to Supabase. Check your credentials in config.\n"
+                            "Falling back to Google Sheets mode.",
+                            "Connection Failed",
+                            wx.OK | wx.ICON_ERROR
+                        )
+                        # Fall back to Google Sheets
+                        self.supabase_check.Check(False)
+                        self.googlesheet_check.Check(True)
+                        self.config_manager.set('use_supabase', False)
+                        self.config_manager.set('use_googlesheet', True)
+                        self.config_manager.save_config()
+            
+            # Restart monitoring if it was active
             if self.monitoring_service.is_monitoring():
                 self.monitoring_service.stop_monitoring()
                 self.monitoring_service.start_monitoring()
-            self.data_manager.update_google_sheets_tabs()  # Update tabs after reloading config
+            
+            # Update tabs based on the data source
+            self.data_manager.update_data_source_tabs()
     
     def on_test_google_sheets(self, event):
         """Handle the Test Google Sheets button click."""
@@ -717,16 +748,55 @@ class LogAnalyzerFrame(wx.Frame):
     def async_init_tabs(self):
         """Initialize tabs asynchronously after the main window is loaded."""
         self.data_manager.async_init_tabs()
+    
+    def _ensure_supabase_connection(self):
+        """Ensure Supabase connection if configured."""
+        if self.use_supabase and not supabase_manager.is_connected():
+            if supabase_manager.connect():
+                message_bus.publish(
+                    content="Connected to Supabase successfully.",
+                    level=MessageLevel.INFO
+                )
+            else:
+                message_bus.publish(
+                    content="Failed to connect to Supabase. Check your credentials in config.",
+                    level=MessageLevel.ERROR
+                )
 
 
 def main():
     """Main entry point for the application."""
+    # Check if running as script or executable
+    is_script = getattr(sys, 'frozen', False) == False
+    
     if os.path.basename(sys.argv[0]) == UPDATER_EXECUTABLE:
         updater.update_application()    
     else:
         updater.cleanup_updater_script()
+    
+    # Initialize debug mode based on script detection
+    if is_script:
+        # If running as script, log startup information with debug enabled
+        print("Running as script - debug mode enabled")
+        # Configure message bus with debug as default minimum level
+        message_bus.publish(
+            content="Application started in script mode with DEBUG level enabled",
+            level=MessageLevel.DEBUG
+        )
+    
     app = wx.App()
     frame = LogAnalyzerFrame()
+    
+    # Set debug mode if running as script but don't update visibility yet
+    # The frame initialization will handle the update_debug_ui_visibility call
+    if is_script:
+        frame.debug_mode = True
+        # Make sure the data_manager also knows we're in debug mode
+        if hasattr(frame, 'data_manager'):
+            frame.data_manager.set_debug_mode(True)
+        # Force update of debug UI elements
+        frame.update_debug_ui_visibility()
+    
     frame.Show()
     frame.async_init_tabs()  # Initialize tabs asynchronously
     app.MainLoop()
