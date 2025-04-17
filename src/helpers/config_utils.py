@@ -4,6 +4,7 @@ import json
 import requests  # Added for fetch_dynamic_config
 import threading
 import re  # Added for URL validation
+from .message_bus import message_bus, MessageLevel  # Import the message bus
 
 DEFAULT_CONFIG_TEMPLATE = "config.json.template"
 
@@ -58,9 +59,16 @@ def emit_default_config(config_path, in_gui=False, template_path=None):
     config.pop("username", None)  # Remove username from the default config
     if os.path.exists(os.path.join(get_application_path(), "Game.log")):
         config['log_file_path'] = os.path.join(get_application_path(), "Game.log")
+    
+    # Create the configuration file
     with open(config_path, 'w', encoding='utf-8') as config_file:
         json.dump(config, config_file, indent=4)
-    print(f"Default config emitted at {config_path}")
+    
+    # Use message bus instead of direct print
+    message_bus.publish(
+        content=f"Default config emitted at {config_path}",
+        level=MessageLevel.INFO
+    )
 
 def get_template_path():
     """Get the path to the configuration template file."""
@@ -84,29 +92,32 @@ def get_application_path():
         
     return current_dir
 
-def fetch_dynamic_config(url):
+def fetch_dynamic_config(config_manager=None):
     """
-    Fetch dynamic configuration from the Google Sheets webhook.
-
-    Returns:
-        dict: A dictionary containing configuration values fetched from the "config" sheet.
-    """
-    if not url:
-        return {}
+    Fetch dynamic configuration from a data provider (Google Sheets or Supabase).
+    
+    Args:
+        config_manager (ConfigManager, optional): The config manager instance for getting data provider.
         
-    try:
-        # Fetch the "config" sheet from Google Sheets
-        response = requests.get(f"{url}?sheet=Config")
-        if response.status_code == 200:
-            # Parse the response as JSON
-            rows = response.json()
-            # Convert rows into a dictionary ("key" as key, "value" as value)
-            return {row["Key"]: row["Value"] for row in rows if "Key" in row and "Value" in row}
-        else:
-            print(f"Error fetching dynamic config: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"Exception fetching dynamic config: {e}")
-
+    Returns:
+        dict: A dictionary containing configuration values fetched from the data provider.
+    """
+    # If config_manager is provided, try to use the configured data provider
+    if config_manager:
+        try:
+            from .data_provider import get_data_provider
+            data_provider = get_data_provider(config_manager)
+            if data_provider.is_connected():
+                # Fetch configuration from the connected data provider
+                return data_provider.fetch_config()
+        except (ImportError, Exception) as e:
+            message_bus.publish(
+                content=f"Error using data provider for config: {e}",
+                level=MessageLevel.ERROR
+            )
+            return {}
+    
+    # If no config_manager or data provider failed, return empty dict
     return {}
 
 class ConfigManager:
@@ -122,6 +133,8 @@ class ConfigManager:
         self.in_gui = in_gui  # Track whether we're running in GUI mode
         self.new_config = True  # Flag to indicate if a new config was created
         self.load_config()
+        # Setup data providers automatically after loading the config
+        self.setup_data_providers()
 
     def load_config(self):
         """Load configuration from file. Creates default config if it doesn't exist."""
@@ -133,7 +146,10 @@ class ConfigManager:
                         self._config = json.load(config_file)
                         self.new_config = False
                 except Exception as e:
-                    print(f"Error loading configuration: {e}")
+                    message_bus.publish(
+                        content=f"Error loading configuration: {e}",
+                        level=MessageLevel.ERROR
+                    )
                     # Create default config if the file exists but couldn't be loaded
                     self._create_default_config()
             else:
@@ -147,9 +163,15 @@ class ConfigManager:
             emit_default_config(self.config_path, in_gui=self.in_gui)
             with open(self.config_path, 'r', encoding='utf-8') as config_file:
                 self._config = json.load(config_file)
-            print(f"Created default configuration at {self.config_path}")
+            message_bus.publish(
+                content=f"Created default configuration at {self.config_path}",
+                level=MessageLevel.INFO
+            )
         except Exception as e:
-            print(f"Error creating default configuration: {e}")
+            message_bus.publish(
+                content=f"Error creating default configuration: {e}",
+                level=MessageLevel.ERROR
+            )
             self._config = {}  # Set empty config as fallback
         self.new_config = True
     
@@ -182,7 +204,10 @@ class ConfigManager:
                     
                     template_path = get_template_path()
                     if not os.path.exists(template_path):
-                        print("Template file not found. Skipping config renewal.")
+                        message_bus.publish(
+                            content="Template file not found. Skipping config renewal.",
+                            level=MessageLevel.WARNING
+                        )
                         return False
                     
                     # Load the template
@@ -209,10 +234,16 @@ class ConfigManager:
                     # Save the renewed config
                     self.save_config()
                     
-                    print(f"Configuration renewed successfully for version {current_version}.")
+                    message_bus.publish(
+                        content=f"Configuration renewed successfully for version {current_version}.",
+                        level=MessageLevel.INFO
+                    )
                     return True
                 except Exception as e:
-                    print(f"Error renewing configuration: {e}")
+                    message_bus.publish(
+                        content=f"Error renewing configuration: {e}",
+                        level=MessageLevel.ERROR
+                    )
                     return False
     
     def save_config(self):
@@ -228,7 +259,10 @@ class ConfigManager:
                     json.dump(filtered_config, config_file, indent=4)
                     
             except Exception as e:
-                print(f"Error saving configuration: {e}")
+                message_bus.publish(
+                    content=f"Error saving configuration: {e}",
+                    level=MessageLevel.ERROR
+                )
 
     def filter(self, key_paths):
         """
@@ -297,40 +331,109 @@ class ConfigManager:
                     config[keys[-1]] = value
                 return True
             except Exception as e:
-                print(f"Error setting configuration value: {e}")
+                message_bus.publish(
+                    content=f"Error setting configuration value: {e}",
+                    level=MessageLevel.ERROR
+                )
                 return False
     
-    def apply_dynamic_config(self, url=None):
+    def apply_dynamic_config(self, webhook_url=None):
         """
-        Apply dynamic configuration from the provided URL or from the stored webhook URL.
+        Apply dynamic configuration from the configured data provider (Google Sheets or Supabase).
+        
+        This method loads dynamic configuration and applies it directly to the current configuration.
         
         Args:
-            url (str, optional): The URL to fetch dynamic configuration from. 
-                                If None, uses the stored google_sheets_webhook URL.
-                                
+            webhook_url (str, optional): The Google Sheets webhook URL to use.
+                                         If provided, overrides the one in config.
+        
         Returns:
             bool: True if successfully applied, False otherwise
         """
         with self._lock:
             try:
-                # Use provided URL or get from config
-                webhook_url = url or self.get('google_sheets_webhook', '')
-                if not webhook_url or not self.is_valid_url(webhook_url):
-                    print("Invalid webhook URL provided or in config.")
-                    return False
+                # Use provided webhook_url if available, otherwise use config
+                if webhook_url:
+                    self.set('google_sheets_webhook', webhook_url)
                 
-                dynamic_config = fetch_dynamic_config(webhook_url)
+                # Fetch dynamic config directly
+                dynamic_config = fetch_dynamic_config(self)
+                
                 if not dynamic_config:
+                    message_bus.publish(
+                        content="No dynamic configuration found", 
+                        level=MessageLevel.WARNING,
+                        metadata={"source": "config_manager"}
+                    )
                     return False
                 
-                # Simply set each value using the existing set method
+                # Apply each configuration value
                 for key, value in dynamic_config.items():
                     self.set(key, value)
                 
+                message_bus.publish(
+                    content=f"Successfully applied {len(dynamic_config)} dynamic configuration values",
+                    level=MessageLevel.INFO,
+                    metadata={"source": "config_manager"}
+                )
                 return True
             except Exception as e:
-                print(f"Error applying dynamic configuration: {e}")
+                message_bus.publish(
+                    content=f"Error applying dynamic configuration: {e}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "config_manager"}
+                )
                 return False
+
+    def setup_data_providers(self):
+        """
+        Configure data providers ensuring mutual exclusivity between Supabase and Google Sheets.
+        Connects to Supabase if enabled and falls back to Google Sheets if connection fails.
+        
+        Returns:
+            bool: True if at least one data provider is successfully set up
+        """
+        with self._lock:
+            # Ensure mutual exclusivity between Supabase and Google Sheets
+            if self.get('use_supabase', False):
+                self.set('use_googlesheet', False)
+            
+            # Connect to Supabase if credentials are available and it's enabled
+            if self.get('use_supabase', False):
+                try:
+                    from .supabase_manager import supabase_manager
+                    if supabase_manager.connect():
+                        message_bus.publish(
+                            content="Successfully connected to Supabase",
+                            level=MessageLevel.INFO,
+                            metadata={"source": "config_manager"}
+                        )
+                        return True
+                    else:
+                        message_bus.publish(
+                            content="Failed to connect to Supabase. Falling back to Google Sheets.",
+                            level=MessageLevel.WARNING,
+                            metadata={"source": "config_manager"}
+                        )
+                        # Fall back to Google Sheets if Supabase connection fails
+                        self.set('use_supabase', False)
+                        self.set('use_googlesheet', True)
+                except ImportError:
+                    message_bus.publish(
+                        content="Supabase manager not available. Falling back to Google Sheets.",
+                        level=MessageLevel.WARNING,
+                        metadata={"source": "config_manager"}
+                    )
+                    self.set('use_supabase', False)
+                    self.set('use_googlesheet', True)
+            
+            # Apply dynamic configuration if Google Sheets is enabled and webhook is available
+            google_sheets_webhook = self.get('google_sheets_webhook', '')
+            if self.get('use_googlesheet', True) and self.is_valid_url(google_sheets_webhook):
+                if self.apply_dynamic_config(google_sheets_webhook):
+                    return True
+            
+            return self.get('use_googlesheet', True) or self.get('use_supabase', False)
 
     def get_all(self):
         """Get a copy of the entire configuration dictionary."""
@@ -414,3 +517,24 @@ class ConfigManager:
             r'(?::\d+)?'  # optional port
             r'(?:/?|[/?]\S+)$', re.IGNORECASE)
         return re.match(regex, url) is not None
+
+    def __getattr__(self, name):
+        """
+        Transparently retrieve configuration values as attributes.
+        
+        This allows accessing config values directly as properties, e.g.:
+        config_manager.log_file_path instead of config_manager.get('log_file_path')
+        
+        Args:
+            name (str): The name of the attribute/config key to retrieve
+            
+        Returns:
+            The configuration value or raises AttributeError if not found
+        """
+        with self._lock:
+            # Simply check if the attribute exists in the _config dictionary
+            if name in self._config:
+                return self._config[name]
+            
+            # Attribute was not found in config
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
