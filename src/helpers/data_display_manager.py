@@ -53,13 +53,17 @@ class DataDisplayManager:
         if enabled:
             # Show all messages including DEBUG when debug mode is on
             self._set_log_level_filter(MessageLevel.DEBUG)
+            # Enable message bus debug mode - peek at messages without consuming them
+            message_bus.set_debug_mode(True)
             message_bus.publish(
-                content="Debug mode enabled - showing all log levels",
+                content="Debug mode enabled - showing all log levels and peeking at message bus",
                 level=MessageLevel.INFO
             )
         else:
             # Only show INFO and above when debug mode is off
             self._set_log_level_filter(MessageLevel.INFO)
+            # Disable message bus debug mode
+            message_bus.set_debug_mode(False)
             message_bus.publish(
                 content="Debug mode disabled - hiding DEBUG level messages",
                 level=MessageLevel.INFO
@@ -72,6 +76,7 @@ class DataDisplayManager:
     def fetch_and_update(self, params, target_grid):
         """
         Fetch data based on parameters and update the target grid.
+        Uses a single data provider based on current configuration.
         
         Args:
             params (dict): Parameters for the request
@@ -81,39 +86,16 @@ class DataDisplayManager:
             # Import data provider at function call time to avoid circular imports
             from .data_provider import get_data_provider
             
-            # Use the config_manager as the source of truth for data source
-            use_supabase = self.parent.config_manager.get("use_supabase", False)
-            
-            # Log which data source we're attempting to use
-            message_bus.publish(
-                content=f"Attempting to fetch data using {'Supabase' if use_supabase else 'Google Sheets'}",
-                level=MessageLevel.DEBUG
-            )
-            
-            # If Supabase is configured but not connected, fall back to Google Sheets
-            if use_supabase and not supabase_manager.is_connected():
-                message_bus.publish(
-                    content="Supabase connection failed. Falling back to Google Sheets.",
-                    level=MessageLevel.WARNING
-                )
-                use_supabase = False
-                # Update config to reflect the actual state
-                self.parent.config_manager.set("use_supabase", False)
-                self.parent.config_manager.set("use_googlesheet", True)
-                # Update UI to match config
-                safe_call_after(self.parent.supabase_check.Check, False)
-                safe_call_after(self.parent.googlesheet_check.Check, True)
-                
             # Get the appropriate data provider based on configuration
             data_provider = get_data_provider(self.parent.config_manager)
             
-            if not data_provider:
+            if not data_provider.is_connected():
                 message_bus.publish(
-                    content="No data provider available",
+                    content="No connected data provider available",
                     level=MessageLevel.ERROR
                 )
                 safe_call_after(wx.MessageBox, 
-                                "No data provider configured. Please set up either Google Sheets or Supabase.", 
+                                "No data provider configured correctly. Please check your settings.", 
                                 "Error", wx.OK | wx.ICON_ERROR)
                 return
                 
@@ -289,11 +271,15 @@ class DataDisplayManager:
         Args:
             refresh_tabs (list): List of tab titles to refresh, empty for all tabs
         """
-        # Only add/update Google Sheets tabs if the webhook URL is valid
+        # Only use ConfigManager to determine if Google Sheets is enabled
         google_sheets_webhook = self.parent.config_manager.get("google_sheets_webhook", "")
-        googlesheet_check = self.parent.googlesheet_check.IsChecked()
+        use_googlesheet = self.parent.config_manager.get("use_googlesheet", True)
         
-        if google_sheets_webhook and googlesheet_check:
+        # Update UI to match ConfigManager state
+        if hasattr(self.parent, 'googlesheet_check'):
+            self.parent.googlesheet_check.Check(use_googlesheet)
+        
+        if google_sheets_webhook and use_googlesheet:
             # Define the tabs we want to ensure exist
             tab_creator = self.parent.tab_creator
             
@@ -309,55 +295,50 @@ class DataDisplayManager:
                 for title, tab_components in tab_creator.tab_references.items():
                     if title in refresh_tabs or len(refresh_tabs) == 0:
                         self.execute_refresh_event(tab_components[1])
+        else:
+            message_bus.publish(
+                content="Google Sheets integration is disabled or not configured",
+                level=MessageLevel.INFO
+            )
     
     def update_data_source_tabs(self):
         """
-        Update tabs based on the current data source (Google Sheets or Supabase).
+        Update tabs based on the current data source configuration.
         Called when toggling between data sources.
         """
         try:
+            # Let ConfigManager handle data provider setup properly
+            self.parent.config_manager.setup_data_providers()
+            
+            # Update UI checkboxes to reflect the ConfigManager state
+            if hasattr(self.parent, 'supabase_check') and hasattr(self.parent, 'googlesheet_check'):
+                use_supabase = self.parent.config_manager.get("use_supabase", False)
+                use_googlesheet = self.parent.config_manager.get("use_googlesheet", True)
+                self.parent.supabase_check.Check(use_supabase)
+                self.parent.googlesheet_check.Check(use_googlesheet)
+            
             # Import our data provider system
             from .data_provider import get_data_provider
             
-            # Determine which tabs need to be refreshed
-            active_tabs = []
+            # Get the configured data provider
+            data_provider = get_data_provider(self.parent.config_manager)
             
-            tab_creator = self.parent.tab_creator
-            
-            use_supabase = self.parent.config_manager.get("use_supabase", False)
-            supabase_check = self.parent.supabase_check.IsChecked()
-            
-            use_googlesheet = self.parent.config_manager.get("use_googlesheet", True)
-            googlesheet_check = self.parent.googlesheet_check.IsChecked()
-            
-            if use_supabase and supabase_check:
+            if data_provider.is_connected():
                 message_bus.publish(
-                    content="Updating tabs to use Supabase data source",
-                    level=MessageLevel.INFO
+                    content=f"Updating tabs with data provider: {data_provider.__class__.__name__}",
+                    level=MessageLevel.DEBUG
                 )
                 
-                # Refresh all tabs - they'll now use Supabase data
+                # Refresh all tabs with the current data provider
+                tab_creator = self.parent.tab_creator
                 for title, (grid, refresh_button) in tab_creator.tab_references.items():
-                    active_tabs.append(title)
-                    # Update the URL to indicate Supabase is being used
-                    refresh_button.is_supabase = True
-                    
-            elif use_googlesheet and googlesheet_check:
+                    # Stagger the refresh calls to prevent overwhelming the data provider
+                    wx.CallLater(300, self.execute_refresh_event, refresh_button)
+            else:
                 message_bus.publish(
-                    content="Updating tabs to use Google Sheets data source",
-                    level=MessageLevel.INFO
+                    content="No data provider is connected, tabs will not display data",
+                    level=MessageLevel.WARNING
                 )
-                
-                # Refresh all tabs - they'll now use Google Sheets data
-                for title, (grid, refresh_button) in tab_creator.tab_references.items():
-                    active_tabs.append(title)
-                    # Update the URL to indicate Google Sheets is being used
-                    refresh_button.is_supabase = False
-                    
-            # Refresh tabs with the current data source
-            for title in active_tabs:
-                grid, refresh_button = tab_creator.tab_references[title]
-                wx.CallLater(300, self.execute_refresh_event, refresh_button)
                 
         except Exception as e:
             message_bus.publish(
@@ -366,33 +347,54 @@ class DataDisplayManager:
             )
             self.parent.SetStatusText("Error updating tabs")
     
-    def test_google_sheets(self):
-        """Handle the Test Google Sheets button click."""
-        google_sheets_webhook = self.parent.config_manager.get("google_sheets_webhook", "")
-        
-        if not google_sheets_webhook:
-            wx.MessageBox("Google Sheets webhook URL is not set in the configuration.", "Error", wx.OK | wx.ICON_ERROR)
-            return
-
-        # Mock data to send
-        mock_data = {
-            "sheet": "TestSheet",
-            "log_type": "TestLog",
-            "username": "TestUser",
-            "action": "Test Action",
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-            "details": "This is a test entry for Google Sheets."
-        }
-
+    def test_data_provider(self):
+        """Handle testing the currently active data provider."""
         try:
-            # Send the mock data to Google Sheets
-            success = self.parent.monitoring_service.event_handler.update_data_queue(mock_data, "SC_Default")
+            # Import data provider at function call time to avoid circular imports
+            from .data_provider import get_data_provider
+            
+            # Get the appropriate data provider based on configuration
+            data_provider = get_data_provider(self.parent.config_manager)
+            
+            if not data_provider.is_connected():
+                wx.MessageBox("No data provider is connected. Please check your configuration.", 
+                             "Error", wx.OK | wx.ICON_ERROR)
+                return
+            
+            provider_name = data_provider.__class__.__name__
+            message_bus.publish(
+                content=f"Testing data provider: {provider_name}",
+                level=MessageLevel.INFO
+            )
+            
+            # Mock data to send
+            mock_data = {
+                "sheet": "TestSheet",
+                "log_type": "TestLog",
+                "username": "TestUser",
+                "action": "Test Action",
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                "details": f"This is a test entry for {provider_name}."
+            }
+
+            # Send the mock data using the monitoring service
+            if not hasattr(self.parent, 'monitoring_service') or not hasattr(self.parent.monitoring_service, 'event_handler'):
+                wx.MessageBox("Monitoring service is not available. Please try again later.", 
+                             "Error", wx.OK | wx.ICON_ERROR)
+                return
+                
+            event_handler = self.parent.monitoring_service.event_handler
+            success = event_handler.update_data_queue(mock_data, "SC_Default")
+            
             if success:
-                wx.MessageBox("Test entry sent successfully to Google Sheets.", "Success", wx.OK | wx.ICON_INFORMATION)
+                wx.MessageBox(f"Test entry sent successfully to {provider_name}.", 
+                             "Success", wx.OK | wx.ICON_INFORMATION)
             else:
-                wx.MessageBox("Failed to send test entry to Google Sheets. Check the logs for details.", "Error", wx.OK | wx.ICON_ERROR)
+                wx.MessageBox(f"Failed to send test entry to {provider_name}. Check the logs for details.", 
+                             "Error", wx.OK | wx.ICON_ERROR)
         except Exception as e:
-            wx.MessageBox(f"Error sending test entry to Google Sheets: {e}", "Error", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(f"Error testing data provider: {e}", 
+                         "Error", wx.OK | wx.ICON_ERROR)
     
     def async_init_tabs(self):
         """
@@ -411,11 +413,12 @@ class DataDisplayManager:
         Separated from async_init_tabs to allow different timing options.
         """
         try:
+            # Only rely on ConfigManager for determining if Google Sheets is enabled
             google_sheets_webhook = self.parent.config_manager.get("google_sheets_webhook", "")
-            googlesheet_check = self.parent.googlesheet_check.IsChecked()
+            use_googlesheet = self.parent.config_manager.get("use_googlesheet", True)
             
-            # Only proceed if Google Sheets is enabled
-            if google_sheets_webhook and googlesheet_check:
+            # Only proceed if Google Sheets is enabled in the ConfigManager
+            if google_sheets_webhook and use_googlesheet:
                 # Log that we're starting to create tabs
                 message_bus.publish(
                     content="Creating data tabs...",
@@ -435,6 +438,10 @@ class DataDisplayManager:
                              lambda: self.parent.SetStatusText("All tabs created"))
             else:
                 self.parent.SetStatusText("Google Sheets integration disabled")
+                
+                # Update UI to match ConfigManager state if needed
+                if hasattr(self.parent, 'googlesheet_check'):
+                    self.parent.googlesheet_check.Check(use_googlesheet)
         except Exception as e:
             message_bus.publish(
                 content=f"Error creating tabs: {e}",
