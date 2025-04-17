@@ -338,26 +338,29 @@ class SupabaseManager:
             table_name = self._sanitize_table_name(table_base_name)
             
             # Check if the table exists, create it if it doesn't
-            # if not self._table_exists(table_name):
-            #     if not self._create_table(table_name, data):
-            #         # Fallback to default table if creation fails
-            #         table_name = "game_logs"
+            if not self._table_exists(table_name):
+                if not self._create_table(table_name, data):
+                    log_message("Failed to create table. Aborting insert.", "ERROR")
+                    return False
+            
+            # Insert the data into the table with improved error handling
+            try:
+                result = self.supabase.table(table_name).insert(data).execute()
+                
+                # Check for errors - more robust error checking
+                if hasattr(result, 'error') and result.error is not None:
+                    log_message(f"Error inserting log into Supabase table {table_name}: {result.error}", "ERROR")
+                    return False
                     
-            #         # Create default table if it doesn't exist
-            #         if not self._table_exists(table_name):
-            #             if not self._create_table(table_name, data):
-            #                 log_message("Failed to create even the default table. Aborting insert.", "ERROR")
-            #                 return False
-            
-            # Insert the data into the table
-            result = self.supabase.table(table_name).insert(data).execute()
-            
-            # Check for errors
-            if hasattr(result, 'error') and result.error:
-                log_message(f"Error inserting log into Supabase table {table_name}: {result.error}", "ERROR")
+                log_message(f"Successfully inserted data into {table_name}", "DEBUG")
+                return True
+            except Exception as insert_error:
+                # Handle the "Empty Error" exception
+                error_message = str(insert_error) if str(insert_error) else "Empty Error received from Supabase API"
+                log_message(f"Exception during Supabase insert operation: {error_message}", "ERROR")
+                log_message(f"Table: {table_name}, Data keys: {list(data.keys())}", "DEBUG")
                 return False
                 
-            return True
         except Exception as e:
             log_message(f"Exception inserting log into Supabase: {e}", "ERROR")
             return False
