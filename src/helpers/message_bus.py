@@ -3,6 +3,30 @@ import time
 import queue
 from enum import Enum, auto
 from typing import Dict, List, Callable, Optional, Any
+import sys
+
+class RedirectText:
+    """Class to redirect stdout to the message bus."""
+    def __init__(self, stdout=None):
+        self.stdout = stdout  # Store the original stdout if needed
+
+    def write(self, string):
+        """Publish the string to the message bus."""
+        if string and string.strip():  # Skip empty strings
+            try:
+                # Use the module-level import of message_bus
+                message_bus.publish(
+                    content=string,
+                    level=MessageLevel.INFO,
+                    metadata={'from_stdout': True}
+                )
+            except Exception as e:
+                # Fallback to direct writing if message_bus isn't available
+                if self.stdout:
+                    self.stdout.write(string)
+
+    def flush(self):
+        pass
 
 
 class MessageLevel(Enum):
@@ -93,6 +117,29 @@ class MessageBus:
         self.message_history: List[Message] = []
         self.max_history_size = 1000  # Maximum number of messages to keep in history
         self.filters = {}  # Filters for conditional message processing
+        self.debug_mode = False  # Debug mode flag for peeking at messages
+        self.redirect_stdout = sys.stdout  # Store original stdout
+        sys.stdout = RedirectText()  # Redirect stdout to the message bus
+
+    def set_debug_mode(self, enabled: bool) -> None:
+        """
+        Enable or disable debug mode.
+        When debug mode is enabled, all messages will also be printed to stdout.
+        
+        Args:
+            enabled: True to enable debug mode, False to disable
+        """
+        self.debug_mode = enabled
+        print(f"Message bus debug mode {'enabled' if enabled else 'disabled'}")
+    
+    def is_debug_mode(self) -> bool:
+        """
+        Check if debug mode is enabled.
+        
+        Returns:
+            True if debug mode is enabled, False otherwise
+        """
+        return self.debug_mode
     
     def start(self) -> None:
         """
@@ -128,6 +175,22 @@ class MessageBus:
                     
                 # Store in history before routing
                 self._add_to_history(message)
+                
+                # Debug mode: print message to stdout with level indicator
+                if self.debug_mode:
+                    level_indicators = {
+                        MessageLevel.DEBUG: "[DEBUG]",
+                        MessageLevel.INFO: "[INFO]",
+                        MessageLevel.WARNING: "[WARN]",
+                        MessageLevel.ERROR: "[ERROR]",
+                        MessageLevel.CRITICAL: "[CRIT]"
+                    }
+                    level_str = level_indicators.get(message.level, "[INFO]")
+                    pattern_str = f"[{message.pattern_name}]" if message.pattern_name else ""
+                    (f"{level_str}{pattern_str} {message.get_formatted_message()}")
+                    self.redirect_stdout.write(
+                        f"{level_str} {message.get_formatted_message()}\n"
+                    )
                 
                 # Send to all subscribers
                 for subscriber in self.subscribers:
