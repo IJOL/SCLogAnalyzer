@@ -258,9 +258,9 @@ class SupabaseDataProvider(DataProvider):
             total_count = len(data)
             
             # Process each item in the batch
-            for data,sheet_name in data:
+            for d in data:
                 # Insert the data into Supabase
-                if supabase_manager.insert_data(sheet_name, data):
+                if supabase_manager.insert_data(d['sheet'], d['data']):
                     success_count += 1
             
             # Log success rate
