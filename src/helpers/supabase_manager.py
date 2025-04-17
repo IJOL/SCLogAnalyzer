@@ -315,7 +315,7 @@ class SupabaseManager:
             log_message(f"Error creating table {table_name}: {e}", "ERROR")
             return False
         
-    def insert_data(self,sheet, data):
+    def insert_data(self, sheet, data):
         """
         Insert game log data into Supabase.
         
@@ -338,16 +338,16 @@ class SupabaseManager:
             table_name = self._sanitize_table_name(table_base_name)
             
             # Check if the table exists, create it if it doesn't
-            if not self._table_exists(table_name):
-                if not self._create_table(table_name, data):
-                    # Fallback to default table if creation fails
-                    table_name = "game_logs"
+            # if not self._table_exists(table_name):
+            #     if not self._create_table(table_name, data):
+            #         # Fallback to default table if creation fails
+            #         table_name = "game_logs"
                     
-                    # Create default table if it doesn't exist
-                    if not self._table_exists(table_name):
-                        if not self._create_table(table_name, data):
-                            log_message("Failed to create even the default table. Aborting insert.", "ERROR")
-                            return False
+            #         # Create default table if it doesn't exist
+            #         if not self._table_exists(table_name):
+            #             if not self._create_table(table_name, data):
+            #                 log_message("Failed to create even the default table. Aborting insert.", "ERROR")
+            #                 return False
             
             # Insert the data into the table
             result = self.supabase.table(table_name).insert(data).execute()
