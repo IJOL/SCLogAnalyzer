@@ -71,10 +71,6 @@ class LogAnalyzerFrame(wx.Frame):
         # Create main panel and UI components
         self._create_ui_components()
         
-        # Apply dynamic configuration if available
-        if self.google_sheets_webhook:
-            self.config_manager.apply_dynamic_config(self.google_sheets_webhook)
-       
         # Set flag for GUI mode in log_analyzer
         log_analyzer.main.in_gui = True
         
@@ -91,9 +87,6 @@ class LogAnalyzerFrame(wx.Frame):
         # Initialize configuration and settings
         self.initialize_config()
         self.config_manager.renew_config()
-        
-        # Explicitly attempt to connect to Supabase if configured
-        self._ensure_supabase_connection()
         
         # Set up stdout redirection
         sys.stdout = RedirectText(self.log_text)
@@ -156,6 +149,7 @@ class LogAnalyzerFrame(wx.Frame):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Style buttons with icons and custom fonts
+        # IMPORTANT: wx font style constants use UNDERSCORE, not DOT notation (wx.FONTSTYLE_NORMAL, not wx.FONTSTYLE.NORMAL)
         self.process_log_button = wx.Button(self.log_page, label=" Process Log")
         self.process_log_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_FILE_OPEN, wx.ART_BUTTON, (16, 16)))
         self.process_log_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
@@ -169,17 +163,17 @@ class LogAnalyzerFrame(wx.Frame):
         self.monitor_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_EXECUTABLE_FILE, wx.ART_BUTTON, (16, 16)))
         self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
 
-        # Add the Google Sheets test button (hidden by default)
-        self.test_google_sheets_button = wx.Button(self.log_page, label=" Test Google Sheets")
-        self.test_google_sheets_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_LIST_VIEW, wx.ART_BUTTON, (16, 16)))
-        self.test_google_sheets_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
-        self.test_google_sheets_button.Hide()  # Hidden by default (debug mode only)
+        # Add the test button for data provider (hidden by default)
+        self.test_data_provider_button = wx.Button(self.log_page, label=" Test Data Provider")
+        self.test_data_provider_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_LIST_VIEW, wx.ART_BUTTON, (16, 16)))
+        self.test_data_provider_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.test_data_provider_button.Hide()  # Hidden by default (debug mode only)
 
         # Add buttons to the horizontal button sizer
         button_sizer.Add(self.process_log_button, 0, wx.ALL, 2)
         button_sizer.Add(self.autoshard_button, 0, wx.ALL, 2)
         button_sizer.Add(self.monitor_button, 0, wx.ALL, 2)
-        button_sizer.Add(self.test_google_sheets_button, 0, wx.ALL, 2)
+        button_sizer.Add(self.test_data_provider_button, 0, wx.ALL, 2)
 
         # Add the button sizer to the log page sizer
         log_page_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 2)
@@ -210,7 +204,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.process_log_button.Bind(wx.EVT_BUTTON, self.on_process_log)
         self.autoshard_button.Bind(wx.EVT_BUTTON, self.on_autoshard)
         self.monitor_button.Bind(wx.EVT_BUTTON, self.on_monitor)
-        self.test_google_sheets_button.Bind(wx.EVT_BUTTON, self.on_test_google_sheets)
+        self.test_data_provider_button.Bind(wx.EVT_BUTTON, self.on_test_data_provider)
 
         # Add menu items
         menu_bar = wx.MenuBar()
@@ -366,21 +360,6 @@ class LogAnalyzerFrame(wx.Frame):
             self.googlesheet_check.Check(self.use_googlesheet)
             self.supabase_check.Check(self.use_supabase)
             
-            # Try to connect to Supabase if enabled
-            if self.use_supabase:
-                from .supabase_manager import supabase_manager
-                if not supabase_manager.is_connected():
-                    connection_result = supabase_manager.connect()
-                    if not connection_result:
-                        # If connection failed, uncheck the Supabase option and update config
-                        self.supabase_check.Check(False)
-                        self.config_manager.set('use_supabase', False)
-                        self.config_manager.save_config()
-                        message_bus.publish(
-                            content="Failed to connect to Supabase. Check your credentials in config.",
-                            level=MessageLevel.ERROR
-                        )
-            
             # 3. Validate critical settings and prompt for missing ones
             missing_settings = []
             if not self.default_log_file_path:
@@ -500,20 +479,7 @@ class LogAnalyzerFrame(wx.Frame):
             elif menu_item == self.supabase_check:
                 self.config_manager.set('use_supabase', new_state)
                 
-                # Connect or disconnect based on checkbox state
-                if new_state and not supabase_manager.is_connected():
-                    if supabase_manager.connect():
-                        message_bus.publish(
-                            content="Connected to Supabase successfully.",
-                            level=MessageLevel.INFO
-                        )
-                    else:
-                        message_bus.publish(
-                            content="Failed to connect to Supabase. Check your credentials in config.",
-                            level=MessageLevel.ERROR
-                        )
-                        menu_item.Check(False)  # Uncheck if connection failed
-                        self.config_manager.set('use_supabase', False)
+                # We don't handle connection directly here - let the data provider handle it
             
             # Save configuration
             self.config_manager.save_config()
@@ -598,9 +564,9 @@ class LogAnalyzerFrame(wx.Frame):
             # Update tabs based on the data source
             self.data_manager.update_data_source_tabs()
     
-    def on_test_google_sheets(self, event):
-        """Handle the Test Google Sheets button click."""
-        self.data_manager.test_google_sheets()
+    def on_test_data_provider(self, event):
+        """Handle the Test Data Provider button click."""
+        self.data_manager.test_data_provider()
     
     def on_close(self, event):
         """Handle window close event."""
@@ -723,8 +689,8 @@ class LogAnalyzerFrame(wx.Frame):
         
     def update_debug_ui_visibility(self):
         """Update UI elements based on debug mode state"""
-        if hasattr(self, 'test_google_sheets_button'):
-            self.test_google_sheets_button.Show(self.debug_mode)
+        if hasattr(self, 'test_data_provider_button'):
+            self.test_data_provider_button.Show(self.debug_mode)
             
         # Update log level filtering based on debug mode
         if hasattr(self, 'data_manager'):
@@ -742,20 +708,6 @@ class LogAnalyzerFrame(wx.Frame):
     def async_init_tabs(self):
         """Initialize tabs asynchronously after the main window is loaded."""
         self.data_manager.async_init_tabs()
-    
-    def _ensure_supabase_connection(self):
-        """Ensure Supabase connection if configured."""
-        if self.use_supabase and not supabase_manager.is_connected():
-            if supabase_manager.connect():
-                message_bus.publish(
-                    content="Connected to Supabase successfully.",
-                    level=MessageLevel.INFO
-                )
-            else:
-                message_bus.publish(
-                    content="Failed to connect to Supabase. Check your credentials in config.",
-                    level=MessageLevel.ERROR
-                )
 
 
 def main():
