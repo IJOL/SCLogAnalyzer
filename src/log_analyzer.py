@@ -391,38 +391,41 @@ class LogFileHandler(FileSystemEventHandler):
                         
                 # Process the collected batch if not empty
                 if batch:
-                    self._log_message(f"Processing batch of {len(batch)} items", "DEBUG")                    
+                    message_bus.publish(
+                        content=f"Processing batch of {len(batch)} items", 
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "log_analyzer"}
+                    )                  
                     # Process each event type batch
                     if self.data_provider.process_data(batch):
-                        self._log_message(f"Successfully processed batch of {len(batch)} items", "DEBUG")
+                        message_bus.publish(
+                            content=f"Successfully processed batch of {len(batch)} items", 
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": "log_analyzer"}
+                        )
                     else:
-                        self._log_message(f"Failed to process batch of {len(batch)} items", "ERROR")
+                        message_bus.publish(
+                            content=f"Failed to process batch of {len(batch)} items", 
+                            level=MessageLevel.ERROR,
+                            metadata={"source": "log_analyzer"}
+                        )
                     
                     # Mark all items as done
                     for _ in range(len(batch)):
                         self.data_queue.task_done()
                 
             except Exception as e:
-                self._log_message(f"Exception in data queue worker thread: {e}", "ERROR")
+                message_bus.publish(
+                    content=f"Exception in data queue worker thread: {e}", 
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "log_analyzer"}
+                )
                 logging.error(f"Exception in data queue worker thread: {str(e)}")
                 logging.error(traceback.format_exc())
         
-        self._log_message("Data queue worker thread stopped", "INFO")
-
-    def _log_message(self, content, level="INFO"):
-        """Send message through the message bus"""
-        level_map = {
-            "DEBUG": MessageLevel.DEBUG,
-            "INFO": MessageLevel.INFO,
-            "WARNING": MessageLevel.WARNING,
-            "ERROR": MessageLevel.ERROR,
-            "CRITICAL": MessageLevel.CRITICAL
-        }
-        msg_level = level_map.get(level.upper(), MessageLevel.INFO)
-        
         message_bus.publish(
-            content=content,
-            level=msg_level,
+            content="Data queue worker thread stopped", 
+            level=MessageLevel.INFO,
             metadata={"source": "log_analyzer"}
         )
 
@@ -875,19 +878,6 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         config_manager = get_config_manager()
         output_message(None, f"Loading config from: {config_manager.config_path}")
         
-        # Apply dynamic configuration if Google Sheets webhook is available
-        google_sheets_webhook = config_manager.get('google_sheets_webhook', '')
-        if google_sheets_webhook and is_valid_url(google_sheets_webhook):
-            config_manager.apply_dynamic_config(google_sheets_webhook)
-            output_message(None, "Applied dynamic configuration from Google Sheets")
-        
-        # Connect to Supabase if credentials are available
-        if config_manager.get('use_supabase', False):
-            if supabase_manager.is_connected():
-                output_message(None, "Successfully connected to Supabase")
-            else:
-                output_message(None, "Failed to connect to Supabase. Check your credentials in .env file")
-        
         # Override configuration with command-line parameters
         config_manager.override_with_parameters(
             process_all=process_all,
@@ -897,7 +887,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
             use_supabase=use_supabase,
             log_file_path=log_file_path
         )
-
+        
         # Log file path must exist
         if not os.path.exists(config_manager.get('log_file_path')):
             output_message(None, f"Log file not found at {config_manager.get('log_file_path')}")
@@ -920,6 +910,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         # Log monitoring status just before starting the observer
         output_message(None, f"Monitoring log file: {config_manager.get('log_file_path')}")
         output_message(None, f"Sending updates to {'Discord webhook' if event_handler.use_discord else 'stdout'}")
+        output_message(None, f"Data provider: {'Supabase' if config_manager.get('use_supabase', False) else 'Google Sheets'}")
 
         # Create an observer
         observer = Observer()
