@@ -195,7 +195,8 @@ class ConfigManager:
                     
                     # Default keys to preserve if none specified
                     preserve_keys = preserve_keys or ["discord_webhook_url", "google_sheets_webhook", 
-                                                     "log_file_path", "console_key", "version"]
+                                                     "log_file_path", "console_key", "version"
+                                                     "supabase_url", "supabase_key"]
                     
                     # Check if the config has already been renewed for this version
                     config_renew_version = self.get("version")
