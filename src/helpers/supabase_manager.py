@@ -249,14 +249,20 @@ class SupabaseManager:
             log_message(f"Error executing SQL via RPC: {e}", "ERROR")
             return False, str(e)
     
-    def _create_table(self, table_name, data):
+    def _create_table(self, table_name, data, enable_rls=False, rls_policies=None):
         """
         Create a new table based on the data structure using raw SQL.
         
         Args:
             table_name (str): The name of the table to create
             data (dict): Sample data to determine column structure
-            
+            enable_rls (bool): Whether to enable Row Level Security on the table
+            rls_policies (list): List of RLS policy dictionaries, each containing:
+                - name: Policy name
+                - action: SELECT, INSERT, UPDATE, DELETE, ALL
+                - using: USING expression (for SELECT, UPDATE, DELETE)
+                - check: WITH CHECK expression (for INSERT, UPDATE)
+                
         Returns:
             bool: True if successful, False otherwise
         """
@@ -298,6 +304,42 @@ class SupabaseManager:
                 {','.join(columns)}
             );
             """
+            
+            # Add RLS if requested
+            if enable_rls:
+                create_table_sql += f"""
+                -- Enable Row Level Security
+                ALTER TABLE "{table_name}" ENABLE ROW LEVEL SECURITY;
+                """
+                
+                # Add RLS policies if provided
+                if rls_policies:
+                    for policy in rls_policies:
+                        policy_name = policy.get('name', f"policy_{table_name}_{policy.get('action', 'all')}")
+                        action = policy.get('action', 'ALL')
+                        using_expr = policy.get('using', 'true')
+                        check_expr = policy.get('check', 'true')
+                        
+                        # Create appropriate policy based on action type
+                        if action.upper() in ('INSERT', 'UPDATE'):
+                            create_table_sql += f"""
+                            -- Create {action} policy
+                            CREATE POLICY "{policy_name}" ON "{table_name}"
+                                FOR {action} WITH CHECK ({check_expr});
+                            """
+                        elif action.upper() in ('SELECT', 'DELETE'):
+                            create_table_sql += f"""
+                            -- Create {action} policy
+                            CREATE POLICY "{policy_name}" ON "{table_name}"
+                                FOR {action} USING ({using_expr});
+                            """
+                        else:  # ALL
+                            create_table_sql += f"""
+                            -- Create general policy
+                            CREATE POLICY "{policy_name}" ON "{table_name}"
+                                USING ({using_expr})
+                                WITH CHECK ({check_expr});
+                            """
             
             # Execute the SQL
             success, result = self._execute_sql(create_table_sql)
