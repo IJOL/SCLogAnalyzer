@@ -12,7 +12,7 @@ import wx.grid
 import requests
 import log_analyzer
 
-from .ui_components import TabCreator, GridManager, DynamicLabels, NumericValidator, safe_call_after
+from .ui_components import TabCreator, DynamicLabels, safe_call_after
 from .monitoring_service import MonitoringService
 from .data_display_manager import DataDisplayManager
 from .window_state_manager import WindowStateManager, is_app_in_startup
@@ -35,7 +35,7 @@ LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
 TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
 
 # Use constants from the updater module
-from helpers.updater import GITHUB_API_URL, APP_EXECUTABLE, UPDATER_EXECUTABLE
+from helpers.updater import UPDATER_EXECUTABLE, LEGACY_UPDATER
 
 
 class LogAnalyzerFrame(wx.Frame):
@@ -719,7 +719,7 @@ def main():
     # Check if running as script or executable
     is_script = getattr(sys, 'frozen', False) == False
     
-    if os.path.basename(sys.argv[0]) == UPDATER_EXECUTABLE:
+    if os.path.basename(sys.argv[0]) in (UPDATER_EXECUTABLE,LEGACY_UPDATER):
         updater.update_application()    
     else:
         updater.cleanup_updater_script()
