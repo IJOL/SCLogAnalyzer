@@ -794,12 +794,15 @@ class LogFileHandler(FileSystemEventHandler):
     
         data = self.detect_generic(entry, self.regex_patterns[pattern_name])
         if data:
+            self.clean_trailing_ids(data)
             # Extract player and action information
             data['player'] = data.get('player') or data.get('owner') or data.get('entity') or 'Unknown'
             data['action'] = pattern_name.replace('_', ' ').title()
             timestamp = data.get('timestamp')
             data['username'] = self.username  # Use instance attribute
-    
+            
+            # Clean IDs - remove trailing underscores followed by 4+ consecutive digits
+            
             # Add state data to the detected data
             data = self.add_state_data(data)
     
@@ -816,6 +819,11 @@ class LogFileHandler(FileSystemEventHandler):
     
             return True, data
         return False, None
+
+    def clean_trailing_ids(self, data):
+        for key, value in data.items():
+            if isinstance(value, str):
+                data[key] = re.sub(r'_\d{4,}$', '', value)
     
 def is_valid_url(url):
     """Validate if the given string is a correctly formatted URL"""
