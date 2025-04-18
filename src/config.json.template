@@ -40,7 +40,7 @@
     },
     "console_key": "",
     "colors": {
-        "white,gray": ["player_death"],
+        "pink": ["player_death"],
         "yellow": ["actor_death","vehicle_destruction"],
         "green": ["actor_stall"],
         "blue,white" : ["connected"],
