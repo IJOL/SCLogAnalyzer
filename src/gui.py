@@ -38,7 +38,7 @@ LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
 TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
 
 # Use constants from the updater module
-from updater import GITHUB_API_URL, APP_EXECUTABLE, UPDATER_EXECUTABLE
+from updater import GITHUB_API_URL, APP_EXECUTABLE, UPDATER_EXECUTABLE,LEGACY_UPDATER
 
 def safe_call_after(func, *args, **kwargs):
     """Safely call wx.CallAfter, ensuring wx.App is initialized."""
@@ -1323,7 +1323,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.Refresh()
 
 def main():
-    if os.path.basename(sys.argv[0]) == UPDATER_EXECUTABLE:
+    if os.path.basename(sys.argv[0]) in (UPDATER_EXECUTABLE,LEGACY_UPDATER):
         updater.update_application()    
     else:
         updater.cleanup_updater_script()

@@ -13,6 +13,8 @@ import wx
 GITHUB_API_URL = "https://api.github.com/repos/IJOL/SCLogAnalyzer/releases"
 APP_EXECUTABLE = "SCLogAnalyzer.exe"  # The main application executable name
 UPDATER_EXECUTABLE = "SCLogAnalyzer_updater.exe"  # The updater executable name
+LEGACY_UPDATER = "updater.py"  # Legacy updater script name
+
 
 def check_for_updates(parent_frame, current_version):
     """
@@ -188,6 +190,14 @@ def download_and_update(parent_frame, download_url):
 def cleanup_updater_script():
     """Remove the updater executable after an update is complete"""
     updater_exe = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), UPDATER_EXECUTABLE)
+    legacy_exe = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), LEGACY_UPDATER)
+    if os.path.exists(legacy_exe):
+        try:
+            os.remove(legacy_exe)
+            print(f"Cleaned up {LEGACY_UPDATER}.")
+        except Exception as e:
+            print(f"Failed to clean up {LEGACY_UPDATER}: {e}")
+    # Remove the updater executable if it exists
     if os.path.exists(updater_exe):
         try:
             os.remove(updater_exe)
@@ -198,7 +208,7 @@ def cleanup_updater_script():
 def update_application():
     """Handle the actual update process after the updater has been launched"""
     if len(sys.argv) < 3:
-        print(f"Usage: {UPDATER_EXECUTABLE} <target_dir> <app_executable>")
+        print(f"Usage: {sys.argv[0]} <target_dir> <app_executable>")
         sys.exit(1)
 
     target_dir = sys.argv[1]
