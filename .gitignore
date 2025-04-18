@@ -163,3 +163,5 @@ cython_debug/
 src/config.json
 src/bot/config.json
 src/openai-api-ley.txt
+.vscode/settings.json
+supabase.session.sql
