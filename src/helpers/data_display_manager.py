@@ -262,7 +262,7 @@ class DataDisplayManager:
         event.SetEventObject(refresh_button)
         self.on_refresh_tab(event)
     
-    def update_google_sheets_tabs(self, refresh_tabs=[]):
+    def create_tabs(self, refresh_tabs=[]):
         """
         Update data tabs based on current configuration.
         
@@ -270,34 +270,21 @@ class DataDisplayManager:
             refresh_tabs (list): List of tab titles to refresh, empty for all tabs
         """
         # Get the datasource and webhook URL from ConfigManager
-        datasource = self.parent.config_manager.get("datasource", "googlesheets")
-        google_sheets_webhook = self.parent.config_manager.get("google_sheets_webhook", "")
+        # Define the tabs we want to ensure exist
+        tab_creator = self.parent.tab_creator
         
-        # Update UI to match ConfigManager state
-        if hasattr(self.parent, 'googlesheet_check'):
-            self.parent.googlesheet_check.Check(datasource == "googlesheets")
-        
-        if google_sheets_webhook and datasource == "googlesheets":
-            # Define the tabs we want to ensure exist
-            tab_creator = self.parent.tab_creator
+        if not len(tab_creator.tab_references):
+            # If no tabs exist yet, create them
+            required_tabs = self._get_required_tab_configs()
             
-            if not len(tab_creator.tab_references):
-                # If no tabs exist yet, create them
-                required_tabs = self._get_required_tab_configs()
-                
-                # Create each tab
-                for tab_info in required_tabs:
-                    self._create_single_tab(tab_info)
-            else:            
-                # If tabs already exist, just refresh them
-                for title, tab_components in tab_creator.tab_references.items():
-                    if title in refresh_tabs or len(refresh_tabs) == 0:
-                        self.execute_refresh_event(tab_components[1])
-        else:
-            message_bus.publish(
-                content=f"Data tabs not available - datasource: {datasource}, webhook configured: {bool(google_sheets_webhook)}",
-                level=MessageLevel.INFO
-            )
+            # Create each tab
+            for tab_info in required_tabs:
+                self._create_single_tab(tab_info)
+        else:            
+            # If tabs already exist, just refresh them
+            for title, tab_components in tab_creator.tab_references.items():
+                if title in refresh_tabs or len(refresh_tabs) == 0:
+                    self.execute_refresh_event(tab_components[1])
     
     def update_data_source_tabs(self):
         """
@@ -305,8 +292,6 @@ class DataDisplayManager:
         Called when toggling between data sources.
         """
         try:
-            # Let ConfigManager handle data provider setup properly
-            self.parent.config_manager.setup_data_providers()
             
             # Update UI checkboxes to reflect the current datasource setting
             if hasattr(self.parent, 'supabase_check') and hasattr(self.parent, 'googlesheet_check'):
@@ -326,7 +311,7 @@ class DataDisplayManager:
                     level=MessageLevel.INFO
                 )
                 # Recreate tabs with the current data provider
-                wx.CallAfter(self.update_google_sheets_tabs)
+                wx.CallAfter(self.create_tabs)
             else:
                 message_bus.publish(
                     content=f"Data provider is not properly connected: {data_provider.__class__.__name__}",

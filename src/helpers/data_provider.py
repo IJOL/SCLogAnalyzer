@@ -436,66 +436,32 @@ class SupabaseDataProvider(DataProvider):
                 )
                 return []
             
-            # Use the view directly
-            attempt = 0
-            last_error = None
-            
-            while attempt < self.max_retries:
-                try:
-                    # Query the view
-                    query = supabase_manager.supabase.table("resumen_view")
-                    
-                    # Add username filter if provided
-                    if username:
-                        query = query.eq('username', username)
-                    
-                    # Execute the query
-                    result = query.execute()
-                    data = result.data if hasattr(result, 'data') else []
-                    message_bus.publish(
-                        content=f"Successfully fetched {len(data)} records from Resumen view",
-                        level=MessageLevel.DEBUG,
-                        metadata={"source": self.SOURCE}
-                    )
-                    return data
-                    
-                except Exception as e:
-                    last_error = str(e)
-                    message_bus.publish(
-                        content=f"Error fetching from Resumen view (attempt {attempt+1}/{self.max_retries}): {e}",
-                        level=MessageLevel.WARNING,
-                        metadata={"source": self.SOURCE}
-                    )
-                    message_bus.publish(
-                        content=traceback.format_exc(),
-                        level=MessageLevel.DEBUG,
-                        metadata={"source": self.SOURCE}
-                    )
-                
-                # Increment attempt counter and delay before retry
-                attempt += 1
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_delay)
-            
-            # All attempts failed
-            message_bus.publish(
-                content=f"All {self.max_retries} attempts failed to query Resumen view: {last_error}",
-                level=MessageLevel.ERROR,
-                metadata={"source": self.SOURCE}
-            )
-            return []
+            # Use the view directly - table_name is already "resumen_view" in the database
+            return self._execute_table_query("resumen_view", username=username)
             
         # Standard table query for non-Resumen tables
+        # Sanitize the table name to match how it would be stored
+        sanitized_table = supabase_manager._sanitize_table_name(table_name)
+        return self._execute_table_query(sanitized_table, username=username)
+    
+    def _execute_table_query(self, table_name: str, username: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Execute a query against a Supabase table with retry logic.
+        
+        Args:
+            table_name: The sanitized table name to query
+            username: Optional username filter
+            
+        Returns:
+            List of dictionaries containing the fetched data
+        """
         attempt = 0
         last_error = None
         
         while attempt < self.max_retries:
             try:
-                # Sanitize the table name to match how it would be stored
-                sanitized_table = supabase_manager._sanitize_table_name(table_name)
-                
                 # Build the query
-                query = supabase_manager.supabase.table(sanitized_table)
+                query = supabase_manager.supabase.table(table_name)
                 
                 # Add username filter if provided
                 if username:
@@ -506,7 +472,7 @@ class SupabaseDataProvider(DataProvider):
                     result = query.order('created_at', desc=True).execute()
                     data = result.data if hasattr(result, 'data') else []
                     message_bus.publish(
-                        content=f"Successfully fetched {len(data)} records from Supabase",
+                        content=f"Successfully fetched {len(data)} records from table '{table_name}'",
                         level=MessageLevel.DEBUG,
                         metadata={"source": self.SOURCE}
                     )
@@ -518,10 +484,10 @@ class SupabaseDataProvider(DataProvider):
                         level=MessageLevel.DEBUG,
                         metadata={"source": self.SOURCE}
                     )
-                    result = query.execute()
+                    result = query.select("*").execute()
                     data = result.data if hasattr(result, 'data') else []
                     message_bus.publish(
-                        content=f"Successfully fetched {len(data)} records from Supabase (unordered)",
+                        content=f"Successfully fetched {len(data)} records from table '{table_name}' (unordered)",
                         level=MessageLevel.DEBUG,
                         metadata={"source": self.SOURCE}
                     )
@@ -530,7 +496,7 @@ class SupabaseDataProvider(DataProvider):
             except Exception as e:
                 last_error = str(e)
                 message_bus.publish(
-                    content=f"Error fetching from Supabase (attempt {attempt+1}/{self.max_retries}): {e}",
+                    content=f"Error fetching from table '{table_name}' (attempt {attempt+1}/{self.max_retries}): {e}",
                     level=MessageLevel.WARNING,
                     metadata={"source": self.SOURCE}
                 )
@@ -547,7 +513,7 @@ class SupabaseDataProvider(DataProvider):
         
         # All attempts failed
         message_bus.publish(
-            content=f"All {self.max_retries} attempts failed: {last_error}",
+            content=f"All {self.max_retries} attempts failed to query table '{table_name}': {last_error}",
             level=MessageLevel.ERROR,
             metadata={"source": self.SOURCE}
         )

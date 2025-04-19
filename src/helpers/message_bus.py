@@ -396,3 +396,40 @@ class MessageBus:
 message_bus = MessageBus()
 # Start the message bus on import
 message_bus.start()
+
+def setup_console_handler(debug=False):
+    """
+    Set up a console handler that outputs message bus messages to the console.
+    This is useful for command-line scripts that use the message bus.
+    
+    Args:
+        debug (bool): Whether to show debug-level messages. If False, only INFO and above will be shown.
+    """
+    # Define a simple handler that prints messages to the console
+    def console_handler(message):
+        level_indicators = {
+            MessageLevel.DEBUG: "\033[36m[DEBUG]\033[0m",  # Cyan
+            MessageLevel.INFO: "\033[32m[INFO]\033[0m",   # Green
+            MessageLevel.WARNING: "\033[33m[WARN]\033[0m",  # Yellow
+            MessageLevel.ERROR: "\033[31m[ERROR]\033[0m",  # Red
+            MessageLevel.CRITICAL: "\033[35m[CRIT]\033[0m"  # Magenta
+        }
+        
+        # Get the appropriate level indicator
+        level_str = level_indicators.get(message.level, "\033[32m[INFO]\033[0m")
+        
+        # Print the formatted message to the console
+        print(f"{level_str} {message.get_formatted_message()}")
+    
+    # Create a unique handler name based on current time to avoid conflicts
+    handler_name = f"console_handler_{int(time.time())}"
+    
+    # Subscribe to the message bus
+    message_bus.subscribe(handler_name, console_handler)
+    
+    # Set the minimum level filter based on the debug parameter
+    min_level = MessageLevel.DEBUG if debug else MessageLevel.INFO
+    message_bus.set_filter(handler_name, 'level', min_level)
+    
+    # Return the handler name so it can be unsubscribed later if needed
+    return handler_name

@@ -148,7 +148,7 @@ class LogAnalyzerFrame(wx.Frame):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Style buttons with icons and custom fonts
-        # IMPORTANT: wx font style constants use UNDERSCORE, not DOT notation (wx.FONTSTYLE_NORMAL, not wx.FONTSTYLE.NORMAL)
+        # IMPORTANT: wx font style constants use UNDERSCORE, not DOT notation (wx.FONTSTYLE_NORMAL, not wx.FONTSTYLE_NORMAL)
         self.process_log_button = wx.Button(self.log_page, label=" Process Log")
         self.process_log_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_FILE_OPEN, wx.ART_BUTTON, (16, 16)))
         self.process_log_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
@@ -162,6 +162,12 @@ class LogAnalyzerFrame(wx.Frame):
         self.monitor_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_EXECUTABLE_FILE, wx.ART_BUTTON, (16, 16)))
         self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
 
+        # Add the data transfer button
+        self.data_transfer_button = wx.Button(self.log_page, label=" Data Transfer")
+        self.data_transfer_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_COPY, wx.ART_BUTTON, (16, 16)))
+        self.data_transfer_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.data_transfer_button.Hide()  # Hidden by default (debug mode only)
+
         # Add the test button for data provider (hidden by default)
         self.test_data_provider_button = wx.Button(self.log_page, label=" Test Data Provider")
         self.test_data_provider_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_LIST_VIEW, wx.ART_BUTTON, (16, 16)))
@@ -172,6 +178,7 @@ class LogAnalyzerFrame(wx.Frame):
         button_sizer.Add(self.process_log_button, 0, wx.ALL, 2)
         button_sizer.Add(self.autoshard_button, 0, wx.ALL, 2)
         button_sizer.Add(self.monitor_button, 0, wx.ALL, 2)
+        button_sizer.Add(self.data_transfer_button, 0, wx.ALL, 2)
         button_sizer.Add(self.test_data_provider_button, 0, wx.ALL, 2)
 
         # Add the button sizer to the log page sizer
@@ -203,6 +210,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.process_log_button.Bind(wx.EVT_BUTTON, self.on_process_log)
         self.autoshard_button.Bind(wx.EVT_BUTTON, self.on_autoshard)
         self.monitor_button.Bind(wx.EVT_BUTTON, self.on_monitor)
+        self.data_transfer_button.Bind(wx.EVT_BUTTON, self.on_data_transfer)
         self.test_data_provider_button.Bind(wx.EVT_BUTTON, self.on_test_data_provider)
 
         # Add menu items
@@ -560,6 +568,43 @@ class LogAnalyzerFrame(wx.Frame):
         """Handle the Test Data Provider button click."""
         self.data_manager.test_data_provider()
     
+    def on_data_transfer(self, event):
+        """Handle the Data Transfer button click."""
+        message_bus.publish(
+            content="Opening Data Transfer dialog...",
+            level=MessageLevel.INFO
+        )
+        
+        # Check if both Google Sheets and Supabase are configured
+        google_sheets_webhook = self.config_manager.get('google_sheets_webhook', '')
+        supabase_url = self.config_manager.get('supabase_url', '')
+        supabase_key = self.config_manager.get('supabase_key', '')
+        
+        # Validate configurations
+        missing_config = []
+        
+        if not google_sheets_webhook:
+            missing_config.append("Google Sheets webhook URL")
+            
+        if not supabase_url or not supabase_key:
+            missing_config.append("Supabase credentials")
+        
+        if missing_config:
+            error_message = f"Missing configuration: {', '.join(missing_config)}.\nPlease update your configuration before transferring data."
+            wx.MessageBox(error_message, "Configuration Error", wx.OK | wx.ICON_ERROR)
+            message_bus.publish(
+                content=error_message,
+                level=MessageLevel.ERROR
+            )
+            return
+        
+        # Import here to avoid circular imports
+        from .gui_module import DataTransferDialog
+        
+        # Create and show the dialog
+        dialog = DataTransferDialog(self)
+        dialog.ShowModal()
+    
     def on_close(self, event):
         """Handle window close event."""
         # Use the window manager to clean up and save state
@@ -683,6 +728,8 @@ class LogAnalyzerFrame(wx.Frame):
         """Update UI elements based on debug mode state"""
         if hasattr(self, 'test_data_provider_button'):
             self.test_data_provider_button.Show(self.debug_mode)
+        if hasattr(self, 'data_transfer_button'):
+            self.data_transfer_button.Show(self.debug_mode)
             
         # Update log level filtering based on debug mode
         if hasattr(self, 'data_manager'):
