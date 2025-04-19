@@ -797,7 +797,7 @@ def get_data_provider(config_manager) -> DataProvider:
         A DataProvider instance (either Supabase or Google Sheets)
     """
     # Get the configured datasource (default to googlesheets)
-    datasource = config_manager.get('datasource', 'googlesheets')
+    datasource = config_manager.datasource or 'googlesheets'
     
     # Return the appropriate data provider based on the datasource value
     if datasource == 'supabase':
@@ -813,23 +813,23 @@ def get_data_provider(config_manager) -> DataProvider:
                 config_manager.set('datasource', 'googlesheets')
             else:
                 return SupabaseDataProvider(
-                    max_retries=config_manager.get('data_provider_max_retries', 3),
-                    retry_delay=config_manager.get('data_provider_retry_delay', 1.0)
+                    max_retries=config_manager.data_provider_max_retries or 3,
+                    retry_delay=config_manager.data_provider_retry_delay or 1.0
                 )
         else:
             return SupabaseDataProvider(
-                max_retries=config_manager.get('data_provider_max_retries', 3),
-                retry_delay=config_manager.get('data_provider_retry_delay', 1.0)
+                max_retries=config_manager.data_provider_max_retries or 3,
+                retry_delay=config_manager.data_provider_retry_delay or 1.0
             )
     
     # Use Google Sheets if that's the selected datasource or if Supabase failed
     if datasource == 'googlesheets':
-        google_sheets_webhook = config_manager.get('google_sheets_webhook', '')
+        google_sheets_webhook = config_manager.google_sheets_webhook or ''
         if google_sheets_webhook:
             return GoogleSheetsDataProvider(
                 webhook_url=google_sheets_webhook,
-                max_retries=config_manager.get('data_provider_max_retries', 3),
-                retry_delay=config_manager.get('data_provider_retry_delay', 1.0)
+                max_retries=config_manager.data_provider_max_retries or 3,
+                retry_delay=config_manager.data_provider_retry_delay or 1.0
             )
     
     # Fallback message if nothing is configured

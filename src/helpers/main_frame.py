@@ -242,30 +242,16 @@ class LogAnalyzerFrame(wx.Frame):
             name (str): The attribute name to look for in the config_manager
             
         Returns:
-            The value from the config_manager with appropriate defaults
+            The value from the config_manager
             
         Raises:
             AttributeError: If the attribute doesn't exist in the config_manager either
         """
         try:
-            # Define default values for common config attributes
-            defaults = {
-                'log_file_path': '',
-                'google_sheets_webhook': '',
-                'discord_webhook_url': '',
-                'console_key': '',
-                'colors': {},
-                'use_discord': True,
-                'use_googlesheet': True,
-                'use_supabase': False  # Default: Supabase disabled
-            }
-            
-            # Try to get the property from the config_manager with appropriate default
-            default_value = defaults.get(name, None)
-            return self.config_manager.get(name, default_value)
+            return self.config_manager.get(name)
         except Exception as e:
             # If that fails or if the property doesn't exist, raise AttributeError
-            raise AttributeError(f"Neither LogAnalyzerFrame nor ConfigManager has an attribute named '{name}'") from e
+            raise AttributeError(f"Neither {self.__class__.__name__} nor ConfigManager has an attribute named '{name}'") from e
     
     def check_for_updates(self):
         """Check for updates by querying the GitHub API."""
@@ -355,10 +341,10 @@ class LogAnalyzerFrame(wx.Frame):
         try:
             # 1. Load configuration values from ConfigManager
             self.default_log_file_path = self.log_file_path
-            self.discord_check.Check(self.config_manager.get('use_discord', True))
+            self.discord_check.Check(self.use_discord or True)
             
             # Get the datasource and set UI accordingly
-            datasource = self.config_manager.get('datasource', 'googlesheets')
+            datasource = self.datasource or 'googlesheets'
             self.googlesheet_check.Check(datasource == 'googlesheets')
             self.supabase_check.Check(datasource == 'supabase')
             
@@ -369,16 +355,16 @@ class LogAnalyzerFrame(wx.Frame):
             elif not os.path.exists(self.default_log_file_path):
                 missing_settings.append("Log file path does not exist")
                 
-            if datasource == 'googlesheets' and not self.config_manager.get('google_sheets_webhook', ''):
+            if datasource == 'googlesheets' and not self.google_sheets_webhook:
                 missing_settings.append("Google Sheets webhook URL")
                 
             if datasource == 'supabase' and (
-                not self.config_manager.get('supabase_url', '') or 
-                not self.config_manager.get('supabase_key', '')
+                not self.supabase_url or 
+                not self.supabase_key
             ):
                 missing_settings.append("Supabase credentials")
                 
-            if not self.config_manager.get('discord_webhook_url', ''):
+            if not self.discord_webhook_url:
                 self.discord_check.Check(False)  # Uncheck Discord usage
                 
             if missing_settings:
