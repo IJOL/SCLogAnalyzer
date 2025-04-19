@@ -331,6 +331,81 @@ class SupabaseDataProvider(DataProvider):
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         
+    def is_connected(self) -> bool:
+        """
+        Check if Supabase provider is connected.
+        
+        Returns:
+            bool: True if connected to Supabase, False otherwise
+        """
+        return supabase_manager.is_connected()
+    
+    def process_data(self, batch: List[Dict[str, Any]]) -> bool:
+        """
+        Process a batch of data for Supabase.
+        
+        Args:
+            batch: List of dictionaries with 'data' and 'sheet' keys
+            
+        Returns:
+            bool: True if processing was successful, False otherwise
+        """
+        if not batch:
+            return True  # Empty batch is considered successful
+            
+        if not supabase_manager.is_connected():
+            message_bus.publish(
+                content="Supabase is not connected",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+        
+        try:
+            success_count = 0
+            for item in batch:
+                data = item.get('data', {})
+                sheet = item.get('sheet', 'game_logs')
+                
+                if supabase_manager.insert_data(sheet, data):
+                    success_count += 1
+            
+            # Report results
+            if success_count == len(batch):
+                message_bus.publish(
+                    content=f"Successfully processed all {len(batch)} items",
+                    level=MessageLevel.INFO,
+                    metadata={"source": self.SOURCE}
+                )
+                return True
+            elif success_count > 0:
+                message_bus.publish(
+                    content=f"Partially successful: processed {success_count}/{len(batch)} items",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": self.SOURCE}
+                )
+                return success_count > 0  # Consider partial success as success
+            else:
+                message_bus.publish(
+                    content="Failed to process any items in the batch",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                return False
+                
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error processing batch: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            message_bus.publish(
+                content=traceback.format_exc(),
+                level=MessageLevel.DEBUG,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+        
     def fetch_data(self, table_name: str, username: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Fetch data from Supabase.

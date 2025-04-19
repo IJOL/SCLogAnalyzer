@@ -132,55 +132,31 @@ class SupabaseManager:
     
     def _refresh_table_cache(self):
         """
-        Refresh the cache of existing tables using PostgreSQL metadata.
+        Refresh the cache of existing tables using the list_tables() SQL function.
         """
         if not self.is_connected():
             return
             
         try:
-            # Try a direct method that works with Supabase PostgREST API
-            # This uses the special PostgREST metadata format to get a schema listing
-            # Reference: https://postgrest.org/en/stable/api.html#schema-discovery
+            # Call the list_tables() function that was created in Supabase
+            # This function returns all table names in the public schema
+            result = self.supabase.rpc('list_tables').execute()
             
-            # Since we're using the Supabase client, we need to adapt the approach
-            try:
-                # Try the special PostgREST approach by directly querying public schema tables
-                # Get the base URL from supabase client
-                base_url = self.supabase.rest_url
+            # Check for errors
+            if hasattr(result, 'error') and result.error:
+                log_message(f"Error getting table list from Supabase: {result.error}", "ERROR")
+                return
                 
-                # Add the metadata query directly to the base URL
-                import requests
+            # Extract table names from the result
+            # The function returns rows with a single column 'table_name'
+            self.existing_tables = set(row['table_name'] for row in result.data)
+            self.table_cache_time = time.time()
+            
+            log_message(f"Table cache refreshed using list_tables() function. Found {len(self.existing_tables)} tables.", "DEBUG")
                 
-                # Get the headers from the supabase client
-                headers = {
-                    'apikey': self.supabase_key,
-                    'Authorization': f'Bearer {self.supabase_key}'
-                }
-                
-                # Direct REST API call to get schema metadata
-                response = requests.get(
-                    f"{base_url}",
-                    headers=headers
-                )
-                
-                if response.status_code == 200:
-                    # Extract table names from the response
-                    schema_data = response.json()
-                    
-                    # The response contains all tables in the public schema
-                    self.existing_tables = set(table for table in schema_data.keys() 
-                                           if not table.startswith('_'))
-                    self.table_cache_time = time.time()
-                    
-                    log_message(f"Table cache refreshed using PostgREST schema discovery. Found {len(self.existing_tables)} tables.", "DEBUG")
-                    return
-            except Exception as e:
-                log_message(f"PostgREST failed: {e}", "WARNING")
-                           
         except Exception as e:
             log_message(f"Error refreshing table cache: {e}", "ERROR")
             # Don't clear the cache on error - conservative approach
-            
     
     def _sanitize_table_name(self, name):
         """
@@ -354,7 +330,7 @@ class SupabaseManager:
             if success:
                 # Add to our cache of existing tables
                 self.existing_tables.add(table_name)
-                log_message(f"Created table {table_name} in Supabase using SQL", "INFO")
+                log_message(f"Created table {table_name} in Supabase using SQL", "DEBUG")
                 return True
             else:
                 # Log the error but don't use fallback
@@ -379,36 +355,73 @@ class SupabaseManager:
             return False
             
         try:
-            
             # Priority: 1. sheet parameter, 2. mode value, 3. default
             table_base_name = sheet or "game_logs"
             
             # Sanitize the table name to be SQL-safe
             table_name = self._sanitize_table_name(table_base_name)
             
+            # Flag to track if we just created a new table
+            table_newly_created = False
+            
             # Check if the table exists, create it if it doesn't
             if not self._table_exists(table_name):
                 if not self._create_table(table_name, data):
                     log_message("Failed to create table. Aborting insert.", "ERROR")
                     return False
+                table_newly_created = True
+                log_message(f"New table {table_name} created, will use retry mechanism for first insert", "DEBUG")
             
-            # Insert the data into the table with improved error handling
-            try:
-                result = self.supabase.table(table_name).insert(data).execute()
-                
-                # Check for errors - more robust error checking
-                if hasattr(result, 'error') and result.error is not None:
-                    log_message(f"Error inserting log into Supabase table {table_name}: {result.error}", "ERROR")
-                    return False
+            # Determine how many retry attempts to use
+            max_retries = 3 if table_newly_created else 1
+            retry_count = 0
+            delay_seconds = 1  # Start with 1 second delay
+            
+            # Try insertion with retries
+            while retry_count < max_retries:
+                try:
+                    # If this isn't our first attempt, add a delay
+                    if retry_count > 0:
+                        log_message(f"Retry attempt {retry_count} for inserting into {table_name}, waiting {delay_seconds} seconds...", "DEBUG")
+                        time.sleep(delay_seconds)
+                        delay_seconds *= 2  # Exponential backoff
                     
-                log_message(f"Successfully inserted data into {table_name}", "DEBUG")
-                return True
-            except Exception as insert_error:
-                # Handle the "Empty Error" exception
-                error_message = str(insert_error) if str(insert_error) else "Empty Error received from Supabase API"
-                log_message(f"Exception during Supabase insert operation: {error_message}", "ERROR")
-                log_message(f"Table: {table_name}, Data keys: {list(data.keys())}", "DEBUG")
-                return False
+                    result = self.supabase.table(table_name).insert(data).execute()
+                    
+                    # Check for errors - more robust error checking
+                    if hasattr(result, 'error') and result.error is not None:
+                        error_msg = str(result.error)
+                        log_message(f"Error inserting log into Supabase table {table_name}: {error_msg}", "ERROR")
+                        
+                        # If this is the last retry, return failure
+                        if retry_count >= max_retries - 1:
+                            return False
+                            
+                        # Otherwise, increment retry counter and continue the loop
+                        retry_count += 1
+                        continue
+                    
+                    # If we get here, the insert was successful
+                    log_message(f"Successfully inserted data into {table_name}{' after ' + str(retry_count) + ' retries' if retry_count > 0 else ''}", "DEBUG")
+                    return True
+                    
+                except Exception as insert_error:
+                    # Handle the exception
+                    error_message = str(insert_error) if str(insert_error) else "Empty Error received from Supabase API"
+                    log_message(f"Exception during Supabase insert operation: {error_message}", "ERROR")
+                    
+                    # If this is the last retry, return failure
+                    if retry_count >= max_retries - 1:
+                        log_message(f"Failed to insert after {retry_count + 1} attempts", "ERROR")
+                        log_message(f"Table: {table_name}, Data keys: {list(data.keys())}", "DEBUG")
+                        return False
+                    
+                    # Otherwise, increment retry counter and continue the loop
+                    retry_count += 1
+            
+            # This point should not be reached due to the logic above, 
+            # but including as a safeguard
+            return False
                 
         except Exception as e:
             log_message(f"Exception inserting log into Supabase: {e}", "ERROR")
