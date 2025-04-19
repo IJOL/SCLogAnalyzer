@@ -70,10 +70,7 @@ class DataDisplayManager:
                 level=MessageLevel.INFO
             )
         
-        # Save debug mode in configuration if available
-        if hasattr(self.parent, 'config_manager'):
-            self.parent.config_manager.set("debug_mode", enabled)
-    
+   
     def fetch_and_update(self, params, target_grid):
         """
         Fetch data based on parameters and update the target grid.
