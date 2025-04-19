@@ -61,9 +61,13 @@ class SupabaseManager:
         self.table_cache_ttl = 300  # Cache TTL in seconds (5 minutes)
         self.connection_attempted = False  # Track if connection has been attempted
         
-    def connect(self):
+    def connect(self, config_manager=None):
         """
         Connect to Supabase using values from config.
+        
+        Args:
+            config_manager (ConfigManager, optional): If provided, use this config manager
+                instance instead of getting a new one from get_config_manager().
         
         Returns:
             bool: True if connection is successful, False otherwise.
@@ -75,8 +79,11 @@ class SupabaseManager:
         self.connection_attempted = True
         
         try:
-            # Get the config manager
-            config_manager = get_config_manager()
+            # Use the provided config_manager if available
+            # Otherwise get a new one (which could cause circular dependency)
+            if config_manager is None:
+                from .config_utils import get_config_manager
+                config_manager = get_config_manager()
             
             # Get Supabase credentials from config
             self.supabase_url = config_manager.get('supabase_url')

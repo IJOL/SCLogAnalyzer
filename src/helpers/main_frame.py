@@ -443,7 +443,9 @@ class LogAnalyzerFrame(wx.Frame):
     
     def on_toggle_check(self, event):
         """Handle checkbox menu item toggle."""
-        menu_item = self.FindItemById(event.GetId())
+        # Get the menu item directly from the event source
+        menu_item = event.GetEventObject().FindItemById(event.GetId())
+        
         if menu_item:
             # Toggle the check state
             new_state = not menu_item.IsChecked()

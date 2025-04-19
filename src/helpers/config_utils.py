@@ -402,7 +402,8 @@ class ConfigManager:
             if datasource == 'supabase':
                 try:
                     from .supabase_manager import supabase_manager
-                    if supabase_manager.connect():
+                    # Pass the config_manager instance to the connect method
+                    if supabase_manager.connect(config_manager=self):
                         message_bus.publish(
                             content="Successfully connected to Supabase",
                             level=MessageLevel.INFO,
@@ -544,8 +545,4 @@ class ConfigManager:
         """
         with self._lock:
             # Simply check if the attribute exists in the _config dictionary
-            if name in self._config:
-                return self._config[name]
-            
-            # Attribute was not found in config
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+            return self._config.get(name)
