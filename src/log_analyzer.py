@@ -202,6 +202,9 @@ class LogFileHandler(FileSystemEventHandler):
         self.last_position = 0
         self.actor_state = {}
         
+        # Flag to track if we're in a EA_ mode (to ignore exits)
+        self.in_ea_mode = False
+        
         # Initialize a single data queue instead of separate queues for Google Sheets and Supabase
         self.data_queue = queue.Queue()
         
@@ -227,7 +230,6 @@ class LogFileHandler(FileSystemEventHandler):
         self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
         self.nickname_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Connection Complete> map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>.*?) localAddr=(?P<local_addr>.*?) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session_id>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+)")
         self.mode_end_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected> cause=(?P<cause>\d+) reason=\"(?P<reason>.*?)\" frame=(?P<frame>\d+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>[\d\.:\w]+) localAddr=(?P<local_addr>[\d\.:\w]+) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+) \[(?P<tags>.*?)\]")
-        self.simple_disconnect_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected>")
 
         # Process entire log if requested
         if self.process_all:
@@ -452,6 +454,9 @@ class LogFileHandler(FileSystemEventHandler):
         if event.src_path.lower().startswith(self.screenshots_folder.lower()):
             self.process_new_screenshot(event.src_path)
         elif event.src_path.lower() == self.log_file_path.lower():
+            # Reset state when a new log file is detected
+            output_message(None, f"New log file detected at {event.src_path}")
+            self.reset_state()
             self.process_new_entries()
 
     def process_new_screenshot(self, file_path):
@@ -584,6 +589,7 @@ class LogFileHandler(FileSystemEventHandler):
             # Detect log truncation
             if self.last_position > current_file_size:
                 output_message(None, "Log file truncated. Resetting position to the beginning.")
+                self.reset_state()
                 self.last_position = 0
 
             with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as file:
@@ -679,6 +685,13 @@ class LogFileHandler(FileSystemEventHandler):
             if new_mode != self.current_mode:
                 old_mode = self.current_mode
                 self.current_mode = new_mode
+                
+                # Check if we're entering an EA_ mode
+                self.in_ea_mode = new_mode is not None and new_mode.startswith("EA_")
+                
+                # Log EA mode detection state
+                if self.in_ea_mode:
+                    output_message(timestamp, f"EA mode detected: '{new_mode}'. Exit events will be ignored until next mode change.", level="debug")
 
                 # Emit the event to notify subscribers about mode change
                 self.on_mode_change.emit(new_mode, old_mode)
@@ -709,51 +722,33 @@ class LogFileHandler(FileSystemEventHandler):
 
             # Only consider it an end if it matches the current mode
             if gamerules == self.current_mode:
+                # Skip exit processing if we're in an EA_ mode that matches the current mode
+                if self.in_ea_mode and self.current_mode and self.current_mode.startswith("EA_"):
+                    output_message(timestamp, f"Ignoring exit event for EA mode: '{gamerules}'", level="debug")
+                    return False
+                
                 # Emit the event to notify subscribers about mode exit
                 self.on_mode_change.emit(None, self.current_mode)
 
                 # Format the mode data for output
                 mode_data['status'] = 'exited'
                 mode_data=self.add_state_data(mode_data)  # Add state data to the mode data
+                # Emit the event to notify subscribers
+                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
 
                 # Output message
                 output_message(timestamp, f"Exited mode: '{self.current_mode}'")
 
                 # Reset current mode
                 self.current_mode = None
+                # Reset EA mode flag
+                self.in_ea_mode = False
 
                 # Send to Discord if enabled
                 if send_message and self.use_discord and 'mode_change' in self.discord:
                     self.send_discord_message(mode_data, pattern_name='mode_change')
 
                 return True
-
-        # Check for simple disconnects (for modes that don't have the full disconnect message)
-        if self.current_mode and self.simple_disconnect_regex.search(entry):
-            timestamp = self.simple_disconnect_regex.search(entry).group('timestamp')
-
-            # Emit the event to notify subscribers about mode exit
-            self.on_mode_change.emit(None, self.current_mode)
-
-            # Create mode data for the message
-            mode_data = {
-                'timestamp': timestamp,
-                'status': 'exited',
-                'reason': 'Channel Disconnected',
-            }
-            mode_data = self.add_state_data(mode_data)  # Add state data to the mode data
-            # Output message
-            output_message(timestamp, f"Exited mode: '{self.current_mode}'")
-
-            # Reset current mode
-            self.current_mode = None
-
-            # Send to Discord if enabled
-            if send_message and self.use_discord and 'mode_change' in self.discord:
-                self.send_discord_message(mode_data, pattern_name='mode_change')
-
-            return True
-
         return False
 
     def detect_generic(self, entry, pattern):
@@ -818,7 +813,27 @@ class LogFileHandler(FileSystemEventHandler):
         for key, value in data.items():
             if isinstance(value, str):
                 data[key] = re.sub(r'_\d{4,}$', '', value)
-    
+
+    def reset_state(self):
+        """
+        Reset all dynamic state variables to their initial values.
+        This should be called when a log file change is detected.
+        """
+        output_message(None, "Resetting state variables to initial values")
+        self.current_shard = None
+        self.current_version = None
+        self.current_mode = None
+        self.username = self.config_manager.get('username', 'Unknown')
+        self.in_ea_mode = False
+        self.last_position = 0
+        self.actor_state = {}
+        # Emit events to notify subscribers about the reset
+        self.on_mode_change.emit(None, self.current_mode)
+        self.on_shard_version_update.emit(None, None, self.username, None)
+        self.on_username_change.emit(self.username, None)
+        output_message(None, "State reset complete")
+
+
 def is_valid_url(url):
     """Validate if the given string is a correctly formatted URL"""
     regex = re.compile(
