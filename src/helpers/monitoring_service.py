@@ -44,7 +44,7 @@ class MonitoringService:
 
         # Get parameters from configuration manager (source of truth)
         process_all = True  # Always process the entire log
-        use_discord = self.parent.config_manager.get('use_discord', False)
+        use_discord = self.parent.config_manager.get('use_discord', True)
         datasource = self.parent.config_manager.get('datasource', 'googlesheets')
         
         # Delay the start of monitoring to ensure UI is fully loaded

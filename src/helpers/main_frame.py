@@ -355,7 +355,7 @@ class LogAnalyzerFrame(wx.Frame):
         try:
             # 1. Load configuration values from ConfigManager
             self.default_log_file_path = self.log_file_path
-            self.discord_check.Check(self.config_manager.get('use_discord', False))
+            self.discord_check.Check(self.config_manager.get('use_discord', True))
             
             # Get the datasource and set UI accordingly
             datasource = self.config_manager.get('datasource', 'googlesheets')

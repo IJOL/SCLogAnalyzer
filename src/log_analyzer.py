@@ -306,12 +306,6 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, f"Error getting file end position: {e}")
             return 0
 
-    def send_startup_message(self):
-        """Send a startup message to Discord webhook if Discord is active."""
-        if self.use_discord:
-            # Send a startup message to Discord
-            self.send_discord_message(self.add_state_data({}),"startup")
-
     def send_discord_message(self, data, pattern_name=None, technical=False):
         """Send a message to Discord via webhook or stdout"""
         if not self.use_discord:
@@ -667,7 +661,7 @@ class LogFileHandler(FileSystemEventHandler):
                 
                 # Send startup Discord message after getting the username for the first time
                 if old_username == 'Unknown' and not self.process_once:
-                    self.send_startup_message()
+                    self.send_discord_message(self.add_state_data({}),"startup")
 
                 return True
 
