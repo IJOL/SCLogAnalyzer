@@ -385,7 +385,7 @@ class DataDisplayManager:
         self.parent.SetStatusText("Loading data tabs...")
         
         # Create a timer to delay tab creation (ensures window is fully rendered)
-        wx.CallLater(1000, self._create_and_load_tabs)
+        wx.CallLater(1000, self.create_tabs)
     
     def _create_and_load_tabs(self):
         """

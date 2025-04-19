@@ -461,7 +461,7 @@ class SupabaseDataProvider(DataProvider):
         while attempt < self.max_retries:
             try:
                 # Build the query
-                query = supabase_manager.supabase.table(table_name)
+                query = supabase_manager.supabase.table(table_name).select('*')
                 
                 # Add username filter if provided
                 if username:
@@ -484,7 +484,7 @@ class SupabaseDataProvider(DataProvider):
                         level=MessageLevel.DEBUG,
                         metadata={"source": self.SOURCE}
                     )
-                    result = query.select("*").execute()
+                    result = query.execute()
                     data = result.data if hasattr(result, 'data') else []
                     message_bus.publish(
                         content=f"Successfully fetched {len(data)} records from table '{table_name}' (unordered)",
