@@ -217,8 +217,6 @@ class LogAnalyzerFrame(wx.Frame):
         menu_bar = wx.MenuBar()
         config_menu = wx.Menu()
         self.discord_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Discord")
-        self.googlesheet_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Google Sheets")
-        self.supabase_check = config_menu.AppendCheckItem(wx.ID_ANY, "Use Supabase")
         config_menu.AppendSeparator()
         edit_config_item = config_menu.Append(wx.ID_ANY, "Edit Configuration")
         menu_bar.Append(config_menu, "Config")
@@ -231,8 +229,6 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Bind menu events
         self.Bind(wx.EVT_MENU, self.on_toggle_check, self.discord_check)
-        self.Bind(wx.EVT_MENU, self.on_toggle_check, self.googlesheet_check)
-        self.Bind(wx.EVT_MENU, self.on_toggle_check, self.supabase_check)
         self.Bind(wx.EVT_MENU, self.on_edit_config, edit_config_item)
         self.Bind(wx.EVT_MENU, self.on_about, about_item)
 
@@ -349,12 +345,7 @@ class LogAnalyzerFrame(wx.Frame):
         try:
             # 1. Load configuration values from ConfigManager
             self.default_log_file_path = self.log_file_path
-            self.discord_check.Check(self.use_discord or True)
-            
-            # Get the datasource and set UI accordingly
-            datasource = self.datasource or 'googlesheets'
-            self.googlesheet_check.Check(datasource == 'googlesheets')
-            self.supabase_check.Check(datasource == 'supabase')
+            self.discord_check.Check(self.use_discord or False)
             
             # 3. Validate critical settings and prompt for missing ones
             missing_settings = []
@@ -363,10 +354,10 @@ class LogAnalyzerFrame(wx.Frame):
             elif not os.path.exists(self.default_log_file_path):
                 missing_settings.append("Log file path does not exist")
                 
-            if datasource == 'googlesheets' and not self.google_sheets_webhook:
+            if self.datasource == 'googlesheets' and not self.google_sheets_webhook:
                 missing_settings.append("Google Sheets webhook URL")
                 
-            if datasource == 'supabase' and (
+            if self.datasource == 'supabase' and (
                 not self.supabase_url or 
                 not self.supabase_key
             ):
@@ -450,37 +441,15 @@ class LogAnalyzerFrame(wx.Frame):
         )
     
     def on_toggle_check(self, event):
-        """Handle checkbox menu item toggle."""
+        """Handle Discord checkbox menu item toggle."""
         # Get the menu item directly from the event source
         menu_item = event.GetEventObject().FindItemById(event.GetId())
         
-        if menu_item:
-            # Toggle the check state
-            new_state = not menu_item.IsChecked()
-            menu_item.Check(new_state)
+        if menu_item and menu_item == self.discord_check:
+            # Update configuration for Discord
+            new_state = menu_item.IsChecked()
+            self.config_manager.set('use_discord', new_state)
             
-            # Update configuration based on which checkbox changed
-            if menu_item == self.discord_check:
-                self.config_manager.set('use_discord', new_state)
-            elif menu_item == self.googlesheet_check:
-                # Update datasource to googlesheets
-                self.config_manager.set('datasource', 'googlesheets')
-                # Ensure mutual exclusivity with supabase
-                self.supabase_check.Check(False)
-                message_bus.publish(
-                    content="Switched to Google Sheets mode",
-                    level=MessageLevel.INFO
-                )
-            elif menu_item == self.supabase_check:
-                # Update datasource to supabase
-                self.config_manager.set('datasource', 'supabase')
-                # Ensure mutual exclusivity with Google Sheets
-                self.googlesheet_check.Check(False)
-                message_bus.publish(
-                    content="Switched to Supabase mode",
-                    level=MessageLevel.INFO
-                )
-                
             # Save configuration
             self.config_manager.save_config()
             
@@ -489,8 +458,11 @@ class LogAnalyzerFrame(wx.Frame):
                 self.monitoring_service.stop_monitoring()
                 self.monitoring_service.start_monitoring()
                 
-            # Update tabs based on data source change
-            wx.CallAfter(self.data_manager.update_data_source_tabs)
+            # Log state change
+            message_bus.publish(
+                content=f"Discord integration {'enabled' if new_state else 'disabled'}",
+                level=MessageLevel.INFO
+            )
     
     def on_edit_config(self, event):
         """Open the configuration dialog."""
@@ -534,27 +506,20 @@ class LogAnalyzerFrame(wx.Frame):
                 if not supabase_manager.is_connected():
                     connection_result = supabase_manager.connect()
                     if connection_result:
-                        wx.MessageBox(
-                            "Successfully connected to Supabase.",
-                            "Connection Success",
-                            wx.OK | wx.ICON_INFORMATION
-                        )
                         message_bus.publish(
                             content="Connected to Supabase successfully after config change.",
                             level=MessageLevel.INFO
                         )
                     else:
                         wx.MessageBox(
-                            "Failed to connect to Supabase. Check your credentials in config.\n"
-                            "Falling back to Google Sheets mode.",
+                            "Failed to connect to Supabase. Check your credentials in config.",
                             "Connection Failed",
                             wx.OK | wx.ICON_ERROR
                         )
-                        # Fall back to Google Sheets
-                        self.supabase_check.Check(False)
-                        self.googlesheet_check.Check(True)
-                        self.config_manager.set('datasource', 'googlesheets')
-                        self.config_manager.save_config()
+                        message_bus.publish(
+                            content="Failed to connect to Supabase after configuration change.",
+                            level=MessageLevel.ERROR
+                        )
             
             # Restart monitoring if it was active
             if self.monitoring_service.is_monitoring():
