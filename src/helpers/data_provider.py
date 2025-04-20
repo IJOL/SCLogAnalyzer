@@ -467,31 +467,53 @@ class SupabaseDataProvider(DataProvider):
                 if username:
                     query = query.eq('username', username)
                     
-                # First try ordered query (by created_at)
-                try:
-                    result = query.order('created_at', desc=True).execute()
-                    data = result.data if hasattr(result, 'data') else []
-                    message_bus.publish(
-                        content=f"Successfully fetched {len(data)} records from table '{table_name}'",
-                        level=MessageLevel.DEBUG,
-                        metadata={"source": self.SOURCE}
-                    )
-                    return data
-                except Exception as order_error:
-                    # Ordering failed, try without ordering
-                    message_bus.publish(
-                        content=f"Order by created_at failed, trying without: {order_error}",
-                        level=MessageLevel.DEBUG,
-                        metadata={"source": self.SOURCE}
-                    )
-                    result = query.execute()
-                    data = result.data if hasattr(result, 'data') else []
-                    message_bus.publish(
-                        content=f"Successfully fetched {len(data)} records from table '{table_name}' (unordered)",
-                        level=MessageLevel.DEBUG,
-                        metadata={"source": self.SOURCE}
-                    )
-                    return data
+                # Check if this is the resumen_view which doesn't have a created_at column
+                # Instead, it should be ordered by total_kills which is included in the view
+                if table_name == "resumen_view":
+                    try:
+                        result = query.order('total_kills', desc=True).execute()
+                        data = result.data if hasattr(result, 'data') else []
+                        message_bus.publish(
+                            content=f"Successfully fetched {len(data)} records from view '{table_name}'",
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": self.SOURCE}
+                        )
+                        return data
+                    except Exception as order_error:
+                        message_bus.publish(
+                            content=f"Order by total_kills failed for {table_name}, trying without ordering: {order_error}",
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": self.SOURCE}
+                        )
+                        result = query.execute()
+                        data = result.data if hasattr(result, 'data') else []
+                        return data
+                else:
+                    # First try ordered query (by created_at)
+                    try:
+                        result = query.order('created_at', desc=True).execute()
+                        data = result.data if hasattr(result, 'data') else []
+                        message_bus.publish(
+                            content=f"Successfully fetched {len(data)} records from table '{table_name}'",
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": self.SOURCE}
+                        )
+                        return data
+                    except Exception as order_error:
+                        # Ordering failed, try without ordering
+                        message_bus.publish(
+                            content=f"Order by created_at failed, trying without: {order_error}",
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": self.SOURCE}
+                        )
+                        result = query.execute()
+                        data = result.data if hasattr(result, 'data') else []
+                        message_bus.publish(
+                            content=f"Successfully fetched {len(data)} records from table '{table_name}' (unordered)",
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": self.SOURCE}
+                        )
+                        return data
                     
             except Exception as e:
                 last_error = str(e)
