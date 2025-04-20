@@ -4,6 +4,14 @@ import queue
 from enum import Enum, auto
 from typing import Dict, List, Callable, Optional, Any
 import sys
+import logging
+
+# Configure logger for components that don't use message bus
+default_logger = logging.getLogger("default")
+default_handler = logging.StreamHandler(sys.stdout)
+default_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s: %(message)s'))
+default_logger.addHandler(default_handler)
+default_logger.setLevel(logging.INFO)
 
 class RedirectText:
     """Class to redirect stdout to the message bus."""
@@ -36,6 +44,15 @@ class MessageLevel(Enum):
     WARNING = auto()
     ERROR = auto()
     CRITICAL = auto()
+
+# Map MessageLevel to standard logging levels
+level_to_logging = {
+    MessageLevel.DEBUG: logging.DEBUG,
+    MessageLevel.INFO: logging.INFO,
+    MessageLevel.WARNING: logging.WARNING,
+    MessageLevel.ERROR: logging.ERROR,
+    MessageLevel.CRITICAL: logging.CRITICAL
+}
 
 
 class Message:
@@ -431,5 +448,65 @@ def setup_console_handler(debug=False):
     min_level = MessageLevel.DEBUG if debug else MessageLevel.INFO
     message_bus.set_filter(handler_name, 'level', min_level)
     
+    # Configure the default logger to also use similar formatting for consistency
+    # This ensures messages through both paths (message bus and direct logging) look similar
+    log_format = '%(asctime)s - %(message)s'
+    if debug:
+        default_logger.setLevel(logging.DEBUG)
+    else:
+        default_logger.setLevel(logging.INFO)
+    
+    # Clear existing handlers and add a new one with matching format
+    default_logger.handlers.clear()
+    default_handler = logging.StreamHandler(sys.stdout)
+    default_handler.setFormatter(logging.Formatter(log_format))
+    default_logger.addHandler(default_handler)
+    
     # Return the handler name so it can be unsubscribed later if needed
     return handler_name
+
+def log_message(content, level="INFO", pattern_name=None, metadata=None):
+    """
+    Send a message through the message bus or fallback to logging if not available.
+    This is a convenience function to be used by components that want to decouple
+    from direct message_bus usage.
+    
+    Args:
+        content: The message content
+        level: Message level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        pattern_name: Optional regex pattern name
+        metadata: Additional metadata
+    """
+    try:
+        # Map string level to MessageLevel enum
+        level_map = {
+            "DEBUG": MessageLevel.DEBUG,
+            "INFO": MessageLevel.INFO,
+            "WARNING": MessageLevel.WARNING,
+            "ERROR": MessageLevel.ERROR,
+            "CRITICAL": MessageLevel.CRITICAL
+        }
+        msg_level = level_map.get(level.upper(), MessageLevel.INFO)
+        
+        # Try to send message to bus
+        message_bus.publish(
+            content=content,
+            level=msg_level,
+            pattern_name=pattern_name,
+            metadata=metadata
+        )
+    except Exception as e:
+        # Fallback to standard logging if message bus not available
+        log_level = logging.INFO
+        if isinstance(level, str):
+            log_level = {
+                "DEBUG": logging.DEBUG,
+                "INFO": logging.INFO,
+                "WARNING": logging.WARNING,
+                "ERROR": logging.ERROR,
+                "CRITICAL": logging.CRITICAL
+            }.get(level.upper(), logging.INFO)
+        
+        # Add pattern name to message if provided
+        full_message = f"[{pattern_name}] {content}" if pattern_name else content
+        default_logger.log(log_level, full_message)
