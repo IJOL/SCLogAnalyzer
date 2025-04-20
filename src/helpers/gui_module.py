@@ -1,7 +1,6 @@
 import wx
 import os
 import json
-from config_utils import get_application_path  # Ensure this is imported if needed
 import win32gui
 from pynput.keyboard import Controller, Key
 from PIL import Image
@@ -11,23 +10,15 @@ import win32con  # Required for window constants like SW_RESTORE
 import win32process  # Required for process-related functions
 import win32api  # Required for sending keystrokes
 import psutil  # Required for process management
-from version import get_version  # Import get_version to fetch the version dynamically
 import winreg
 import wx.adv  # Import wx.adv for taskbar icon support
+import sys
+
+from version import get_version  # Using absolute import for module in parent directory
+from .config_utils import get_application_path  # Direct import from same directory
+from .message_bus import message_bus, MessageLevel  # Direct import from same directory
+
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-
-class RedirectText:
-    """Class to redirect stdout to a text control."""
-    def __init__(self, text_ctrl):
-        self.text_ctrl = text_ctrl
-
-    def write(self, string):
-        """Write to the text control."""
-        wx.CallAfter(self.text_ctrl.AppendText, string)
-
-    def flush(self):
-        pass
-
 
 class KeyValueGrid(wx.Panel):
     """A reusable grid for editing key-value pairs."""
@@ -144,7 +135,9 @@ class ConfigDialog(wx.Frame):
         self.add_general_tab(notebook, "General Config", self.config_data)
         self.regex_patterns_grid = self.add_tab(notebook, "Regex Patterns", "regex_patterns")
         regex_keys = list(self.config_data.get("regex_patterns", {}).keys())
-        regex_keys.append("mode_change")  # Add the fixed option
+        regex_keys.append("mode_change")  # Add fixed options
+        regex_keys.append("startup")
+        regex_keys.append("shard_info")
         self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
         self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
         self.colors_grid = self.add_colors_tab(notebook, "Colors", self.config_data.get("colors", {}))  # Add colors tab
@@ -180,10 +173,14 @@ class ConfigDialog(wx.Frame):
         """Toggle adding/removing the app from Windows startup."""
         if is_app_in_startup(self.app_name):
             remove_app_from_startup(self.app_name)
-            wx.MessageBox(f"{self.app_name} removed from Windows startup.", "Info", wx.OK | wx.ICON_INFORMATION)
+            message = f"{self.app_name} removed from Windows startup."
+            wx.MessageBox(message, "Info", wx.OK | wx.ICON_INFORMATION)
+            message_bus.publish(content=message, level=MessageLevel.INFO)
         else:
             add_app_to_startup(self.app_name, self.app_path)
-            wx.MessageBox(f"{self.app_name} added to Windows startup with '--start-hidden' parameter.", "Info", wx.OK | wx.ICON_INFORMATION)
+            message = f"{self.app_name} added to Windows startup with '--start-hidden' parameter."
+            wx.MessageBox(message, "Info", wx.OK | wx.ICON_INFORMATION)
+            message_bus.publish(content=message, level=MessageLevel.INFO)
         self.update_startup_button_label()
 
     def add_tab(self, notebook, title, config_key, key_choices=None):
@@ -215,9 +212,45 @@ class ConfigDialog(wx.Frame):
         """Helper method to add the general configuration tab."""
         panel = wx.Panel(notebook)
         sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        # Track which keys have been handled with special controls
+        special_keys_handled = set()
+        
+        # Add data source selection dropdown first
+        # This will replace the separate use_googlesheet and use_supabase boolean flags
+        datasource_label = wx.StaticText(panel, label="Data Source")
+        datasource_choices = ["googlesheets", "supabase"]
+        
+        # Get current datasource value or default to googlesheets
+        current_datasource = config_data.get("datasource", "googlesheets")
+        
+        datasource_control = wx.Choice(panel, choices=datasource_choices)
+        # Set the selected choice
+        if current_datasource in datasource_choices:
+            datasource_control.SetStringSelection(current_datasource)
+        else:
+            datasource_control.SetSelection(0)  # Default to googlesheets
+            
+        # Store the control for later retrieval
+        self.general_controls["datasource"] = datasource_control
+        
+        # Create a row for the datasource dropdown
+        row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        row_sizer.Add(datasource_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        row_sizer.Add(datasource_control, 1, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(row_sizer, 0, wx.EXPAND)
+        
+        # Mark these keys as handled since we're replacing them with the datasource dropdown
+        special_keys_handled.add("use_googlesheet")
+        special_keys_handled.add("use_supabase")
+        special_keys_handled.add("datasource")
+        
+        # Process other configuration keys
         for key, value in config_data.items():
-            if key == "username":
-                continue  # Skip username-related logic
+            # Skip keys we've already handled with special controls
+            if key in special_keys_handled or key == "username":
+                continue
+                
             if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
                 label = wx.StaticText(panel, label=key)
                 control = wx.CheckBox(panel) if isinstance(value, bool) else wx.TextCtrl(panel, value=str(value))
@@ -247,7 +280,7 @@ class ConfigDialog(wx.Frame):
         """Save configuration using the ConfigManager."""
         # Save general config values 
         for key, control in self.general_controls.items():
-            value = control.GetValue() if isinstance(control, wx.CheckBox) else control.GetValue()
+            value = control.GetStringSelection() if isinstance(control, wx.Choice) else control.GetValue()
             self.config_manager.set(key, value)
 
         # Save regex patterns data
@@ -331,7 +364,9 @@ class ProcessDialog(wx.Dialog):
         """Handle accept button click."""
         log_file = self.file_path.GetValue()
         if not log_file:
-            wx.MessageBox("Please select a log file.", "Error", wx.OK | wx.ICON_ERROR)
+            message = "Please select a log file."
+            wx.MessageBox(message, "Error", wx.OK | wx.ICON_ERROR)
+            message_bus.publish(content=message, level=MessageLevel.ERROR)
             return
         self.GetParent().run_process_log(log_file)
         self.Destroy()
@@ -595,7 +630,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.tooltip = tooltip
 
         # Set the icon using the custom application icon
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SCLogAnalyzer.ico")
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SCLogAnalyzer.ico")
         if os.path.exists(icon_path):
             self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO), self.tooltip)
         else:
@@ -638,3 +673,240 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         if self.frame:
             wx.CallAfter(self.frame.Close)
 
+
+class DataTransferDialog(wx.Dialog):
+    """Dialog for transferring data from Google Sheets to Supabase."""
+    def __init__(self, parent):
+        super().__init__(parent, title="Data Transfer", size=(550, 550), 
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)  # Increased height and added resize capability
+
+        panel = wx.Panel(self)
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Title
+        title_label = wx.StaticText(panel, label="Transfer Data from Google Sheets to Supabase")
+        title_label.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        main_sizer.Add(title_label, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+
+        # Description
+        desc_text = (
+            "This tool will transfer your data from Google Sheets to Supabase.\n"
+            "Make sure both your Google Sheets webhook URL and Supabase credentials\n"
+            "are correctly configured before proceeding."
+        )
+        description = wx.StaticText(panel, label=desc_text)
+        main_sizer.Add(description, 0, wx.ALL | wx.ALIGN_LEFT, 10)
+
+        # Options
+        options_box = wx.StaticBox(panel, label="Transfer Options")
+        options_sizer = wx.StaticBoxSizer(options_box, wx.VERTICAL)
+
+        # Transfer all data option
+        self.all_data_radio = wx.RadioButton(options_box, label="Transfer all data", style=wx.RB_GROUP)
+        options_sizer.Add(self.all_data_radio, 0, wx.ALL | wx.EXPAND, 5)
+        
+        # Config only option
+        self.config_only_radio = wx.RadioButton(options_box, label="Transfer configuration only")
+        options_sizer.Add(self.config_only_radio, 0, wx.ALL | wx.EXPAND, 5)
+
+        # Add a separator
+        options_sizer.Add(wx.StaticLine(options_box), 0, wx.EXPAND | wx.ALL, 5)
+        
+        # Data transfer mode options
+        mode_label = wx.StaticText(options_box, label="Data Transfer Mode:")
+        options_sizer.Add(mode_label, 0, wx.ALL, 5)
+        
+        # Purge first option
+        self.purge_radio = wx.RadioButton(options_box, label="Delete existing data first (faster)", style=wx.RB_GROUP)
+        options_sizer.Add(self.purge_radio, 0, wx.ALL | wx.EXPAND, 5)
+        
+        # Skip duplicates option
+        self.skip_duplicates_radio = wx.RadioButton(options_box, label="Only add new records (skip duplicates)")
+        options_sizer.Add(self.skip_duplicates_radio, 0, wx.ALL | wx.EXPAND, 5)
+
+        # Batch size setting
+        batch_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        batch_label = wx.StaticText(options_box, label="Batch size:")
+        self.batch_size_ctrl = wx.SpinCtrl(options_box, min=10, max=100, initial=50)
+        batch_tip = wx.StaticText(options_box, label="(Smaller batches are safer, but slower)")
+        batch_sizer.Add(batch_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        batch_sizer.Add(self.batch_size_ctrl, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        batch_sizer.Add(batch_tip, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        options_sizer.Add(batch_sizer, 0, wx.ALL | wx.EXPAND, 5)
+
+        # Progress area
+        progress_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.progress_text = wx.StaticText(panel, label="Status: Ready")
+        progress_sizer.Add(self.progress_text, 0, wx.ALL | wx.EXPAND, 5)
+        
+        self.progress_bar = wx.Gauge(panel, range=100, style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
+        self.progress_bar.SetValue(0)
+        progress_sizer.Add(self.progress_bar, 0, wx.ALL | wx.EXPAND, 5)
+
+        # Add options and progress sections to main sizer
+        main_sizer.Add(options_sizer, 0, wx.ALL | wx.EXPAND, 10)
+        main_sizer.Add(progress_sizer, 0, wx.ALL | wx.EXPAND, 10)
+
+        # Add a separator
+        main_sizer.Add(wx.StaticLine(panel), 0, wx.EXPAND | wx.ALL, 5)
+        
+        # Add a spacer to push content up
+        main_sizer.AddStretchSpacer()
+        
+        # SIMPLIFIED BUTTON SECTION - Directly add buttons to the main panel 
+        # without nesting in another panel
+        button_sizer = wx.StdDialogButtonSizer()
+        
+        # Create larger buttons with clear labels
+        self.start_button = wx.Button(panel, wx.ID_OK, label="Start Transfer", size=(140, 40))
+        self.start_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        
+        self.cancel_button = wx.Button(panel, wx.ID_CANCEL, label="Cancel", size=(140, 40))
+        self.cancel_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        
+        # Add buttons to the standard dialog sizer
+        button_sizer.AddButton(self.start_button)
+        button_sizer.AddButton(self.cancel_button)
+        button_sizer.Realize()
+        
+        # Add the button sizer with a larger margin to ensure visibility
+        main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER_HORIZONTAL, 30)
+        
+        # Set the sizer and fit dialog to contents
+        panel.SetSizer(main_sizer)
+        
+        # Bind events
+        self.start_button.Bind(wx.EVT_BUTTON, self.on_start)
+        self.cancel_button.Bind(wx.EVT_BUTTON, self.on_cancel)
+        self.all_data_radio.Bind(wx.EVT_RADIOBUTTON, self.on_radio_change)
+        self.config_only_radio.Bind(wx.EVT_RADIOBUTTON, self.on_radio_change)
+        
+        # Initialize state
+        self.is_running = False
+        self.transfer_task = None
+
+    def on_radio_change(self, event):
+        """Handle radio button changes."""
+        # Enable/disable batch size control based on selection
+        self.batch_size_ctrl.Enable(self.all_data_radio.GetValue())
+
+    def on_start(self, event):
+        """Start the data transfer process."""
+        if self.is_running:
+            return
+        
+        # Get options
+        config_only = self.config_only_radio.GetValue()
+        batch_size = self.batch_size_ctrl.GetValue()
+        purge_first = self.purge_radio.GetValue()  # Get the selected transfer mode
+        
+        # Disable UI during transfer
+        self.start_button.Disable()
+        self.all_data_radio.Disable()
+        self.config_only_radio.Disable()
+        self.batch_size_ctrl.Disable()
+        self.purge_radio.Disable()
+        self.skip_duplicates_radio.Disable()
+        self.is_running = True
+        
+        # Update UI
+        self.progress_text.SetLabel("Status: Initializing transfer...")
+        self.progress_bar.SetValue(10)
+        
+        # Start transfer in a separate thread
+        import threading
+        from .data_transfer import transfer_all_data_to_supabase, transfer_config_to_supabase
+        from .message_bus import message_bus, MessageLevel
+        
+        def run_transfer():
+            try:
+                wx.CallAfter(self.progress_text.SetLabel, "Status: Connecting to data sources...")
+                wx.CallAfter(self.progress_bar.SetValue, 20)
+                
+                # Get configuration manager from parent
+                config_manager = self.GetParent().config_manager
+                
+                # Run the transfer based on options
+                if config_only:
+                    wx.CallAfter(self.progress_text.SetLabel, "Status: Transferring configuration...")
+                    wx.CallAfter(self.progress_bar.SetValue, 40)
+                    success = transfer_config_to_supabase(config_manager)
+                else:
+                    wx.CallAfter(self.progress_text.SetLabel, "Status: Transferring all data...")
+                    wx.CallAfter(self.progress_bar.SetValue, 30)
+                    success = transfer_all_data_to_supabase(config_manager, batch_size, purge_first)
+                
+                # Update UI based on result
+                if success:
+                    wx.CallAfter(self.progress_text.SetLabel, "Status: Transfer completed successfully")
+                    wx.CallAfter(self.progress_bar.SetValue, 100)
+                    
+                    # Update data source to Supabase in config
+                    config_manager.set('datasource', 'supabase')
+                    config_manager.save_config()
+                    
+                    message_bus.publish(
+                        content="Data transfer completed. Default data source set to 'supabase'.",
+                        level=MessageLevel.INFO
+                    )
+                    
+                    # Update the UI in the parent window
+                    wx.CallAfter(self.GetParent().supabase_check.Check, True)
+                    wx.CallAfter(self.GetParent().googlesheet_check.Check, False)
+                    
+                    # Update tabs based on data source change
+                    wx.CallAfter(self.GetParent().data_manager.update_data_source_tabs)
+                    
+                    # Show success message
+                    wx.CallAfter(wx.MessageBox, 
+                                "Data transfer completed successfully.\nDefault data source has been set to Supabase.",
+                                "Transfer Complete", 
+                                wx.OK | wx.ICON_INFORMATION)
+                else:
+                    wx.CallAfter(self.progress_text.SetLabel, "Status: Transfer failed")
+                    wx.CallAfter(self.progress_bar.SetValue, 0)
+                    wx.CallAfter(wx.MessageBox, 
+                                "Data transfer failed. Please check the logs for details.",
+                                "Transfer Failed", 
+                                wx.OK | wx.ICON_ERROR)
+                
+                # Re-enable UI
+                wx.CallAfter(self.start_button.Enable)
+                wx.CallAfter(self.all_data_radio.Enable)
+                wx.CallAfter(self.config_only_radio.Enable)
+                wx.CallAfter(self.batch_size_ctrl.Enable, self.all_data_radio.GetValue())
+                wx.CallAfter(self.purge_radio.Enable)
+                wx.CallAfter(self.skip_duplicates_radio.Enable)
+                
+                self.is_running = False
+                
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Error during data transfer: {e}",
+                    level=MessageLevel.ERROR
+                )
+                wx.CallAfter(self.progress_text.SetLabel, f"Status: Error - {e}")
+                wx.CallAfter(self.progress_bar.SetValue, 0)
+                wx.CallAfter(self.start_button.Enable)
+                wx.CallAfter(self.all_data_radio.Enable)
+                wx.CallAfter(self.config_only_radio.Enable)
+                wx.CallAfter(self.batch_size_ctrl.Enable, self.all_data_radio.GetValue())
+                wx.CallAfter(self.purge_radio.Enable)
+                wx.CallAfter(self.skip_duplicates_radio.Enable)
+                self.is_running = False
+        
+        self.transfer_task = threading.Thread(target=run_transfer)
+        self.transfer_task.daemon = True
+        self.transfer_task.start()
+
+    def on_cancel(self, event):
+        """Handle cancel button click."""
+        if self.is_running:
+            message_bus.publish(
+                content="Data transfer canceled by user.",
+                level=MessageLevel.WARNING
+            )
+            # We can't actually stop the thread, but we can at least close the dialog
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            self.EndModal(wx.ID_CANCEL)

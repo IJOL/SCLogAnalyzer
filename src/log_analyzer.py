@@ -14,8 +14,12 @@ from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
 from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustment
 from pyzbar.pyzbar import decode  # For QR code detection
-from config_utils import get_application_path, get_config_manager
-from gui_module import WindowsHelper  # Import the new helper class for Windows-related functionality
+# Using absolute imports instead of relative ones
+from helpers.config_utils import get_application_path, get_config_manager
+from helpers.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
+from helpers.event_handlers import Event  # Import Event from event_handlers module
+from helpers.message_bus import message_bus, MessageLevel  # Import at module level
+from helpers.data_provider import get_data_provider  # Import data provider
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -30,6 +34,7 @@ RETURN_KEY = "return"  # Add constant for Return key
 
 # Import version information
 try:
+    # Using absolute import
     from version import get_version
 except ImportError:
     def get_version():
@@ -121,50 +126,49 @@ class MessageRateLimiter:
             }
         return None
 
-def output_message(timestamp, message, regex_pattern=None):
+def output_message(timestamp, message, regex_pattern=None, level=None):
     """
-    Output a message to stdout or a custom handler in GUI mode.
+    Output a message using the message bus.
 
     Args:
         timestamp: Timestamp string or None.
         message: Message to output.
         regex_pattern: The regex pattern name that matched the message (optional).
+        level: Message priority level (optional).
     """
     # Check if rate limiter exists and if message should be sent
     rate_limiter = getattr(main, 'rate_limiter', None)
     if rate_limiter and not rate_limiter.should_send(message, 'stdout'):
         return  # Message is rate-limited, do not output
 
-    # Format the message with timestamp and regex pattern
-    if timestamp:
-        formatted_msg = f"{timestamp} - {message}"
+    # Map level string to MessageLevel enum if provided as string
+    if level is None:
+        msg_level = MessageLevel.INFO
+    elif isinstance(level, str):
+        level_map = {
+            'debug': MessageLevel.DEBUG,
+            'info': MessageLevel.INFO,
+            'warning': MessageLevel.WARNING, 
+            'error': MessageLevel.ERROR,
+            'critical': MessageLevel.CRITICAL
+        }
+        msg_level = level_map.get(level.lower(), MessageLevel.INFO)
     else:
-        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        formatted_msg = f"*{current_time} - {message}"
-
-        # Redirect to GUI log handler if in GUI mode
-    if getattr(main, 'in_gui', False) and hasattr(main, 'gui_log_handler') and callable(main.gui_log_handler):
-        main.gui_log_handler(formatted_msg, regex_pattern=regex_pattern)
-    else:
-        print(formatted_msg)
-
-class Event:
-    """A simple event system to allow subscribers to listen for updates."""
-    def __init__(self):
-        self._subscribers = []
-
-    def subscribe(self, callback):
-        """Subscribe to the event."""
-        self._subscribers.append(callback)
-
-    def unsubscribe(self, callback):
-        """Unsubscribe from the event."""
-        self._subscribers.remove(callback)
-
-    def emit(self, *args, **kwargs):
-        """Emit the event to all subscribers."""
-        for callback in self._subscribers:
-            callback(*args, **kwargs)
+        msg_level = level
+    
+    # Create metadata
+    metadata = {}
+    if hasattr(main, 'in_gui'):
+        metadata['in_gui'] = getattr(main, 'in_gui', False)
+    
+    # Publish the message to the bus
+    message_bus.publish(
+        content=message,
+        timestamp=timestamp,
+        level=msg_level,
+        pattern_name=regex_pattern,
+        metadata=metadata
+    )
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, **kwargs):
@@ -185,8 +189,8 @@ class LogFileHandler(FileSystemEventHandler):
         
         # Initialize rate limiter
         self.rate_limiter = MessageRateLimiter(
-            timeout=self.config_manager.get('rate_limit_timeout', 300),
-            max_duplicates=self.config_manager.get('rate_limit_max_duplicates', 1)
+            timeout=self.rate_limit_timeout or 300,
+            max_duplicates=self.rate_limit_max_duplicates or 1
         )
         
         # Initialize core attributes from config
@@ -197,27 +201,35 @@ class LogFileHandler(FileSystemEventHandler):
         self.log_file_path = self.config_manager.get('log_file_path')
         self.last_position = 0
         self.actor_state = {}
-        self.google_sheets_queue = queue.Queue()
+        
+        # Flag to track if we're in a EA_ mode (to ignore exits)
+        self.in_ea_mode = False
+        
+        # Initialize a single data queue instead of separate queues for Google Sheets and Supabase
+        self.data_queue = queue.Queue()
+        
         self.stop_event = threading.Event()
         self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
         self.current_mode = None
         self.version = get_version()
         
+        # Initialize the data provider
+        self.data_provider = get_data_provider(self.config_manager)
+        
         # Create screenshots folder if it doesn't exist
         if not os.path.exists(self.screenshots_folder):
             os.makedirs(self.screenshots_folder)
 
-        # Start Google Sheets thread if not in process_once mode
+        # Start data queue processor thread if not in process_once mode
         if not self.process_once:
-            self.google_sheets_thread = threading.Thread(target=self.process_google_sheets_queue)
-            self.google_sheets_thread.daemon = True
-            self.google_sheets_thread.start()
+            self.data_thread = threading.Thread(target=self.process_data_queue)
+            self.data_thread.daemon = True
+            self.data_thread.start()
         
         # Compile mode regex patterns
         self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
         self.nickname_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Connection Complete> map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>.*?) localAddr=(?P<local_addr>.*?) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session_id>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+)")
         self.mode_end_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected> cause=(?P<cause>\d+) reason=\"(?P<reason>.*?)\" frame=(?P<frame>\d+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>[\d\.:\w]+) localAddr=(?P<local_addr>[\d\.:\w]+) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+) \[(?P<tags>.*?)\]")
-        self.simple_disconnect_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected>")
 
         # Process entire log if requested
         if self.process_all:
@@ -278,10 +290,10 @@ class LogFileHandler(FileSystemEventHandler):
 
     def cleanup_threads(self):
         """Ensure all threads are stopped"""
-        # Wait for Google Sheets thread to finish processing remaining items
-        if self.google_sheets_thread.is_alive():
-            output_message(None, "Waiting for Google Sheets queue to complete...")
-            self.google_sheets_queue.join()
+        # Wait for data thread to finish processing remaining items
+        if hasattr(self, 'data_thread') and self.data_thread.is_alive():
+            output_message(None, "Waiting for data queue to complete...")
+            self.data_queue.join()
             # Give it a moment to exit gracefully
             time.sleep(0.5)
 
@@ -295,12 +307,6 @@ class LogFileHandler(FileSystemEventHandler):
         except Exception as e:
             output_message(None, f"Error getting file end position: {e}")
             return 0
-
-    def send_startup_message(self):
-        """Send a startup message to Discord webhook if Discord is active."""
-        if self.use_discord:
-            # Send a startup message to Discord
-            self.send_discord_message(self.add_state_data({}),"startup")
 
     def send_discord_message(self, data, pattern_name=None, technical=False):
         """Send a message to Discord via webhook or stdout"""
@@ -350,65 +356,89 @@ class LogFileHandler(FileSystemEventHandler):
         except Exception as e:
             output_message(None, f"Error sending Discord message: {e}")
 
-    def process_google_sheets_queue(self):
-        """Worker thread to process Google Sheets queue"""
-        while not self.stop_event.is_set():
-            if not self.use_googlesheet:
-                time.sleep(1)
-                continue
-            try:
-                queue_data = []
-                try:
-                    # Get queue items with timeout to check stop_event regularly
-                    data, event_type = self.google_sheets_queue.get(timeout=1)
-                    queue_data.append({'data': data, 'sheet': data.get('sheet',self.current_mode or 'None')})  # Use current_mode as sheet
-                    self.google_sheets_queue.task_done()
-                    
-                    # Get any additional items that might be in the queue
-                    while not self.google_sheets_queue.empty():
-                        data, event_type = self.google_sheets_queue.get_nowait()
-                        queue_data.append({'data': data, 'sheet': data.get('sheet',self.current_mode or 'None')})  # Use current_mode as sheet
-                        self.google_sheets_queue.task_done()
-                except queue.Empty:
-                    # No items in queue, just continue loop
-                    pass
-                
-                if queue_data:
-                    self._send_to_google_sheets(queue_data)
-            except Exception as e:
-                output_message(None, f"Exception in Google Sheets worker thread: {e}")
+    def process_data_queue(self):
+        """Worker thread to process data queue"""
+        # Define batch parameters
+        max_batch_size = 20  # Maximum number of items to process in one batch
+        max_wait_time = 0.5  # Maximum time to wait for a batch to fill (in seconds)
         
-        output_message(None, "Google Sheets worker thread stopped")
+        while not self.stop_event.is_set():
+            try:
+                # Collect batch of items
+                batch = []
+                start_time = time.time()
+                
+                # Try to fill the batch up to max_batch_size or until max_wait_time is reached
+                while len(batch) < max_batch_size and (time.time() - start_time) < max_wait_time:
+                    try:
+                        # Try to get an item with a short timeout
+                        data,sheet_name = self.data_queue.get(timeout=0.1)
+                        batch.append({'data': data, 'sheet': data.get('sheet',self.current_mode or 'None')})
+                        
+                        # If queue is empty, don't wait for more items
+                        if self.data_queue.empty():
+                            break
+                    except queue.Empty:
+                        # No items in queue, break if we have at least one item or wait longer
+                        if len(batch) > 0:
+                            break
+                        # If batch is empty, wait longer
+                        time.sleep(0.2)
+                        
+                # Process the collected batch if not empty
+                if batch:
+                    message_bus.publish(
+                        content=f"Processing batch of {len(batch)} items", 
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "log_analyzer"}
+                    )                  
+                    # Process each event type batch
+                    if self.data_provider.process_data(batch):
+                        message_bus.publish(
+                            content=f"Successfully processed batch of {len(batch)} items", 
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": "log_analyzer"}
+                        )
+                    else:
+                        message_bus.publish(
+                            content=f"Failed to process batch of {len(batch)} items", 
+                            level=MessageLevel.ERROR,
+                            metadata={"source": "log_analyzer"}
+                        )
+                    
+                    # Mark all items as done
+                    for _ in range(len(batch)):
+                        self.data_queue.task_done()
+                
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Exception in data queue worker thread: {e}", 
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "log_analyzer"}
+                )
+                logging.error(f"Exception in data queue worker thread: {str(e)}")
+                logging.error(traceback.format_exc())
+        
+        message_bus.publish(
+            content="Data queue worker thread stopped", 
+            level=MessageLevel.INFO,
+            metadata={"source": "log_analyzer"}
+        )
 
-    def _send_to_google_sheets(self, queue_data):
-        """Send data to Google Sheets via webhook"""
-        if not self.use_googlesheet:
-            return
-
-        try:
-            payload =  queue_data
-            response = requests.post(self.google_sheets_webhook, json=payload)
-            if response.status_code == 200:
-                output_message(None, "Data sent to Google Sheets successfully")
-            else:
-                output_message(None, f"Error sending data to Google Sheets: {response.status_code} - {response.text}")
-        except Exception as e:
-            output_message(None, f"Exception sending data to Google Sheets: {e}")
-
-    def update_google_sheets(self, data, event_type):
+    def update_data_queue(self, data, event_type):
         """
-        Add data to Google Sheets queue, including state information.
+        Add data to the data queue, including state information.
 
         Args:
             data (dict): The data to send.
             event_type (str): The type of event triggering the update.
+            
+        Returns:
+            bool: True if queued successfully, False otherwise.
         """
-        if not self.use_googlesheet:
-            return False
-
         # Add state data to the payload
         data_with_state = self.add_state_data(data)
-        self.google_sheets_queue.put((data_with_state, event_type))
+        self.data_queue.put((data_with_state, event_type))
         return True
 
     def on_modified(self, event):
@@ -424,6 +454,9 @@ class LogFileHandler(FileSystemEventHandler):
         if event.src_path.lower().startswith(self.screenshots_folder.lower()):
             self.process_new_screenshot(event.src_path)
         elif event.src_path.lower() == self.log_file_path.lower():
+            # Reset state when a new log file is detected
+            output_message(None, f"New log file detected at {event.src_path}")
+            self.reset_state()
             self.process_new_entries()
 
     def process_new_screenshot(self, file_path):
@@ -556,6 +589,7 @@ class LogFileHandler(FileSystemEventHandler):
             # Detect log truncation
             if self.last_position > current_file_size:
                 output_message(None, "Log file truncated. Resetting position to the beginning.")
+                self.reset_state()
                 self.last_position = 0
 
             with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as file:
@@ -633,7 +667,7 @@ class LogFileHandler(FileSystemEventHandler):
                 
                 # Send startup Discord message after getting the username for the first time
                 if old_username == 'Unknown' and not self.process_once:
-                    self.send_startup_message()
+                    self.send_discord_message(self.add_state_data({}),"startup")
 
                 return True
 
@@ -651,6 +685,13 @@ class LogFileHandler(FileSystemEventHandler):
             if new_mode != self.current_mode:
                 old_mode = self.current_mode
                 self.current_mode = new_mode
+                
+                # Check if we're entering an EA_ mode
+                self.in_ea_mode = new_mode is not None and new_mode.startswith("EA_")
+                
+                # Log EA mode detection state
+                if self.in_ea_mode:
+                    output_message(timestamp, f"EA mode detected: '{new_mode}'. Exit events will be ignored until next mode change.", level="debug")
 
                 # Emit the event to notify subscribers about mode change
                 self.on_mode_change.emit(new_mode, old_mode)
@@ -681,51 +722,33 @@ class LogFileHandler(FileSystemEventHandler):
 
             # Only consider it an end if it matches the current mode
             if gamerules == self.current_mode:
+                # Skip exit processing if we're in an EA_ mode that matches the current mode
+                if self.in_ea_mode and self.current_mode and self.current_mode.startswith("EA_"):
+                    output_message(timestamp, f"Ignoring exit event for EA mode: '{gamerules}'", level="debug")
+                    return False
+                
                 # Emit the event to notify subscribers about mode exit
                 self.on_mode_change.emit(None, self.current_mode)
 
                 # Format the mode data for output
                 mode_data['status'] = 'exited'
                 mode_data=self.add_state_data(mode_data)  # Add state data to the mode data
+                # Emit the event to notify subscribers
+                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
 
                 # Output message
                 output_message(timestamp, f"Exited mode: '{self.current_mode}'")
 
                 # Reset current mode
                 self.current_mode = None
+                # Reset EA mode flag
+                self.in_ea_mode = False
 
                 # Send to Discord if enabled
                 if send_message and self.use_discord and 'mode_change' in self.discord:
                     self.send_discord_message(mode_data, pattern_name='mode_change')
 
                 return True
-
-        # Check for simple disconnects (for modes that don't have the full disconnect message)
-        if self.current_mode and self.simple_disconnect_regex.search(entry):
-            timestamp = self.simple_disconnect_regex.search(entry).group('timestamp')
-
-            # Emit the event to notify subscribers about mode exit
-            self.on_mode_change.emit(None, self.current_mode)
-
-            # Create mode data for the message
-            mode_data = {
-                'timestamp': timestamp,
-                'status': 'exited',
-                'reason': 'Channel Disconnected',
-            }
-            mode_data = self.add_state_data(mode_data)  # Add state data to the mode data
-            # Output message
-            output_message(timestamp, f"Exited mode: '{self.current_mode}'")
-
-            # Reset current mode
-            self.current_mode = None
-
-            # Send to Discord if enabled
-            if send_message and self.use_discord and 'mode_change' in self.discord:
-                self.send_discord_message(mode_data, pattern_name='mode_change')
-
-            return True
-
         return False
 
     def detect_generic(self, entry, pattern):
@@ -779,9 +802,9 @@ class LogFileHandler(FileSystemEventHandler):
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)
     
-            # Send to Google Sheets if enabled and pattern is in the mapping
+            # Send to data queue
             if send_message and pattern_name in self.google_sheets_mapping:
-                self.update_google_sheets(data, pattern_name)
+                self.update_data_queue(data, pattern_name)
     
             return True, data
         return False, None
@@ -790,7 +813,27 @@ class LogFileHandler(FileSystemEventHandler):
         for key, value in data.items():
             if isinstance(value, str):
                 data[key] = re.sub(r'_\d{4,}$', '', value)
-    
+
+    def reset_state(self):
+        """
+        Reset all dynamic state variables to their initial values.
+        This should be called when a log file change is detected.
+        """
+        output_message(None, "Resetting state variables to initial values")
+        self.current_shard = None
+        self.current_version = None
+        self.current_mode = None
+        self.username = self.config_manager.get('username', 'Unknown')
+        self.in_ea_mode = False
+        self.last_position = 0
+        self.actor_state = {}
+        # Emit events to notify subscribers about the reset
+        self.on_mode_change.emit(None, self.current_mode)
+        self.on_shard_version_update.emit(None, None, self.username, None)
+        self.on_username_change.emit(self.username, None)
+        output_message(None, "State reset complete")
+
+
 def is_valid_url(url):
     """Validate if the given string is a correctly formatted URL"""
     regex = re.compile(
@@ -813,7 +856,7 @@ def signal_handler(signum, frame):
 
 def stop_monitor(event_handler, observer):
     """
-    Stop the observer and Google Sheets thread cleanly.
+    Stop the observer and data thread cleanly.
     
     Args:
         event_handler: The LogFileHandler instance.
@@ -826,7 +869,7 @@ def stop_monitor(event_handler, observer):
     event_handler.stop()
     output_message(None, "Monitor stopped successfully")
 
-def startup(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None, **kwargs):
+def startup(process_all=False, use_discord=None, process_once=False, datasource=None, log_file_path=None, **kwargs):
     """
     Initialize the log analyzer infrastructure and allow the caller to pass event subscriptions via kwargs.
 
@@ -834,7 +877,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         process_all: Whether to process the entire log file.
         use_discord: Whether to use Discord for notifications.
         process_once: Whether to process the log file once and exit.
-        use_googlesheet: Whether to use Google Sheets for data storage.
+        datasource: The data source to use ('googlesheets' or 'supabase').
         log_file_path: Path to the log file.
         kwargs: Additional arguments for event subscriptions or configurations.
     """
@@ -851,21 +894,15 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         config_manager = get_config_manager()
         output_message(None, f"Loading config from: {config_manager.config_path}")
         
-        # Apply dynamic configuration if Google Sheets webhook is available
-        google_sheets_webhook = config_manager.get('google_sheets_webhook', '')
-        if google_sheets_webhook and is_valid_url(google_sheets_webhook):
-            config_manager.apply_dynamic_config(google_sheets_webhook)
-            output_message(None, "Applied dynamic configuration from Google Sheets")
-        
         # Override configuration with command-line parameters
         config_manager.override_with_parameters(
             process_all=process_all,
             use_discord=use_discord,
             process_once=process_once,
-            use_googlesheet=use_googlesheet,
+            datasource=datasource,
             log_file_path=log_file_path
         )
-
+        
         # Log file path must exist
         if not os.path.exists(config_manager.get('log_file_path')):
             output_message(None, f"Log file not found at {config_manager.get('log_file_path')}")
@@ -888,6 +925,7 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         # Log monitoring status just before starting the observer
         output_message(None, f"Monitoring log file: {config_manager.get('log_file_path')}")
         output_message(None, f"Sending updates to {'Discord webhook' if event_handler.use_discord else 'stdout'}")
+        output_message(None, f"Data provider: {config_manager.get('datasource', 'googlesheets')}")
 
         # Create an observer
         observer = Observer()
@@ -905,9 +943,9 @@ def startup(process_all=False, use_discord=None, process_once=False, use_googles
         logging.error("Stack trace:\n%s", traceback.format_exc())
         raise
 
-def main(process_all=False, use_discord=None, process_once=False, use_googlesheet=None, log_file_path=None):
+def main(process_all=False, use_discord=None, process_once=False, datasource=None, log_file_path=None):
     try:
-        event_handler, observer = startup(process_all, use_discord, process_once, use_googlesheet, log_file_path)
+        event_handler, observer = startup(process_all, use_discord, process_once, datasource, log_file_path)
 
         # If in GUI mode, start the observer in a separate thread and return immediately
         if hasattr(main, 'in_gui') and main.in_gui:
@@ -950,12 +988,12 @@ if __name__ == "__main__":
     # Check for optional flags
     if '--help' in sys.argv or '-h' in sys.argv:
         print(f"SC Log Analyzer v{get_version()}")
-        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--no-googlesheet | -ng] [--debug | -d]")
+        print(f"Usage: {sys.argv[0]} [--process-all | -p] [--no-discord | -nd] [--process-once | -o] [--datasource <googlesheets|supabase>] [--debug | -d]")
         print("Options:")
         print("  --process-all, -p    Skip processing entire log file (overrides config)")
         print("  --no-discord, -nd    Do not send output to Discord webhook")
         print("  --process-once, -o   Process log file once and exit")
-        print("  --no-googlesheet, -ng    Do not send output to Google Sheets webhook")
+        print("  --datasource <googlesheets|supabase>    Specify the data source to use")
         print("  --debug, -d          Enable debug mode (e.g., save cropped images)")
         print(f"Version: {get_version()}")
         sys.exit(0)
@@ -963,7 +1001,11 @@ if __name__ == "__main__":
     process_all = '--process-all' in sys.argv or '-p' in sys.argv
     use_discord = not ('--no-discord' in sys.argv or '-nd' in sys.argv)
     process_once = '--process-once' in sys.argv or '-o' in sys.argv
-    use_googlesheet = not ('--no-googlesheet' in sys.argv or '-ng' in sys.argv)
+    datasource = None
+    if '--datasource' in sys.argv:
+        datasource_index = sys.argv.index('--datasource') + 1
+        if datasource_index < len(sys.argv):
+            datasource = sys.argv[datasource_index]
     debug_mode = '--debug' in sys.argv or '-d' in sys.argv
 
     # Set debug mode globally
@@ -971,4 +1013,4 @@ if __name__ == "__main__":
 
     # Show version info on startup
     print(f"SC Log Analyzer v{get_version()} starting...")
-    main(process_all, use_discord, process_once, use_googlesheet)
+    main(process_all, use_discord, process_once, datasource)

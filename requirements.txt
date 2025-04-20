@@ -10,3 +10,5 @@ pynput
 mss  # Added for GPU-rendered window capturing
 psutil  # Re-added for process and system utilities
 webcolors
+supabase > 2.7.0 # Added for Supabase integration
+python-dotenv==1.0.0  # For managing environment variables

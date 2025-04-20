@@ -8,13 +8,13 @@ import requests
 import zipfile
 import subprocess
 import wx
+from .message_bus import message_bus, MessageLevel
 
 # Constants for the updater
 GITHUB_API_URL = "https://api.github.com/repos/IJOL/SCLogAnalyzer/releases"
 APP_EXECUTABLE = "SCLogAnalyzer.exe"  # The main application executable name
 UPDATER_EXECUTABLE = "SCLogAnalyzer_updater.exe"  # The updater executable name
 LEGACY_UPDATER = "updater.py"  # Legacy updater script name
-
 
 def check_for_updates(parent_frame, current_version):
     """
@@ -30,12 +30,16 @@ def check_for_updates(parent_frame, current_version):
     try:
         response = requests.get(GITHUB_API_URL)
         if response.status_code != 200:
-            wx.MessageBox("Failed to check for updates.", "Error", wx.OK | wx.ICON_ERROR)
+            message = "Failed to check for updates."
+            wx.MessageBox(message, "Error", wx.OK | wx.ICON_ERROR)
+            message_bus.publish(content=message, level=MessageLevel.ERROR)
             return False
 
         releases = response.json()
         if not isinstance(releases, list) or not releases:
-            wx.MessageBox("No releases found.", "Error", wx.OK | wx.ICON_ERROR)
+            message = "No releases found."
+            wx.MessageBox(message, "Error", wx.OK | wx.ICON_ERROR)
+            message_bus.publish(content=message, level=MessageLevel.ERROR)
             return False
 
         # Find the latest release named SCLogAnalyzer
@@ -46,7 +50,9 @@ def check_for_updates(parent_frame, current_version):
         )
 
         if not latest_release:
-            wx.MessageBox("No valid release named 'SCLogAnalyzer' found.", "Error", wx.OK | wx.ICON_ERROR)
+            message = "No valid release named 'SCLogAnalyzer' found."
+            wx.MessageBox(message, "Error", wx.OK | wx.ICON_ERROR)
+            message_bus.publish(content=message, level=MessageLevel.ERROR)
             return False
 
         latest_version = latest_release.get("tag_name", "").split('-')[0].lstrip('v')
@@ -197,7 +203,6 @@ def cleanup_updater_script():
             print(f"Cleaned up {LEGACY_UPDATER}.")
         except Exception as e:
             print(f"Failed to clean up {LEGACY_UPDATER}: {e}")
-    # Remove the updater executable if it exists
     if os.path.exists(updater_exe):
         try:
             os.remove(updater_exe)

@@ -1,5 +1,11 @@
 {
     "discord_bot_token": "{?discord_bot_token}",
-    "google_sheets_webhook": "{?google_sheets_webhook}"
-    "stats_channel_id" : {?stats_channel_id}
+    "google_sheets_webhook": "{?google_sheets_webhook}",
+    "stats_channel_id": "{?stats_channel_id}",
+    "datasource": "googlesheets",
+    "update_period_minutes": 5,
+    "supabase_url": "{?supabase_url}",
+    "supabase_key": "{?supabase_key}",
+    "data_provider_max_retries": 3,
+    "data_provider_retry_delay": 1.0
 }

@@ -4,7 +4,15 @@ import logging
 import requests
 import discord
 from discord.ext import commands, tasks
-import time  # Add this import
+import time
+import sys
+
+# Add parent directory to path to allow importing helpers
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import the config manager and data provider from helpers
+from helpers.config_utils import get_config_manager
+from helpers.data_provider import get_data_provider
 
 # Configure logging
 logging.basicConfig(
@@ -18,11 +26,46 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class StatusBoardBot(commands.Cog):
-    def __init__(self, bot, config):
+    def __init__(self, bot, config_manager):
         self.bot = bot
-        self.config = config
-        self.google_sheets_webhook = config.get('google_sheets_webhook', '')
-        self.stats_channel_id = config.get('stats_channel_id', '1334816643339128872')
+        self.config_manager = config_manager
+        
+        # Use config manager to get configuration values
+        self.google_sheets_webhook = self.config_manager.get('google_sheets_webhook', '')
+        self.stats_channel_id = self.config_manager.get('stats_channel_id', '1334816643339128872')
+        self.update_period = self.config_manager.get('update_period_minutes', 5)
+        
+        # Initialize data provider
+        self.data_provider = get_data_provider(self.config_manager)
+        
+        # Field mappings between different data source formats
+        self.field_mappings = {
+            # Supabase field names to standardized field names
+            'supabase': {
+                'username': 'Jugador',
+                'kills_live': 'Kills/Live',
+                'deaths_live': 'Deaths/Live',
+                'kdr_live': 'Ratio/Live',
+                'kills_sb': 'Kills/SB',
+                'deaths_sb': 'Deaths/SB',
+                'kdr_sb': 'Ratio/SB',
+                'total_kills': 'Total Kills',
+                'total_deaths': 'Total Deaths',
+                'kdr_total': 'Ratio Total'
+            },
+            # Google Sheets field names (already standardized format)
+            'googlesheets': {
+                'Jugador': 'Jugador',
+                'Kills/Live': 'Kills/Live',
+                'Deaths/Live': 'Deaths/Live',
+                'Ratio/Live': 'Ratio/Live',
+                'Kills/SB': 'Kills/SB',
+                'Deaths/SB': 'Deaths/SB',
+                'Ratio/SB': 'Ratio/SB'
+            }
+        }
+        
+        # Initialize message IDs
         self.stats_message_id = None  # ID of the embed message
         self.ratio_live_message_id = None  # ID of the Ratio/Live leaderboard embed
         self.ratio_sb_message_id = None  # ID of the Ratio/SB leaderboard embed
@@ -38,6 +81,9 @@ class StatusBoardBot(commands.Cog):
 
     async def get_channel(self, channel_id):
         """Fetch a channel by ID, handling errors gracefully."""
+        # Convert string channel ID to integer if needed
+        channel_id = int(channel_id) if isinstance(channel_id, str) else channel_id
+        
         channel = self.bot.get_channel(channel_id)
         if not channel:
             logger.warning(f"Channel with ID {channel_id} not found in cache. Attempting to fetch it.")
@@ -152,28 +198,32 @@ class StatusBoardBot(commands.Cog):
             logger.exception(f"Error updating combined leaderboard: {e}")
 
     async def initialize_stats_message(self):
-        """Create or fetch the stats embed message and initialize leaderboards."""
+        """Create or fetch the stats text message and initialize leaderboards."""
         channel = await self.get_channel(self.stats_channel_id)
         if not channel:
             return
         try:
-            # Search for an existing embed in the channel
+            # Search for an existing stats message in the channel
             async for message in channel.history(limit=100):  # Adjust limit as needed
-                if message.embeds:
-                    embed = message.embeds[0]
-                    if embed.title == "Real-Time Statistics":
-                        self.stats_message_id = message.id
-                        logger.info("Found existing stats embed message.")
-                        await self.initialize_leaderboard_messages()
-                        self.update_stats_task.start()  # Start periodic updates
-                        return
+                if message.embeds and message.embeds[0].title == "Real-Time Statistics":
+                    # This is an old embed-based stats message, delete it so we can replace with a text message
+                    await message.delete()
+                    logger.info("Found and deleted old stats embed message.")
+                    break
+                elif message.content and message.content.startswith("📊 **Real-Time Statistics**"):
+                    # Found an existing text-based stats message
+                    self.stats_message_id = message.id
+                    logger.info("Found existing stats text message.")
+                    await self.initialize_leaderboard_messages()
+                    self.update_stats_task.start()  # Start periodic updates
+                    return
 
-            # If no existing embed is found, create a new one
-            embed = discord.Embed(title="Real-Time Statistics", description="Loading data...", color=discord.Color.blue())
-            message = await channel.send(embed=embed)
+            # If no existing text message is found, create a new one
+            message = await channel.send("📊 **Real-Time Statistics**\n```Loading data...```")
             self.stats_message_id = message.id
             await self.initialize_leaderboard_messages()
             self.update_stats_task.start()  # Start periodic updates
+            logger.info(f"Created new stats text message with ID: {message.id}")
         except discord.NotFound:
             logger.error("Channel not found or inaccessible.")
         except Exception as e:
@@ -183,7 +233,7 @@ class StatusBoardBot(commands.Cog):
     async def update_stats_task(self):
         """Periodic task to update the stats and leaderboard embed messages."""
         # Get the configured update period (in minutes)
-        update_period = self.config.get('update_period_minutes', 1)
+        update_period = self.config_manager.get('update_period_minutes', 1)
         current_time = time.time()
         
         # Check if enough time has passed since the last update
@@ -194,73 +244,141 @@ class StatusBoardBot(commands.Cog):
         # Update the last update time
         self.last_update_time = current_time
             
-        if not self.google_sheets_webhook or not self.stats_channel_id or not self.stats_message_id:
+        if not self.stats_channel_id or not self.stats_message_id:
             logger.warning("Cannot update stats message: incomplete configuration.")
             return
 
         try:
-            # Fetch data from Google Sheets
-            response = requests.get(self.google_sheets_webhook)
-            if response.status_code != 200:
-                logger.error(f"Error fetching data from Google Sheets: {response.status_code}")
+            # Use data provider to fetch data instead of direct Google Sheets API call
+            if not self.data_provider.is_connected():
+                logger.error("Data provider is not connected. Cannot update stats.")
                 return
 
-            data = response.json()
+            # Fetch data from the configured data source
+            data = self.data_provider.fetch_data("Resumen")
+            
             if not isinstance(data, list) or not data:
-                logger.warning("Data from Google Sheets is empty or in an unexpected format.")
+                logger.warning("Data from data provider is empty or in an unexpected format.")
                 return
 
-            # Update the stats embed
-            embed = self.generate_stats_embed(data)
+            # Normalize the data
+            data = self.normalize_data(data)
+
+            # Update the stats message with text formatting
+            stats_text = self.generate_stats_text(data)
             channel = await self.get_channel(self.stats_channel_id)
             if not channel:
                 return
 
-            message = await channel.fetch_message(self.stats_message_id)
-            await message.edit(embed=embed)
+            # Fetch and update the stats message
+            try:
+                message = await channel.fetch_message(self.stats_message_id)
+                await message.edit(content=stats_text)
+                logger.info("Stats text message updated successfully.")
+            except discord.NotFound:
+                # If the message was deleted, create a new one
+                new_message = await channel.send(stats_text)
+                self.stats_message_id = new_message.id
+                logger.info(f"Created new stats text message with ID: {new_message.id}")
 
-            # Update the leaderboard embeds
+            # Update the leaderboard embeds (these will still use embeds)
             await self.update_leaderboard_embeds(data)
 
             logger.info(f"Stats and leaderboard messages updated successfully. Next update in {update_period} minutes.")
         except Exception as e:
             logger.exception(f"Error updating stats message: {e}")
 
-    def generate_stats_embed(self, data):
-        """Generate an embed with statistics fetched from Google Sheets."""
-        embed = discord.Embed(title="Real-Time Statistics", color=discord.Color.blue())
+    def generate_stats_text(self, data):
+        """Generate a formatted text message with statistics fetched from the data provider."""
     
-        # Abbreviate column names to save space
+        # Define which columns to display and their abbreviations
         column_names = {
             "Jugador": "Player",
-            "Deaths/SB": "D/SB",
-            "Kills/SB": "K/SB",
-            "Ratio/SB": "R/SB",
-            "Deaths/Live": "D/L",
             "Kills/Live": "K/L",
-            "Ratio/Live": "R/L"
+            "Deaths/Live": "D/L", 
+            "Ratio/Live": "R/L",
+            "Kills/SB": "K/SB",
+            "Deaths/SB": "D/SB",
+            "Ratio/SB": "R/SB"
         }
+        
+        # Ensure all required columns exist, add empty values if they don't
+        for row in data:
+            for col in column_names.keys():
+                if col not in row:
+                    row[col] = ""
     
-        # Calculate column widths
-        column_widths = {col: max(len(short), max(len(str(row.get(col, ''))) for row in data)) for col, short in column_names.items()}
+        # Calculate column widths based on content
+        column_widths = {}
+        for col, short in column_names.items():
+            # Get maximum width needed for this column
+            header_width = len(short)
+            content_width = max(len(str(row.get(col, ''))) for row in data) if data else 0
+            column_widths[col] = max(header_width, content_width)
     
         # Build the table header
-        header = " | ".join(f"{column_names[col]:<{column_widths[col]}}" for col in column_names)
+        header_parts = []
+        for col, short in column_names.items():
+            header_parts.append(f"{short:<{column_widths[col]}}")
+        
+        header = " | ".join(header_parts)
         separator = "-" * (sum(column_widths.values()) + len(column_names) * 3 - 1)
     
-        # Add header and separator to the embed description
-        description = f"```\n{header}\n{separator}\n"
+        # Create the message with header and separator
+        message = f"📊 **Real-Time Statistics**\n```\n{header}\n{separator}\n"
     
-        # Add rows to the table, truncating long values
+        # Add rows to the table, handling missing values
         for row in data:
-            row_data = " | ".join(
-                f"{str(row.get(col, ''))[:column_widths[col]]:<{column_widths[col]}}" for col in column_names
-            )
-            description += f"{row_data}\n"
+            row_parts = []
+            for col in column_names:
+                value = str(row.get(col, ''))[:column_widths[col]]
+                row_parts.append(f"{value:<{column_widths[col]}}")
+            
+            message += f"{' | '.join(row_parts)}\n"
     
-        description += "```"
-        embed.description = description
-        return embed
+        message += "```"
+        
+        # Add data source info
+        datasource = self.config_manager.get('datasource', 'googlesheets')
+        message += f"\nData source: {datasource}"
+        
+        return message
+
+    def normalize_data(self, data):
+        """
+        Normalize data from different sources to a standardized format.
+        
+        Args:
+            data (list): A list of dictionaries with data from the provider
+            
+        Returns:
+            list: The normalized data with standardized field names
+        """
+        if not data or not isinstance(data, list):
+            return data
+            
+        # Determine the data source format by looking at the first record's keys
+        data_format = 'googlesheets'  # Default format
+        first_record_keys = set(data[0].keys())
+        
+        # Check if this is Supabase data by looking for specific field names
+        if 'username' in first_record_keys and 'kills_live' in first_record_keys:
+            data_format = 'supabase'
+        
+        # If it's already in the expected format, return as is
+        if data_format == 'googlesheets':
+            return data
+            
+        # For Supabase data, map to Google Sheets format
+        normalized_data = []
+        for record in data:
+            normalized_record = {}
+            for source_field, target_field in self.field_mappings[data_format].items():
+                if source_field in record:
+                    normalized_record[target_field] = record[source_field]
+            normalized_data.append(normalized_record)
+            
+        return normalized_data
 
     @update_stats_task.before_loop
     async def before_update_stats_task(self):
@@ -268,77 +386,76 @@ class StatusBoardBot(commands.Cog):
         await self.bot.wait_until_ready()
         
     @commands.command(name='stats')
-    async def fetch_google_sheets_stats(self, ctx):
+    async def fetch_stats(self, ctx):
         logger.info(f"Command 'stats' invoked by user: {ctx.author} in channel: {ctx.channel}")
         start_time = time.time()  # Start timing the command execution
 
-        if not self.google_sheets_webhook:
-            logger.warning("Google Sheets webhook URL is not configured.")
-            await ctx.send("Google Sheets webhook URL is not configured.")
+        if not self.data_provider.is_connected():
+            logger.warning("Data provider is not connected.")
+            await ctx.send("Data provider is not connected. Please check the configuration.")
             return
 
         try:
-            logger.info(f"Sending GET request to Google Sheets webhook: {self.google_sheets_webhook}")
-            response = requests.get(self.google_sheets_webhook)
-            logger.info(f"Received response with status code: {response.status_code}")
+            # Fetch data from the configured data provider
+            logger.info("Fetching data from data provider")
+            data = self.data_provider.fetch_data("Resumen")
+            logger.info(f"Received data with {len(data)} records")
 
-            if response.status_code == 200:
-                data = response.json()
-                if not isinstance(data, list) or not data:
-                    logger.warning("The response data is empty or not in the expected format.")
-                    await ctx.send("The response data is empty or not in the expected format.")
-                    return
+            if not isinstance(data, list) or not data:
+                logger.warning("The response data is empty or not in the expected format.")
+                await ctx.send("The response data is empty or not in the expected format.")
+                return
 
-                # Determine column widths and types based on column names and contents
-                keys = data[0].keys()
-                column_widths = {}
-                column_types = {}
+            # Normalize the data
+            data = self.normalize_data(data)
 
-                for i, key in enumerate(keys):
-                    values = [item.get(key, '') for item in data]
+            # Determine column widths and types based on column names and contents
+            keys = data[0].keys()
+            column_widths = {}
+            column_types = {}
 
-                    if i == 0:
-                        # First column is always treated as a string and has a fixed width
-                        column_types[key] = 'str'
-                        column_widths[key] = max(len(str(key)), max(len(str(v)) for v in values))
-                    elif "Ratio" in key:
-                        # Columns containing "Ratio" are treated as floats
+            for i, key in enumerate(keys):
+                values = [item.get(key, '') for item in data]
+
+                if i == 0:
+                    # First column is always treated as a string and has a fixed width
+                    column_types[key] = 'str'
+                    column_widths[key] = max(len(str(key)), max(len(str(v)) for v in values))
+                elif "Ratio" in key:
+                    # Columns containing "Ratio" are treated as floats
+                    column_types[key] = 'float'
+                elif all(isinstance(v, (int, float)) or str(v).replace('.', '', 1).isdigit() for v in values if v != ''):
+                    if any(isinstance(v, float) or (isinstance(v, str) and '.' in v) for v in values):
                         column_types[key] = 'float'
-                    elif all(isinstance(v, (int, float)) or str(v).replace('.', '', 1).isdigit() for v in values if v != ''):
-                        if any(isinstance(v, float) or (isinstance(v, str) and '.' in v) for v in values):
-                            column_types[key] = 'float'
-                        else:
-                            column_types[key] = 'int'
                     else:
-                        column_types[key] = 'str'
+                        column_types[key] = 'int'
+                else:
+                    column_types[key] = 'str'
 
-                    if i != 0:  # Skip recalculating width for the first column
-                        column_widths[key] = max(
-                            len(str(key)),
-                            max(len(f"{float(v):.2f}" if column_types[key] == 'float' else str(v)) for v in values)
-                        )
+                if i != 0:  # Skip recalculating width for the first column
+                    column_widths[key] = max(
+                        len(str(key)),
+                        max(len(f"{float(v):.2f}" if column_types[key] == 'float' else str(v)) for v in values)
+                    )
 
-                # Generate the table header
-                summary = "📊 **Google Sheets Summary**\n"
-                summary += "```\n"
-                summary += " | ".join(f"{key:<{column_widths[key]}}" for key in keys) + "\n"
-                summary += "-" * (sum(column_widths.values()) + len(keys) * 3 - 1) + "\n"
+            # Generate the table header
+            summary = "📊 **Statistics Summary**\n"
+            summary += "```\n"
+            summary += " | ".join(f"{key:<{column_widths[key]}}" for key in keys) + "\n"
+            summary += "-" * (sum(column_widths.values()) + len(keys) * 3 - 1) + "\n"
 
-                # Populate rows based on the data
-                for item in data:
-                    summary += " | ".join(
-                        f"{(f'{float(item.get(key, 0)):.2f}' if column_types[key] == 'float' else str(item.get(key, ''))):<{column_widths[key]}}"
-                        for key in keys
-                    ) + "\n"
-                summary += "```"
-                logger.info("Successfully generated Google Sheets summary.")
-                await ctx.send(summary)
-            else:
-                logger.error(f"Failed to fetch data from Google Sheets. Status code: {response.status_code}")
-                await ctx.send(f"Failed to fetch data from Google Sheets. Status code: {response.status_code}")
+            # Populate rows based on the data
+            for item in data:
+                summary += " | ".join(
+                    f"{(f'{float(item.get(key, 0)):.2f}' if column_types[key] == 'float' else str(item.get(key, ''))):<{column_widths[key]}}"
+                    for key in keys
+                ) + "\n"
+            summary += "```"
+            logger.info("Successfully generated statistics summary.")
+            await ctx.send(summary)
         except Exception as e:
-            logger.exception(f"Error fetching data from Google Sheets: {e}")
-            await ctx.send(f"Error fetching data from Google Sheets: {e}")
+            logger.exception(f"Error fetching data from data provider: {e}")
+            await ctx.send(f"Error fetching data: {e}")
         finally:
             execution_time = time.time() - start_time
             logger.info(f"Command 'stats' executed in {execution_time:.2f} seconds.")
@@ -348,24 +465,22 @@ class StatusBoardBot(commands.Cog):
         """Generate a leaderboard based on a specific metric."""
         logger.info(f"Command 'leaderboard' invoked by user: {ctx.author} with metric: {metric}")
 
-        if not self.google_sheets_webhook:
-            logger.warning("Google Sheets webhook URL is not configured.")
-            await ctx.send("Google Sheets webhook URL is not configured.")
+        if not self.data_provider.is_connected():
+            logger.warning("Data provider is not connected.")
+            await ctx.send("Data provider is not connected. Please check the configuration.")
             return
 
         try:
-            # Fetch data from Google Sheets
-            response = requests.get(self.google_sheets_webhook)
-            if response.status_code != 200:
-                logger.error(f"Error fetching data from Google Sheets: {response.status_code}")
-                await ctx.send(f"Error fetching data from Google Sheets: {response.status_code}")
+            # Fetch data from the data provider
+            data = self.data_provider.fetch_data("Resumen")
+            
+            if not isinstance(data, list) or not data:
+                logger.warning("Data from data provider is empty or in an unexpected format.")
+                await ctx.send("Data is empty or in an unexpected format.")
                 return
 
-            data = response.json()
-            if not isinstance(data, list) or not data:
-                logger.warning("Data from Google Sheets is empty or in an unexpected format.")
-                await ctx.send("Data from Google Sheets is empty or in an unexpected format.")
-                return
+            # Normalize the data
+            data = self.normalize_data(data)
 
             # Validate the metric
             if metric not in data[0]:
@@ -396,22 +511,27 @@ class StatusBoardBot(commands.Cog):
             await ctx.send(f"Error generating leaderboard: {e}")
 
 async def main():
-    app_path = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(app_path, "config.json")
-
-    if not os.path.exists(config_path):
-        logger.error(f"Config file not found at: {config_path}")
+    # Get the config manager instance
+    config_manager = get_config_manager()
+    
+    # Ensure the config is loaded
+    config_manager.load_config()
+    
+    # Check if we have a Discord bot token
+    if not config_manager.get('discord_bot_token'):
+        logger.error("Discord bot token is not configured in the config file")
         return
-
-    with open(config_path, 'r', encoding='utf-8') as config_file:
-        config = json.load(config_file)
-
+    
+    # Initialize bot with required intents
     intents = discord.Intents.default()
     intents.message_content = True
     bot = commands.Bot(command_prefix="!", intents=intents)
-    await bot.add_cog(StatusBoardBot(bot, config))
-
-    await bot.start(config['discord_bot_token'])
+    
+    # Add the bot cog, passing the config_manager instead of raw config
+    await bot.add_cog(StatusBoardBot(bot, config_manager))
+    
+    # Start the bot using the token from config_manager
+    await bot.start(config_manager.get('discord_bot_token'))
 
 if __name__ == "__main__":
     import asyncio
