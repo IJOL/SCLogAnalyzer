@@ -801,7 +801,7 @@ class SupabaseDataProvider(DataProvider):
                         return {}
                 
                 # Query the config table
-                result = supabase_manager.supabase.table(config_table).execute()
+                result = supabase_manager.supabase.table(config_table).select('*').execute()
                 config_data = result.data if hasattr(result, 'data') else []
                 
                 if not config_data:
