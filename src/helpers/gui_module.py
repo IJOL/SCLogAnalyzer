@@ -677,8 +677,8 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 class DataTransferDialog(wx.Dialog):
     """Dialog for transferring data from Google Sheets to Supabase."""
     def __init__(self, parent):
-        super().__init__(parent, title="Data Transfer", size=(500, 350), 
-                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        super().__init__(parent, title="Data Transfer", size=(550, 380), 
+                         style=wx.DEFAULT_DIALOG_STYLE)  # Removed RESIZE_BORDER flag to make non-resizable
 
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -732,13 +732,13 @@ class DataTransferDialog(wx.Dialog):
         main_sizer.Add(options_sizer, 0, wx.ALL | wx.EXPAND, 10)
         main_sizer.Add(progress_sizer, 0, wx.ALL | wx.EXPAND, 10)
 
-        # Add buttons
+        # Add buttons with improved spacing and alignment
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.start_button = wx.Button(panel, label="Start Transfer")
         self.cancel_button = wx.Button(panel, label="Cancel")
-        button_sizer.Add(self.start_button, 0, wx.ALL, 5)
-        button_sizer.Add(self.cancel_button, 0, wx.ALL, 5)
-        main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER, 10)
+        button_sizer.Add(self.start_button, 0, wx.ALL, 10)  # Increased padding around buttons
+        button_sizer.Add(self.cancel_button, 0, wx.ALL, 10)
+        main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER | wx.RESERVE_SPACE_EVEN_IF_HIDDEN, 10)
 
         panel.SetSizer(main_sizer)
 
