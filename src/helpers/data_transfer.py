@@ -216,15 +216,11 @@ class DataTransfer:
             return {}
         
         # Get list of sheets to transfer
-        sheets = self.get_sheets_list()
-        if not sheets:
-            message_bus.publish(
-                content="No sheets found to transfer.",
-                level=MessageLevel.WARNING,
-                metadata={"source": self.SOURCE}
-            )
-            return {}
-        
+        sheets = [
+                "SC_Default",
+                "EA_SquadronBattle",
+                "Materials"
+            ]        
         # Transfer each sheet
         results = {}
         for sheet in sheets:
