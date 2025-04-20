@@ -62,8 +62,8 @@ class TabCreator:
         refresh_button.params = params
         refresh_button.grid = grid
 
-        # Bind the refresh button to fetch and update the grid
-        refresh_button.Bind(wx.EVT_BUTTON, self.parent.on_refresh_tab)
+        # Bind the refresh button directly to the data manager's on_refresh_tab method
+        refresh_button.Bind(wx.EVT_BUTTON, self.parent.data_manager.on_refresh_tab)
 
         # Store the tab reference in the dictionary
         self.tab_references[tab_title] = (grid, refresh_button)
@@ -221,7 +221,7 @@ class GridManager:
             return
 
         # Get the keys from the first dictionary as column headers
-        headers = list(json_data[0].keys())
+        headers = [h for h in list(json_data[0].keys()) if h not in ["id", "created_at"]]
 
         # Resize the grid to fit the data
         grid.ClearGrid()
