@@ -3,7 +3,7 @@
     "discord_webhook_url": "{?discord_webhook_url}",
     "google_sheets_webhook": "{?google_sheets_webhook}",
     "google_sheets_mapping": ["player_death"],
-    "use_supabase": false,
+    "datasource": "googlesheets",
     "supabase_url": "",
     "supabase_key": "",
     "regex_patterns": {
