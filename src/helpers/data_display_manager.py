@@ -293,12 +293,6 @@ class DataDisplayManager:
         """
         try:
             
-            # Update UI checkboxes to reflect the current datasource setting
-            if hasattr(self.parent, 'supabase_check') and hasattr(self.parent, 'googlesheet_check'):
-                datasource = self.parent.config_manager.get("datasource", "googlesheets")
-                self.parent.supabase_check.Check(datasource == "supabase")
-                self.parent.googlesheet_check.Check(datasource == "googlesheets")
-            
             # Import our data provider system
             from .data_provider import get_data_provider
             
