@@ -195,7 +195,7 @@ class ConfigManager:
                     
                     # Default keys to preserve if none specified
                     preserve_keys = preserve_keys or ["discord_webhook_url", "google_sheets_webhook", 
-                                                     "log_file_path", "console_key", "version"
+                                                     "log_file_path", "console_key", "version",
                                                      "supabase_url", "supabase_key"]
                     
                     # Check if the config has already been renewed for this version
@@ -338,31 +338,24 @@ class ConfigManager:
                 )
                 return False
     
-    def apply_dynamic_config(self, webhook_url=None):
+    def apply_dynamic_config(self):
         """
-        Apply dynamic configuration from the configured data provider (Google Sheets or Supabase).
+        Apply dynamic configuration from the configured data provider.
         
-        This method loads dynamic configuration and applies it directly to the current configuration.
-        
-        Args:
-            webhook_url (str, optional): The Google Sheets webhook URL to use.
-                                         If provided, overrides the one in config.
+        This method loads dynamic configuration from whatever data provider is currently
+        configured (Google Sheets, Supabase, etc.) and applies it directly to the current configuration.
         
         Returns:
             bool: True if successfully applied, False otherwise
         """
         with self._lock:
             try:
-                # Use provided webhook_url if available, otherwise use config
-                if webhook_url:
-                    self.set('google_sheets_webhook', webhook_url)
-                
-                # Fetch dynamic config directly
+                # Fetch dynamic config using the configured data provider
                 dynamic_config = fetch_dynamic_config(self)
                 
                 if not dynamic_config:
                     message_bus.publish(
-                        content="No dynamic configuration found", 
+                        content="No dynamic configuration found or data provider not available",
                         level=MessageLevel.WARNING,
                         metadata={"source": "config_manager"}
                     )
@@ -418,6 +411,8 @@ class ConfigManager:
                         )
                         # Fall back to Google Sheets if Supabase connection fails
                         self.set('datasource', 'googlesheets')
+                        # Save the changed configuration to disk
+                        self.save_config()
                 except ImportError:
                     message_bus.publish(
                         content="Supabase manager not available. Falling back to Google Sheets.",
@@ -425,11 +420,13 @@ class ConfigManager:
                         metadata={"source": "config_manager"}
                     )
                     self.set('datasource', 'googlesheets')
+                    # Save the changed configuration to disk
+                    self.save_config()
             
             # Apply dynamic configuration if Google Sheets is the selected datasource and webhook is available
             google_sheets_webhook = self.get('google_sheets_webhook', '')
             if datasource == 'googlesheets' and self.is_valid_url(google_sheets_webhook):
-                if self.apply_dynamic_config(google_sheets_webhook):
+                if self.apply_dynamic_config():
                     return True
             
             return datasource in ['googlesheets', 'supabase']
