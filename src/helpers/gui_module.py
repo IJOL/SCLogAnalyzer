@@ -677,8 +677,8 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 class DataTransferDialog(wx.Dialog):
     """Dialog for transferring data from Google Sheets to Supabase."""
     def __init__(self, parent):
-        super().__init__(parent, title="Data Transfer", size=(550, 380), 
-                         style=wx.DEFAULT_DIALOG_STYLE)  # Removed RESIZE_BORDER flag to make non-resizable
+        super().__init__(parent, title="Data Transfer", size=(550, 550), 
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)  # Increased height and added resize capability
 
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -709,6 +709,21 @@ class DataTransferDialog(wx.Dialog):
         self.config_only_radio = wx.RadioButton(options_box, label="Transfer configuration only")
         options_sizer.Add(self.config_only_radio, 0, wx.ALL | wx.EXPAND, 5)
 
+        # Add a separator
+        options_sizer.Add(wx.StaticLine(options_box), 0, wx.EXPAND | wx.ALL, 5)
+        
+        # Data transfer mode options
+        mode_label = wx.StaticText(options_box, label="Data Transfer Mode:")
+        options_sizer.Add(mode_label, 0, wx.ALL, 5)
+        
+        # Purge first option
+        self.purge_radio = wx.RadioButton(options_box, label="Delete existing data first (faster)", style=wx.RB_GROUP)
+        options_sizer.Add(self.purge_radio, 0, wx.ALL | wx.EXPAND, 5)
+        
+        # Skip duplicates option
+        self.skip_duplicates_radio = wx.RadioButton(options_box, label="Only add new records (skip duplicates)")
+        options_sizer.Add(self.skip_duplicates_radio, 0, wx.ALL | wx.EXPAND, 5)
+
         # Batch size setting
         batch_sizer = wx.BoxSizer(wx.HORIZONTAL)
         batch_label = wx.StaticText(options_box, label="Batch size:")
@@ -732,16 +747,34 @@ class DataTransferDialog(wx.Dialog):
         main_sizer.Add(options_sizer, 0, wx.ALL | wx.EXPAND, 10)
         main_sizer.Add(progress_sizer, 0, wx.ALL | wx.EXPAND, 10)
 
-        # Add buttons with improved spacing and alignment
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.start_button = wx.Button(panel, label="Start Transfer")
-        self.cancel_button = wx.Button(panel, label="Cancel")
-        button_sizer.Add(self.start_button, 0, wx.ALL, 10)  # Increased padding around buttons
-        button_sizer.Add(self.cancel_button, 0, wx.ALL, 10)
-        main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER | wx.RESERVE_SPACE_EVEN_IF_HIDDEN, 10)
-
+        # Add a separator
+        main_sizer.Add(wx.StaticLine(panel), 0, wx.EXPAND | wx.ALL, 5)
+        
+        # Add a spacer to push content up
+        main_sizer.AddStretchSpacer()
+        
+        # SIMPLIFIED BUTTON SECTION - Directly add buttons to the main panel 
+        # without nesting in another panel
+        button_sizer = wx.StdDialogButtonSizer()
+        
+        # Create larger buttons with clear labels
+        self.start_button = wx.Button(panel, wx.ID_OK, label="Start Transfer", size=(140, 40))
+        self.start_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        
+        self.cancel_button = wx.Button(panel, wx.ID_CANCEL, label="Cancel", size=(140, 40))
+        self.cancel_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        
+        # Add buttons to the standard dialog sizer
+        button_sizer.AddButton(self.start_button)
+        button_sizer.AddButton(self.cancel_button)
+        button_sizer.Realize()
+        
+        # Add the button sizer with a larger margin to ensure visibility
+        main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER_HORIZONTAL, 30)
+        
+        # Set the sizer and fit dialog to contents
         panel.SetSizer(main_sizer)
-
+        
         # Bind events
         self.start_button.Bind(wx.EVT_BUTTON, self.on_start)
         self.cancel_button.Bind(wx.EVT_BUTTON, self.on_cancel)
@@ -765,12 +798,15 @@ class DataTransferDialog(wx.Dialog):
         # Get options
         config_only = self.config_only_radio.GetValue()
         batch_size = self.batch_size_ctrl.GetValue()
+        purge_first = self.purge_radio.GetValue()  # Get the selected transfer mode
         
         # Disable UI during transfer
         self.start_button.Disable()
         self.all_data_radio.Disable()
         self.config_only_radio.Disable()
         self.batch_size_ctrl.Disable()
+        self.purge_radio.Disable()
+        self.skip_duplicates_radio.Disable()
         self.is_running = True
         
         # Update UI
@@ -798,7 +834,7 @@ class DataTransferDialog(wx.Dialog):
                 else:
                     wx.CallAfter(self.progress_text.SetLabel, "Status: Transferring all data...")
                     wx.CallAfter(self.progress_bar.SetValue, 30)
-                    success = transfer_all_data_to_supabase(config_manager, batch_size)
+                    success = transfer_all_data_to_supabase(config_manager, batch_size, purge_first)
                 
                 # Update UI based on result
                 if success:
@@ -840,6 +876,8 @@ class DataTransferDialog(wx.Dialog):
                 wx.CallAfter(self.all_data_radio.Enable)
                 wx.CallAfter(self.config_only_radio.Enable)
                 wx.CallAfter(self.batch_size_ctrl.Enable, self.all_data_radio.GetValue())
+                wx.CallAfter(self.purge_radio.Enable)
+                wx.CallAfter(self.skip_duplicates_radio.Enable)
                 
                 self.is_running = False
                 
@@ -854,6 +892,8 @@ class DataTransferDialog(wx.Dialog):
                 wx.CallAfter(self.all_data_radio.Enable)
                 wx.CallAfter(self.config_only_radio.Enable)
                 wx.CallAfter(self.batch_size_ctrl.Enable, self.all_data_radio.GetValue())
+                wx.CallAfter(self.purge_radio.Enable)
+                wx.CallAfter(self.skip_duplicates_radio.Enable)
                 self.is_running = False
         
         self.transfer_task = threading.Thread(target=run_transfer)

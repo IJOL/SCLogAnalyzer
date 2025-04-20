@@ -11,6 +11,8 @@ import time
 import asyncio
 from typing import List, Dict, Any, Optional, Tuple
 import traceback
+import hashlib
+import json
 
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
@@ -121,12 +123,13 @@ class DataTransfer:
             )
             return []
 
-    def transfer_sheet(self, sheet_name: str) -> Tuple[int, int]:
+    def transfer_sheet(self, sheet_name: str, purge_first: bool = True) -> Tuple[int, int]:
         """
         Transfer data from a specific Google Sheet to Supabase.
         
         Args:
             sheet_name (str): Name of the sheet to transfer
+            purge_first (bool): Whether to purge existing data before transfer (default: True)
             
         Returns:
             Tuple[int, int]: (Number of records processed, number of successful transfers)
@@ -137,10 +140,21 @@ class DataTransfer:
             metadata={"source": self.SOURCE}
         )
 
-        # First, purge the existing data in the table if it exists
-        if self.sb_provider and self.sb_provider.is_connected():
+        # First, purge the existing data in the table if it exists and purge_first is True
+        if purge_first and self.sb_provider and self.sb_provider.is_connected():
+            message_bus.publish(
+                content=f"Purging existing data for sheet: {sheet_name}",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
             # Use the purge method from the data provider
             self.sb_provider.purge(sheet_name)
+        elif not purge_first and self.sb_provider and self.sb_provider.is_connected():
+            message_bus.publish(
+                content=f"Skipping purge for sheet: {sheet_name} - will check for duplicates",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
 
         # Fetch data from Google Sheets
         gs_data = self.gs_provider.fetch_data(sheet_name)
@@ -159,10 +173,62 @@ class DataTransfer:
             metadata={"source": self.SOURCE}
         )
         
-        # Process in batches to avoid overloading the database
-        batches = [gs_data[i:i + self.batch_size] for i in range(0, len(gs_data), self.batch_size)]
+        # If we're not purging first, we need to filter out duplicates
+        filtered_gs_data = gs_data
+        if not purge_first and self.sb_provider and self.sb_provider.is_connected():
+            # Fetch only hashes from Supabase for efficient duplicate detection
+            message_bus.publish(
+                content=f"Fetching record hashes from Supabase for duplicate detection",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            # Use the dedicated RPC function to get hashes
+            supabase_hashes = set(self.sb_provider.fetch_record_hashes(sheet_name))
+            
+            if supabase_hashes:
+                # Filter out records that already exist in Supabase
+                filtered_gs_data = []
+                
+                for record in gs_data:
+                    # Calculate hash in the same way as in PostgreSQL
+                    # This has to match the MD5 calculation in the get_table_record_hashes function
+                    hash_input = (
+                        str(record.get('username', '')) +
+                        str(record.get('killer', '')) +
+                        str(record.get('victim', '')) +
+                        str(record.get('timestamp', record.get('timestamp', '')))
+                    )
+                    record_hash = hashlib.md5(hash_input.encode()).hexdigest()
+                    
+                    if record_hash not in supabase_hashes:
+                        filtered_gs_data.append(record)
+                
+                duplicate_count = len(gs_data) - len(filtered_gs_data)
+                message_bus.publish(
+                    content=f"Found {duplicate_count} duplicate records to skip ({duplicate_count * 100.0 / len(gs_data):.1f}%)",
+                    level=MessageLevel.INFO,
+                    metadata={"source": self.SOURCE}
+                )
+            else:
+                message_bus.publish(
+                    content=f"No existing data found in Supabase, will insert all records",
+                    level=MessageLevel.INFO,
+                    metadata={"source": self.SOURCE}
+                )
         
-        total_processed = 0
+        # If no records to insert after filtering, return early
+        if not filtered_gs_data:
+            message_bus.publish(
+                content=f"No new records to insert for sheet: {sheet_name}",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            return len(gs_data), 0
+        
+        # Process in batches to avoid overloading the database
+        batches = [filtered_gs_data[i:i + self.batch_size] for i in range(0, len(filtered_gs_data), self.batch_size)]
+        
+        total_processed = len(gs_data)  # Total includes duplicates we skipped
         total_success = 0
         
         for batch_idx, batch in enumerate(batches):
@@ -183,8 +249,7 @@ class DataTransfer:
             # Submit the batch to Supabase
             success = self.sb_provider.process_data(supabase_batch)
             
-            # Update counters
-            total_processed += len(batch)
+            # Update success counter
             if success:
                 total_success += len(batch)  # This is approximate since we don't have item-level status
             
@@ -194,10 +259,16 @@ class DataTransfer:
                 
         return total_processed, total_success
 
-    def transfer_all_data(self) -> Dict[str, Tuple[int, int]]:
+    def transfer_all_data(self, purge_first: bool = True) -> Dict[str, Tuple[int, int]]:
         """
         Transfer all data from Google Sheets to Supabase.
         
+        Args:
+            purge_first (bool): Whether to purge existing data before transfer (default: True)
+            This will be overridden for:
+            - Materials table: Always purged
+            - Tables with "_" in name: Never purged (only new records added)
+            
         Returns:
             Dict[str, Tuple[int, int]]: Results for each sheet (processed, successful)
         """
@@ -230,7 +301,27 @@ class DataTransfer:
         results = {}
         for sheet in sheets:
             try:
-                processed, success = self.transfer_sheet(sheet)
+                # Determine whether to purge based on sheet name:
+                # - Materials: Always purge
+                # - Tables with "_": Never purge (only add new records)
+                # - Other tables: Use the provided purge_first parameter
+                sheet_purge_first = purge_first
+                if sheet == "Materials":
+                    sheet_purge_first = True  # Always purge Materials table
+                    message_bus.publish(
+                        content=f"Materials table will be purged before transfer (forced)",
+                        level=MessageLevel.INFO,
+                        metadata={"source": self.SOURCE}
+                    )
+                elif "_" in sheet:
+                    sheet_purge_first = False  # Never purge tables with underscore
+                    message_bus.publish(
+                        content=f"Table {sheet} contains an underscore - only new records will be added",
+                        level=MessageLevel.INFO,
+                        metadata={"source": self.SOURCE}
+                    )
+                
+                processed, success = self.transfer_sheet(sheet, sheet_purge_first)
                 results[sheet] = (processed, success)
             except Exception as e:
                 message_bus.publish(
@@ -324,13 +415,14 @@ class DataTransfer:
         return success
 
 
-def transfer_all_data_to_supabase(config_manager=None, batch_size=50):
+def transfer_all_data_to_supabase(config_manager=None, batch_size=50, purge_first=True):
     """
     Helper function to transfer all data from Google Sheets to Supabase.
     
     Args:
         config_manager: Configuration manager instance
         batch_size (int): Records per batch to process
+        purge_first (bool): Whether to purge existing data before transfer (default: True)
         
     Returns:
         bool: True if transfer was mostly successful
@@ -340,7 +432,7 @@ def transfer_all_data_to_supabase(config_manager=None, batch_size=50):
         batch_size=batch_size
     )
     
-    results = transfer.transfer_all_data()
+    results = transfer.transfer_all_data(purge_first=purge_first)
     
     # Calculate overall success rate
     total_processed = sum(processed for processed, _ in results.values())

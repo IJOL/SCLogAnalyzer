@@ -588,8 +588,8 @@ class SupabaseDataProvider(DataProvider):
         Returns:
             bool: True if the view exists or was created successfully, False otherwise
         """
-        # Check if view already exists in table cache
-        if "resumen_view" in supabase_manager.existing_tables:
+        # Check if view already exists using table_exists method
+        if supabase_manager._table_exists("resumen_view"):
             return True
             
         message_bus.publish(
@@ -755,8 +755,6 @@ class SupabaseDataProvider(DataProvider):
                 level=MessageLevel.INFO,
                 metadata={"source": self.SOURCE}
             )
-            # Add the view to the cache
-            supabase_manager.existing_tables.add("resumen_view")
             return True
         else:
             message_bus.publish(
@@ -781,65 +779,64 @@ class SupabaseDataProvider(DataProvider):
             )
             return {}
         
-        # Connect to the 'config' table in Supabase
+        # Use sanitized table name for config table
+        config_table = supabase_manager._sanitize_table_name("Config")
+        
+        # Check if the config table exists
+        if not supabase_manager._table_exists(config_table):
+            # Table doesn't exist, we'll need to create it
+            message_bus.publish(
+                content=f"Config table '{config_table}' does not exist in Supabase, creating it",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            
+            # Prepare sample data structure for table creation
+            sample_data = {
+                "key": "sample_key",
+                "value": "sample_value"
+            }
+            
+            # Define RLS policies for the config table
+            rls_policies = [
+                {
+                    "name": "Allow read access to config",
+                    "action": "SELECT",
+                    "using": "true"
+                },
+                {
+                    "name": "Allow insert access to config",
+                    "action": "INSERT",
+                    "check": "true"
+                },
+                {
+                    "name": "Allow update access to config",
+                    "action": "UPDATE",
+                    "using": "true",
+                    "check": "true"
+                }
+            ]
+            
+            # Use the enhanced _create_table method with RLS support
+            if not supabase_manager._create_table(
+                config_table, 
+                sample_data, 
+                enable_rls=True, 
+                rls_policies=rls_policies
+            ):
+                message_bus.publish(
+                    content=f"Failed to create config table",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                return {}
+        
+        # Query the config table
         attempt = 0
         last_error = None
         
         while attempt < self.max_retries:
             try:
-                # Use sanitized table name for config table
-                config_table = supabase_manager._sanitize_table_name("Config")
-                
-                # Check if the config table exists
-                if config_table not in supabase_manager.existing_tables:
-                    # Table doesn't exist, we'll need to create it
-                    message_bus.publish(
-                        content=f"Config table '{config_table}' does not exist in Supabase, creating it",
-                        level=MessageLevel.INFO,
-                        metadata={"source": self.SOURCE}
-                    )
-                    
-                    # Prepare sample data structure for table creation
-                    sample_data = {
-                        "key": "sample_key",
-                        "value": "sample_value"
-                    }
-                    
-                    # Define RLS policies for the config table
-                    rls_policies = [
-                        {
-                            "name": "Allow read access to config",
-                            "action": "SELECT",
-                            "using": "true"
-                        },
-                        {
-                            "name": "Allow insert access to config",
-                            "action": "INSERT",
-                            "check": "true"
-                        },
-                        {
-                            "name": "Allow update access to config",
-                            "action": "UPDATE",
-                            "using": "true",
-                            "check": "true"
-                        }
-                    ]
-                    
-                    # Use the enhanced _create_table method with RLS support
-                    if not supabase_manager._create_table(
-                        config_table, 
-                        sample_data, 
-                        enable_rls=True, 
-                        rls_policies=rls_policies
-                    ):
-                        message_bus.publish(
-                            content=f"Failed to create config table",
-                            level=MessageLevel.ERROR,
-                            metadata={"source": self.SOURCE}
-                        )
-                        return {}
-                
-                # Query the config table
                 result = supabase_manager.supabase.table(config_table).select('*').execute()
                 config_data = result.data if hasattr(result, 'data') else []
                 
@@ -943,6 +940,8 @@ class SupabaseDataProvider(DataProvider):
                 # If username is provided, filter by username
                 if username:
                     delete_query = delete_query.eq('username', username)
+                else:
+                    delete_query = delete_query.eq('username', None)
                 
                 # Execute the delete
                 result = delete_query.execute()
@@ -998,6 +997,110 @@ class SupabaseDataProvider(DataProvider):
         )
         return False
 
+    def fetch_record_hashes(self, table_name: str) -> List[str]:
+        """
+        Fetch only MD5 hashes of records in the table for efficient duplicate detection.
+        Uses a dedicated RPC function in Supabase.
+        
+        Args:
+            table_name: The table name to fetch hashes from
+            
+        Returns:
+            List of MD5 hash strings for existing records
+        """
+        if not supabase_manager.is_connected():
+            message_bus.publish(
+                content="Supabase is not connected",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return []
+
+        # Sanitize the table name
+        sanitized_table = supabase_manager._sanitize_table_name(table_name)
+        
+        # Check if the table exists
+        if not supabase_manager._table_exists(sanitized_table):
+            message_bus.publish(
+                content=f"Table '{sanitized_table}' does not exist in Supabase",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            return []
+        
+        attempt = 0
+        last_error = None
+        
+        while attempt < self.max_retries:
+            try:
+                # Call the RPC function to get hashes directly from Supabase
+                result = supabase_manager.supabase.rpc(
+                    'get_table_record_hashes',
+                    {'table_name': sanitized_table}
+                ).execute()
+                
+                if hasattr(result, 'error') and result.error:
+                    message_bus.publish(
+                        content=f"Error fetching hashes via RPC: {result.error}",
+                        level=MessageLevel.ERROR,
+                        metadata={"source": self.SOURCE}
+                    )
+                    attempt += 1
+                    if attempt < self.max_retries:
+                        time.sleep(self.retry_delay)
+                    continue
+                
+                # Extract hashes from the result
+                hashes = []
+                if hasattr(result, 'data') and result.data:
+                    for row in result.data:
+                        if isinstance(row, dict) and 'hash_value' in row:
+                            hashes.append(row['hash_value'])
+                
+                message_bus.publish(
+                    content=f"Retrieved {len(hashes)} record hashes from table '{sanitized_table}' via RPC",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": self.SOURCE}
+                )
+                return hashes
+                
+            except Exception as e:
+                last_error = str(e)
+                message_bus.publish(
+                    content=f"Error calling get_table_record_hashes RPC for table '{sanitized_table}' (attempt {attempt+1}/{self.max_retries}): {e}",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": self.SOURCE}
+                )
+                message_bus.publish(
+                    content=traceback.format_exc(),
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": self.SOURCE}
+                )
+                
+                # If RPC function might not exist, try the fallback direct SQL approach
+                if "function get_table_record_hashes() does not exist" in str(e).lower():
+                    message_bus.publish(
+                        content="RPC function get_table_record_hashes not found, using fallback SQL approach",
+                        level=MessageLevel.WARNING,
+                        metadata={"source": self.SOURCE}
+                    )
+                    return self._fetch_record_hashes_fallback(sanitized_table)
+            
+            # Increment attempt counter and delay before retry
+            attempt += 1
+            if attempt < self.max_retries:
+                time.sleep(self.retry_delay)
+        
+        # All attempts failed
+        message_bus.publish(
+            content=f"All {self.max_retries} attempts failed to fetch hashes from '{sanitized_table}': {last_error}",
+            level=MessageLevel.ERROR,
+            metadata={"source": self.SOURCE}
+        )
+        
+        # Try fallback method as last resort
+        return []
+        
 def get_data_provider(config_manager) -> DataProvider:
     """
     Factory function to get the appropriate data provider based on configuration.
