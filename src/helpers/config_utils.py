@@ -393,41 +393,28 @@ class ConfigManager:
             
             # Connect to Supabase if it's the selected datasource
             if datasource == 'supabase':
-                try:
-                    from .supabase_manager import supabase_manager
+                from .supabase_manager import supabase_manager
                     # Pass the config_manager instance to the connect method
-                    if supabase_manager.connect(config_manager=self):
-                        message_bus.publish(
-                            content="Successfully connected to Supabase",
-                            level=MessageLevel.INFO,
-                            metadata={"source": "config_manager"}
-                        )
-                        return True
-                    else:
-                        message_bus.publish(
-                            content="Failed to connect to Supabase. Falling back to Google Sheets.",
-                            level=MessageLevel.WARNING,
-                            metadata={"source": "config_manager"}
-                        )
-                        # Fall back to Google Sheets if Supabase connection fails
-                        self.set('datasource', 'googlesheets')
-                        # Save the changed configuration to disk
-                        self.save_config()
-                except ImportError:
+                if supabase_manager.connect(config_manager=self):
                     message_bus.publish(
-                        content="Supabase manager not available. Falling back to Google Sheets.",
+                        content="Successfully connected to Supabase",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "config_manager"}
+                    )
+                else:
+                    message_bus.publish(
+                        content="Failed to connect to Supabase. Falling back to Google Sheets.",
                         level=MessageLevel.WARNING,
                         metadata={"source": "config_manager"}
                     )
+                    # Fall back to Google Sheets if Supabase connection fails
                     self.set('datasource', 'googlesheets')
                     # Save the changed configuration to disk
                     self.save_config()
             
             # Apply dynamic configuration if Google Sheets is the selected datasource and webhook is available
-            google_sheets_webhook = self.get('google_sheets_webhook', '')
-            if datasource == 'googlesheets' and self.is_valid_url(google_sheets_webhook):
-                if self.apply_dynamic_config():
-                    return True
+            if self.apply_dynamic_config():
+                return True
             
             return datasource in ['googlesheets', 'supabase']
 
