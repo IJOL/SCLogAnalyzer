@@ -56,9 +56,6 @@ class SupabaseManager:
         self.supabase_key = None
         self.supabase: Client = None
         self.is_initialized = False
-        self.existing_tables = set()  # Cache for existing table names
-        self.table_cache_time = 0  # Last time the table cache was updated
-        self.table_cache_ttl = 1  # Cache TTL in seconds (5 minutes)
         self.connection_attempted = False  # Track if connection has been attempted
         
     def connect(self, config_manager=None):
@@ -105,10 +102,7 @@ class SupabaseManager:
                 )
             else:
                 print("Connected to Supabase successfully.")
-            
-            # Initialize table cache
-            self._refresh_table_cache()
-            
+                
             return True
         except Exception as e:
             log_message(f"Error connecting to Supabase: {e}", "ERROR")
@@ -129,34 +123,6 @@ class SupabaseManager:
             bool: True if connected, False otherwise.
         """
         return self.is_initialized
-    
-    def _refresh_table_cache(self):
-        """
-        Refresh the cache of existing tables using the list_tables() SQL function.
-        """
-        if not self.is_connected():
-            return
-            
-        try:
-            # Call the list_tables() function that was created in Supabase
-            # This function returns all table names in the public schema
-            result = self.supabase.rpc('list_tables').execute()
-            
-            # Check for errors
-            if hasattr(result, 'error') and result.error:
-                log_message(f"Error getting table list from Supabase: {result.error}", "ERROR")
-                return
-                
-            # Extract table names from the result
-            # The function returns rows with a single column 'table_name'
-            self.existing_tables = set(row['table_name'] for row in result.data)
-            self.table_cache_time = time.time()
-            
-            log_message(f"Table cache refreshed using list_tables() function. Found {len(self.existing_tables)} tables.", "DEBUG")
-                
-        except Exception as e:
-            log_message(f"Error refreshing table cache: {e}", "ERROR")
-            # Don't clear the cache on error - conservative approach
     
     def _sanitize_table_name(self, name):
         """
@@ -189,7 +155,7 @@ class SupabaseManager:
     
     def _table_exists(self, table_name):
         """
-        Check if a table exists in Supabase.
+        Check if a table exists in Supabase in real-time by calling the list_tables RPC function.
         
         Args:
             table_name (str): The table name to check
@@ -197,11 +163,27 @@ class SupabaseManager:
         Returns:
             bool: True if the table exists, False otherwise
         """
-        # Check if we need to refresh the cache
-        if time.time() - self.table_cache_time > self.table_cache_ttl:
-            self._refresh_table_cache()
+        if not self.is_connected():
+            return False
             
-        return table_name in self.existing_tables
+        try:
+            # Call the list_tables RPC function to get all available tables
+            result = self.supabase.rpc('list_tables').execute()
+            
+            # Check for errors
+            if hasattr(result, 'error') and result.error:
+                log_message(f"Error listing tables: {result.error}", "ERROR")
+                return False
+                
+            # Check if the table_name exists in the returned list of tables
+            if result.data:
+                table_list = [table['table_name'] for table in result.data if 'table_name' in table]
+                return table_name in table_list
+                
+            return False
+        except Exception as e:
+            log_message(f"Error checking table existence: {e}", "ERROR")
+            return False
     
     def _execute_sql(self, sql):
         """
@@ -260,7 +242,16 @@ class SupabaseManager:
             columns.append("id UUID PRIMARY KEY DEFAULT gen_random_uuid()")
             
             # Add created_at timestamp if not in data
-            columns.append("created_at TIMESTAMPTZ DEFAULT NOW()")
+            columns.append("created_at TIMESTAMP DEFAULT NOW()")
+            
+            # ISO 8601 format with timezone and milliseconds: 2025-04-15T18:30:26.650Z
+            datetime_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+            
+            def is_datetime_string(value):
+                """Check if a string matches ISO 8601 datetime format"""
+                if not isinstance(value, str):
+                    return False
+                return bool(re.match(datetime_pattern, value))
             
             # Process other fields in the data
             for key, value in data.items():
@@ -278,6 +269,9 @@ class SupabaseManager:
                     columns.append(f"{key} NUMERIC")
                 elif isinstance(value, dict) or isinstance(value, list):
                     columns.append(f"{key} JSONB")
+                elif is_datetime_string(value):
+                    # If string matches ISO 8601 datetime pattern, use TIMESTAMP
+                    columns.append(f"{key} TIMESTAMP")
                 else:
                     # Default to text for strings and other types
                     columns.append(f"{key} TEXT")
@@ -329,8 +323,6 @@ class SupabaseManager:
             success, result = self._execute_sql(create_table_sql)
             
             if success:
-                # Add to our cache of existing tables
-                self.existing_tables.add(table_name)
                 log_message(f"Created table {table_name} in Supabase using SQL", "DEBUG")
                 return True
             else:
