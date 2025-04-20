@@ -137,6 +137,11 @@ class DataTransfer:
             metadata={"source": self.SOURCE}
         )
 
+        # First, purge the existing data in the table if it exists
+        if self.sb_provider and self.sb_provider.is_connected():
+            # Use the purge method from the data provider
+            self.sb_provider.purge(sheet_name)
+
         # Fetch data from Google Sheets
         gs_data = self.gs_provider.fetch_data(sheet_name)
         

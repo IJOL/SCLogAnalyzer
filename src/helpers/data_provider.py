@@ -60,6 +60,20 @@ class DataProvider(ABC):
         """
         pass
         
+    @abstractmethod
+    def purge(self, table_name: str, username: Optional[str] = None) -> bool:
+        """
+        Delete data from the specified table/sheet.
+        
+        Args:
+            table_name: The name of the table/sheet to purge
+            username: Optional username filter. If provided, only data for this username will be deleted.
+            
+        Returns:
+            bool: True if purge was successful, False otherwise
+        """
+        pass
+        
 
 class GoogleSheetsDataProvider(DataProvider):
     """
@@ -312,6 +326,31 @@ class GoogleSheetsDataProvider(DataProvider):
                 metadata={"source": self.SOURCE}
             )
             return {}
+
+    def purge(self, table_name: str, username: Optional[str] = None) -> bool:
+        """
+        No-op implementation for Google Sheets as purging is not needed.
+        
+        Args:
+            table_name: The name of the sheet (ignored)
+            username: Optional username filter (ignored in this implementation)
+            
+        Returns:
+            bool: Always returns True
+        """
+        if username:
+            message_bus.publish(
+                content=f"Purge operation with username filter not implemented for Google Sheets (sheet: {table_name}, username: {username})",
+                level=MessageLevel.DEBUG,
+                metadata={"source": self.SOURCE}
+            )
+        else:
+            message_bus.publish(
+                content=f"Purge operation not implemented for Google Sheets (sheet: {table_name})",
+                level=MessageLevel.DEBUG,
+                metadata={"source": self.SOURCE}
+            )
+        return True
 
 
 class SupabaseDataProvider(DataProvider):
@@ -847,6 +886,117 @@ class SupabaseDataProvider(DataProvider):
             metadata={"source": self.SOURCE}
         )
         return {}
+
+    def purge(self, table_name: str, username: Optional[str] = None) -> bool:
+        """
+        Delete data from the specified table in Supabase.
+        
+        Args:
+            table_name: The name of the table to purge
+            username: Optional username filter. If provided, only data for this username will be deleted.
+            
+        Returns:
+            bool: True if purge was successful, False otherwise
+        """
+        if not supabase_manager.is_connected():
+            message_bus.publish(
+                content="Supabase is not connected",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+        
+        # Sanitize the table name
+        sanitized_table = supabase_manager._sanitize_table_name(table_name)
+        
+        # Check if the table exists
+        if not supabase_manager._table_exists(sanitized_table):
+            message_bus.publish(
+                content=f"Table '{sanitized_table}' does not exist in Supabase",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            return True  # Not an error if the table doesn't exist
+        
+        if username:
+            message_bus.publish(
+                content=f"Purging data for username '{username}' from table: {sanitized_table}",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+        else:
+            message_bus.publish(
+                content=f"Purging all data from table: {sanitized_table}",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+        
+        # Use standard Supabase API to delete rows
+        attempt = 0
+        last_error = None
+        
+        while attempt < self.max_retries:
+            try:
+                # Build the delete query
+                delete_query = supabase_manager.supabase.table(sanitized_table).delete()
+                
+                # If username is provided, filter by username
+                if username:
+                    delete_query = delete_query.eq('username', username)
+                
+                # Execute the delete
+                result = delete_query.execute()
+                
+                # Check for errors
+                if hasattr(result, 'error') and result.error:
+                    error_msg = str(result.error)
+                    message_bus.publish(
+                        content=f"Error purging table '{sanitized_table}' (attempt {attempt+1}/{self.max_retries}): {error_msg}",
+                        level=MessageLevel.WARNING,
+                        metadata={"source": self.SOURCE}
+                    )
+                    last_error = error_msg
+                else:
+                    # Success
+                    if username:
+                        message_bus.publish(
+                            content=f"Successfully purged data for username '{username}' from table: {sanitized_table}",
+                            level=MessageLevel.INFO,
+                            metadata={"source": self.SOURCE}
+                        )
+                    else:
+                        message_bus.publish(
+                            content=f"Successfully purged all data from table: {sanitized_table}",
+                            level=MessageLevel.INFO,
+                            metadata={"source": self.SOURCE}
+                        )
+                    return True
+                    
+            except Exception as e:
+                last_error = str(e)
+                message_bus.publish(
+                    content=f"Exception during purge of table '{sanitized_table}' (attempt {attempt+1}/{self.max_retries}): {e}",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": self.SOURCE}
+                )
+                message_bus.publish(
+                    content=traceback.format_exc(),
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": self.SOURCE}
+                )
+            
+            # Increment attempt counter and delay before retry
+            attempt += 1
+            if attempt < self.max_retries:
+                time.sleep(self.retry_delay)
+        
+        # All attempts failed
+        message_bus.publish(
+            content=f"Failed to purge data from table '{sanitized_table}' after {self.max_retries} attempts: {last_error}",
+            level=MessageLevel.ERROR,
+            metadata={"source": self.SOURCE}
+        )
+        return False
 
 def get_data_provider(config_manager) -> DataProvider:
     """
