@@ -243,7 +243,7 @@ class ConfigManager:
                     
                     # Save the renewed config
                     self.save_config()
-                    
+                    self.apply_dynamic_config()
                     message_bus.publish(
                         content=f"Configuration renewed successfully for version {current_version}.",
                         level=MessageLevel.INFO
