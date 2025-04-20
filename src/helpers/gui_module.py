@@ -850,10 +850,7 @@ class DataTransferDialog(wx.Dialog):
                         level=MessageLevel.INFO
                     )
                     
-                    # Update the UI in the parent window
-                    wx.CallAfter(self.GetParent().supabase_check.Check, True)
-                    wx.CallAfter(self.GetParent().googlesheet_check.Check, False)
-                    
+                  
                     # Update tabs based on data source change
                     wx.CallAfter(self.GetParent().data_manager.update_data_source_tabs)
                     
