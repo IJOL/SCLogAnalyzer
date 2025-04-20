@@ -264,6 +264,7 @@ class LogFileHandler(FileSystemEventHandler):
     def add_state_data(self, data):
         """
         Add state data (current_mode, shard, username, version) as first-level keys to the given data.
+        Only adds keys if they don't already exist in the data.
 
         Args:
             data (dict): The data to which state information will be added.
@@ -271,8 +272,8 @@ class LogFileHandler(FileSystemEventHandler):
         Returns:
             dict: The updated data with state information.
         """
-        return {
-            **data,
+        # Create a default state dict
+        state_data = {
             "mode": self.current_mode or "None",
             "shard": self.current_shard or "Unknown",
             "username": self.username or "Unknown",
@@ -280,6 +281,11 @@ class LogFileHandler(FileSystemEventHandler):
             "script_version": self.script_version or "Unknown",
             "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),            
         }
+        
+        # Only add keys that don't exist in the input data
+        result = {**state_data, **data}
+        
+        return result
 
     def stop(self):
         """Stop the handler and cleanup threads"""
