@@ -198,28 +198,32 @@ class StatusBoardBot(commands.Cog):
             logger.exception(f"Error updating combined leaderboard: {e}")
 
     async def initialize_stats_message(self):
-        """Create or fetch the stats embed message and initialize leaderboards."""
+        """Create or fetch the stats text message and initialize leaderboards."""
         channel = await self.get_channel(self.stats_channel_id)
         if not channel:
             return
         try:
-            # Search for an existing embed in the channel
+            # Search for an existing stats message in the channel
             async for message in channel.history(limit=100):  # Adjust limit as needed
-                if message.embeds:
-                    embed = message.embeds[0]
-                    if embed.title == "Real-Time Statistics":
-                        self.stats_message_id = message.id
-                        logger.info("Found existing stats embed message.")
-                        await self.initialize_leaderboard_messages()
-                        self.update_stats_task.start()  # Start periodic updates
-                        return
+                if message.embeds and message.embeds[0].title == "Real-Time Statistics":
+                    # This is an old embed-based stats message, delete it so we can replace with a text message
+                    await message.delete()
+                    logger.info("Found and deleted old stats embed message.")
+                    break
+                elif message.content and message.content.startswith("📊 **Real-Time Statistics**"):
+                    # Found an existing text-based stats message
+                    self.stats_message_id = message.id
+                    logger.info("Found existing stats text message.")
+                    await self.initialize_leaderboard_messages()
+                    self.update_stats_task.start()  # Start periodic updates
+                    return
 
-            # If no existing embed is found, create a new one
-            embed = discord.Embed(title="Real-Time Statistics", description="Loading data...", color=discord.Color.blue())
-            message = await channel.send(embed=embed)
+            # If no existing text message is found, create a new one
+            message = await channel.send("📊 **Real-Time Statistics**\n```Loading data...```")
             self.stats_message_id = message.id
             await self.initialize_leaderboard_messages()
             self.update_stats_task.start()  # Start periodic updates
+            logger.info(f"Created new stats text message with ID: {message.id}")
         except discord.NotFound:
             logger.error("Channel not found or inaccessible.")
         except Exception as e:
@@ -260,25 +264,32 @@ class StatusBoardBot(commands.Cog):
             # Normalize the data
             data = self.normalize_data(data)
 
-            # Update the stats embed
-            embed = self.generate_stats_embed(data)
+            # Update the stats message with text formatting
+            stats_text = self.generate_stats_text(data)
             channel = await self.get_channel(self.stats_channel_id)
             if not channel:
                 return
 
-            message = await channel.fetch_message(self.stats_message_id)
-            await message.edit(embed=embed)
+            # Fetch and update the stats message
+            try:
+                message = await channel.fetch_message(self.stats_message_id)
+                await message.edit(content=stats_text)
+                logger.info("Stats text message updated successfully.")
+            except discord.NotFound:
+                # If the message was deleted, create a new one
+                new_message = await channel.send(stats_text)
+                self.stats_message_id = new_message.id
+                logger.info(f"Created new stats text message with ID: {new_message.id}")
 
-            # Update the leaderboard embeds
+            # Update the leaderboard embeds (these will still use embeds)
             await self.update_leaderboard_embeds(data)
 
             logger.info(f"Stats and leaderboard messages updated successfully. Next update in {update_period} minutes.")
         except Exception as e:
             logger.exception(f"Error updating stats message: {e}")
 
-    def generate_stats_embed(self, data):
-        """Generate an embed with statistics fetched from the data provider."""
-        embed = discord.Embed(title="Real-Time Statistics", color=discord.Color.blue())
+    def generate_stats_text(self, data):
+        """Generate a formatted text message with statistics fetched from the data provider."""
     
         # Define which columns to display and their abbreviations
         column_names = {
@@ -313,8 +324,8 @@ class StatusBoardBot(commands.Cog):
         header = " | ".join(header_parts)
         separator = "-" * (sum(column_widths.values()) + len(column_names) * 3 - 1)
     
-        # Add header and separator to the embed description
-        description = f"```\n{header}\n{separator}\n"
+        # Create the message with header and separator
+        message = f"📊 **Real-Time Statistics**\n```\n{header}\n{separator}\n"
     
         # Add rows to the table, handling missing values
         for row in data:
@@ -323,16 +334,15 @@ class StatusBoardBot(commands.Cog):
                 value = str(row.get(col, ''))[:column_widths[col]]
                 row_parts.append(f"{value:<{column_widths[col]}}")
             
-            description += f"{' | '.join(row_parts)}\n"
+            message += f"{' | '.join(row_parts)}\n"
     
-        description += "```"
-        embed.description = description
+        message += "```"
         
         # Add data source info
         datasource = self.config_manager.get('datasource', 'googlesheets')
-        embed.set_footer(text=f"Data source: {datasource}")
+        message += f"\nData source: {datasource}"
         
-        return embed
+        return message
 
     def normalize_data(self, data):
         """
