@@ -865,7 +865,6 @@ class DataTransferDialog(wx.Dialog):
                 else:
                     wx.CallAfter(self.progress_text.SetLabel, "Status: Transfer failed")
                     wx.CallAfter(self.progress_bar.SetValue, 0)
-                    
                     wx.CallAfter(wx.MessageBox, 
                                 "Data transfer failed. Please check the logs for details.",
                                 "Transfer Failed", 

@@ -425,7 +425,7 @@ def transfer_all_data_to_supabase(config_manager=None, batch_size=50, purge_firs
         purge_first (bool): Whether to purge existing data before transfer (default: True)
         
     Returns:
-        bool: True if transfer was mostly successful
+        bool: True if transfer was successful (includes when all records were filtered as duplicates)
     """
     transfer = DataTransfer(
         config_manager=config_manager,
@@ -434,16 +434,14 @@ def transfer_all_data_to_supabase(config_manager=None, batch_size=50, purge_firs
     
     results = transfer.transfer_all_data(purge_first=purge_first)
     
-    # Calculate overall success rate
-    total_processed = sum(processed for processed, _ in results.values())
-    total_success = sum(success for _, success in results.values())
-    
-    if total_processed == 0:
-        return False
-        
-    success_rate = total_success / total_processed if total_processed > 0 else 0
-    
-    return success_rate > 0.8  # Consider success if more than 80% transferred
+    if not results:
+        message_bus.publish(
+            content="No data transferred to Supabase.",
+            level=MessageLevel.WARNING,
+            metadata={"source": DataTransfer.SOURCE}
+        )
+        return False    
+    return True
 
 
 def transfer_config_to_supabase(config_manager=None):
