@@ -58,7 +58,7 @@ class SupabaseManager:
         self.is_initialized = False
         self.existing_tables = set()  # Cache for existing table names
         self.table_cache_time = 0  # Last time the table cache was updated
-        self.table_cache_ttl = 300  # Cache TTL in seconds (5 minutes)
+        self.table_cache_ttl = 1  # Cache TTL in seconds (5 minutes)
         self.connection_attempted = False  # Track if connection has been attempted
         
     def connect(self, config_manager=None):
@@ -269,12 +269,13 @@ class SupabaseManager:
                     continue
                     
                 # Determine column type based on value type
-                if isinstance(value, int):
-                    columns.append(f"{key} INTEGER")
+                if isinstance(value, bool):
+                    columns.append(f"{key} BOOLEAN")
+                elif isinstance(value, int):
+                    # Use BIGINT instead of INTEGER to support larger numbers
+                    columns.append(f"{key} BIGINT")
                 elif isinstance(value, float):
                     columns.append(f"{key} NUMERIC")
-                elif isinstance(value, bool):
-                    columns.append(f"{key} BOOLEAN")
                 elif isinstance(value, dict) or isinstance(value, list):
                     columns.append(f"{key} JSONB")
                 else:
@@ -339,6 +340,21 @@ class SupabaseManager:
         except Exception as e:
             log_message(f"Error creating table {table_name}: {e}", "ERROR")
             return False
+
+    def _lowercase_keys(self, data_dict):
+        """
+        Convert all dictionary keys to lowercase for PostgreSQL compatibility.
+        
+        Args:
+            data_dict (dict): Dictionary with possibly mixed-case keys
+            
+        Returns:
+            dict: New dictionary with all lowercase keys
+        """
+        if not isinstance(data_dict, dict):
+            return data_dict
+            
+        return {k.lower(): v for k, v in data_dict.items()}
         
     def insert_data(self, sheet, data):
         """
@@ -364,9 +380,13 @@ class SupabaseManager:
             # Flag to track if we just created a new table
             table_newly_created = False
             
+            # Convert data keys to lowercase for PostgreSQL compatibility
+            # This preserves UI labels while ensuring database compatibility
+            lowercase_data = self._lowercase_keys(data)
+            
             # Check if the table exists, create it if it doesn't
             if not self._table_exists(table_name):
-                if not self._create_table(table_name, data):
+                if not self._create_table(table_name, lowercase_data):
                     log_message("Failed to create table. Aborting insert.", "ERROR")
                     return False
                 table_newly_created = True
@@ -386,7 +406,7 @@ class SupabaseManager:
                         time.sleep(delay_seconds)
                         delay_seconds *= 2  # Exponential backoff
                     
-                    result = self.supabase.table(table_name).insert(data).execute()
+                    result = self.supabase.table(table_name).insert(lowercase_data).execute()
                     
                     # Check for errors - more robust error checking
                     if hasattr(result, 'error') and result.error is not None:
@@ -413,7 +433,7 @@ class SupabaseManager:
                     # If this is the last retry, return failure
                     if retry_count >= max_retries - 1:
                         log_message(f"Failed to insert after {retry_count + 1} attempts", "ERROR")
-                        log_message(f"Table: {table_name}, Data keys: {list(data.keys())}", "DEBUG")
+                        log_message(f"Table: {table_name}, Data keys: {list(lowercase_data.keys())}", "DEBUG")
                         return False
                     
                     # Otherwise, increment retry counter and continue the loop
