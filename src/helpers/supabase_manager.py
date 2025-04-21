@@ -3,6 +3,7 @@ import json
 import re
 import time
 from supabase import create_client, Client
+from typing import Optional
 
 # Load environment variables from config.json instead of .env
 from .config_utils import get_config_manager
