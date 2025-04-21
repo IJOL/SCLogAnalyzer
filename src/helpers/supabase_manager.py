@@ -439,5 +439,59 @@ class SupabaseManager:
             log_message(f"Exception inserting log into Supabase: {e}", "ERROR")
             return False
 
+    def purge_table(self, table_name: str, username: Optional[str] = None) -> bool:
+        """
+        Purge data from a table using raw SQL via the run_sql RPC function instead of the API.
+        
+        Args:
+            table_name (str): Name of the table to purge
+            username (Optional[str]): If provided, only purge records for this username
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not self.is_connected():
+            log_message("Supabase is not connected. Cannot purge table.", "ERROR")
+            return False
+            
+        try:
+            # Sanitize the table name
+            sanitized_table = self._sanitize_table_name(table_name)
+            
+            # Check if the table exists
+            if not self._table_exists(sanitized_table):
+                log_message(f"Table '{sanitized_table}' does not exist in Supabase. Nothing to purge.", "INFO")
+                return True  # Not an error if the table doesn't exist
+            
+            # Construct the DELETE SQL statement
+            if username:
+                log_message(f"Purging data for username '{username}' from table: {sanitized_table}", "INFO")
+                delete_sql = f"""
+                DELETE FROM "{sanitized_table}" 
+                WHERE username = '{username.replace("'", "''")}';
+                """
+            else:
+                log_message(f"Purging all data from table: {sanitized_table}", "INFO")
+                delete_sql = f"""
+                DELETE FROM "{sanitized_table}";
+                """
+            
+            # Execute the SQL using the run_sql RPC function
+            success, result = self._execute_sql(delete_sql)
+            
+            if success:
+                if username:
+                    log_message(f"Successfully purged data for username '{username}' from table: {sanitized_table}", "INFO")
+                else:
+                    log_message(f"Successfully purged all data from table: {sanitized_table}", "INFO")
+                return True
+            else:
+                log_message(f"Failed to purge data from table '{sanitized_table}': {result}", "ERROR")
+                return False
+                
+        except Exception as e:
+            log_message(f"Exception during purge of table '{table_name}': {e}", "ERROR")
+            return False
+
 # Create a singleton instance
 supabase_manager = SupabaseManager()

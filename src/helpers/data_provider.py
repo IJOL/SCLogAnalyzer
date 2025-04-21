@@ -903,78 +903,23 @@ class SupabaseDataProvider(DataProvider):
             )
             return False
         
-        # Sanitize the table name
-        sanitized_table = supabase_manager._sanitize_table_name(table_name)
-        
-        # Check if the table exists
-        if not supabase_manager._table_exists(sanitized_table):
-            message_bus.publish(
-                content=f"Table '{sanitized_table}' does not exist in Supabase",
-                level=MessageLevel.INFO,
-                metadata={"source": self.SOURCE}
-            )
-            return True  # Not an error if the table doesn't exist
-        
-        if username:
-            message_bus.publish(
-                content=f"Purging data for username '{username}' from table: {sanitized_table}",
-                level=MessageLevel.INFO,
-                metadata={"source": self.SOURCE}
-            )
-        else:
-            message_bus.publish(
-                content=f"Purging all data from table: {sanitized_table}",
-                level=MessageLevel.INFO,
-                metadata={"source": self.SOURCE}
-            )
-        
-        # Use standard Supabase API to delete rows
+        # Call the new purge_table method from supabase_manager that uses SQL via run_sql RPC
         attempt = 0
         last_error = None
         
         while attempt < self.max_retries:
             try:
-                # Build the delete query
-                delete_query = supabase_manager.supabase.table(sanitized_table).delete()
+                # Use the new purge_table method that executes SQL via RPC
+                success = supabase_manager.purge_table(table_name, username)
                 
-                # If username is provided, filter by username
-                if username:
-                    delete_query = delete_query.eq('username', username)
-                else:
-                    delete_query = delete_query.eq('username', None)
-                
-                # Execute the delete
-                result = delete_query.execute()
-                
-                # Check for errors
-                if hasattr(result, 'error') and result.error:
-                    error_msg = str(result.error)
-                    message_bus.publish(
-                        content=f"Error purging table '{sanitized_table}' (attempt {attempt+1}/{self.max_retries}): {error_msg}",
-                        level=MessageLevel.WARNING,
-                        metadata={"source": self.SOURCE}
-                    )
-                    last_error = error_msg
-                else:
-                    # Success
-                    if username:
-                        message_bus.publish(
-                            content=f"Successfully purged data for username '{username}' from table: {sanitized_table}",
-                            level=MessageLevel.INFO,
-                            metadata={"source": self.SOURCE}
-                        )
-                    else:
-                        message_bus.publish(
-                            content=f"Successfully purged all data from table: {sanitized_table}",
-                            level=MessageLevel.INFO,
-                            metadata={"source": self.SOURCE}
-                        )
+                if success:
                     return True
-                    
+                else:
+                    last_error = "Purge operation failed"
             except Exception as e:
                 last_error = str(e)
                 message_bus.publish(
-                    content=f"Exception during purge of table '{sanitized_table}' (attempt {attempt+1}/{self.max_retries}): {e}",
+                    content=f"Exception during purge of table '{table_name}' (attempt {attempt+1}/{self.max_retries}): {e}",
                     level=MessageLevel.WARNING,
                     metadata={"source": self.SOURCE}
                 )
@@ -991,7 +936,7 @@ class SupabaseDataProvider(DataProvider):
         
         # All attempts failed
         message_bus.publish(
-            content=f"Failed to purge data from table '{sanitized_table}' after {self.max_retries} attempts: {last_error}",
+            content=f"Failed to purge data from table '{table_name}' after {self.max_retries} attempts: {last_error}",
             level=MessageLevel.ERROR,
             metadata={"source": self.SOURCE}
         )
