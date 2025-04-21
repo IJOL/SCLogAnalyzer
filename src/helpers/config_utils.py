@@ -141,6 +141,12 @@ class ConfigManager:
         self._lock = threading.RLock()  # Reentrant lock for thread safety
         self.in_gui = in_gui  # Track whether we're running in GUI mode
         self.new_config = True  # Flag to indicate if a new config was created
+        
+        # Import Event here to avoid circular imports
+        from .event_handlers import Event
+        # Create an event for datasource changes
+        self.datasource_changed = Event()
+        
         self.load_config()
         # Setup data providers automatically after loading the config
         self.setup_data_providers()
@@ -359,6 +365,9 @@ class ConfigManager:
         """
         with self._lock:
             try:
+                # Store original datasource for change detection
+                original_datasource = self.get('datasource', 'googlesheets')
+                
                 # Fetch dynamic config using the configured data provider
                 dynamic_config = fetch_dynamic_config(self)
                 
@@ -379,6 +388,17 @@ class ConfigManager:
                     level=MessageLevel.INFO,
                     metadata={"source": "config_manager"}
                 )
+                
+                # Explicitly check if datasource changed and handle the change
+                new_datasource = self.get('datasource', 'googlesheets')
+                if original_datasource != new_datasource:
+                    message_bus.publish(
+                        content=f"Datasource changed from '{original_datasource}' to '{new_datasource}'",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "config_manager"}
+                    )
+                    self.handle_datasource_change(original_datasource, new_datasource)
+                
                 return True
             except Exception as e:
                 message_bus.publish(
@@ -387,6 +407,52 @@ class ConfigManager:
                     metadata={"source": "config_manager"}
                 )
                 return False
+                
+    def handle_datasource_change(self, old_datasource, new_datasource):
+        """
+        Explicitly handle changes to the datasource configuration.
+        
+        Args:
+            old_datasource (str): Previous datasource value
+            new_datasource (str): New datasource value
+            
+        Returns:
+            bool: True if handled successfully, False otherwise
+        """
+        try:
+            message_bus.publish(
+                content=f"Handling datasource change from '{old_datasource}' to '{new_datasource}'...",
+                level=MessageLevel.INFO,
+                metadata={"source": "config_manager"}
+            )
+            
+            # Validate the new datasource
+            if new_datasource not in ['googlesheets', 'supabase']:
+                message_bus.publish(
+                    content=f"Invalid datasource '{new_datasource}', reverting to '{old_datasource}'",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": "config_manager"}
+                )
+                self.set('datasource', old_datasource)
+                return False
+                
+            # Save configuration changes to disk
+            self.save_config()
+            
+            # Initialize the new data provider
+            success = self.setup_data_providers()
+            
+            # Emit event for datasource change
+            self.datasource_changed.emit(old_datasource, new_datasource)
+            
+            return success
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error handling datasource change: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "config_manager"}
+            )
+            return False
 
     def setup_data_providers(self):
         """

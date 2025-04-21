@@ -13,18 +13,29 @@ from .ui_components import GridManager, safe_call_after
 class DataDisplayManager:
     """Manages data fetching and display in grids."""
     
-    def __init__(self, parent_frame):
+    def __init__(self, parent_frame, config_manager=None):
         """
         Initialize the data display manager.
         
         Args:
             parent_frame: The parent frame that contains the grids
+            config_manager: Configuration manager instance. If None, will try to get from parent.
         """
         self.parent = parent_frame
         # Initialize debug mode to False by default
         self.debug_mode = False
+        
+        # Use provided config_manager or try to get from parent as fallback
+        self.config_manager = config_manager
+        if self.config_manager is None and hasattr(self.parent, 'config_manager'):
+            self.config_manager = self.parent.config_manager
+        
         # Set default log level filter to INFO on startup
         self._set_log_level_filter(MessageLevel.INFO)
+        
+        # Subscribe to datasource change events if config manager is available
+        if self.config_manager is not None:
+            self.config_manager.datasource_changed.subscribe(self.on_datasource_change)
     
     def _set_log_level_filter(self, level):
         """
@@ -85,7 +96,7 @@ class DataDisplayManager:
             from .data_provider import get_data_provider
             
             # Get the appropriate data provider based on configuration
-            data_provider = get_data_provider(self.parent.config_manager)
+            data_provider = get_data_provider(self.config_manager)
             
             if not data_provider.is_connected():
                 message_bus.publish(
@@ -280,6 +291,7 @@ class DataDisplayManager:
             # Create each tab
             for tab_info in required_tabs:
                 self._create_single_tab(tab_info)
+            wx.CallLater(500, self._refresh_all_tabs)                
         else:            
             # If tabs already exist, just refresh them
             for title, tab_components in tab_creator.tab_references.items():
@@ -297,7 +309,7 @@ class DataDisplayManager:
             from .data_provider import get_data_provider
             
             # Get the configured data provider
-            data_provider = get_data_provider(self.parent.config_manager)
+            data_provider = get_data_provider(self.config_manager)
             
             if data_provider.is_connected():
                 message_bus.publish(
@@ -328,7 +340,7 @@ class DataDisplayManager:
             from .data_provider import get_data_provider
             
             # Get the appropriate data provider based on configuration
-            data_provider = get_data_provider(self.parent.config_manager)
+            data_provider = get_data_provider(self.config_manager)
             
             if not data_provider.is_connected():
                 wx.MessageBox("No data provider is connected. Please check your configuration.", 
@@ -381,37 +393,6 @@ class DataDisplayManager:
         # Create a timer to delay tab creation (ensures window is fully rendered)
         wx.CallLater(1000, self.create_tabs)
     
-    def _create_and_load_tabs(self):
-        """
-        Create and load tabs with data after a delay to ensure main window is stable.
-        Separated from async_init_tabs to allow different timing options.
-        """
-        try:
-            # Get the datasource from ConfigManager
-            datasource = self.parent.config_manager.get("datasource", "googlesheets")
-            google_sheets_webhook = self.parent.config_manager.get("google_sheets_webhook", "")
-            
-            # Only proceed if Google Sheets is the selected datasource and webhook is configured
-            if datasource == "googlesheets" and google_sheets_webhook:
-                # Log that we're starting to create tabs
-                message_bus.publish(
-                    content="Creating data tabs...",
-                    level=MessageLevel.INFO
-                )
-                
-                # Get required tabs with their configuration from the centralized method
-                required_tabs = self._get_required_tab_configs()
-                
-                # Create each tab asynchronously 
-                for i, tab_info in enumerate(required_tabs):
-                    # Add a small delay between tab creation for smoother UI experience
-                    wx.CallLater(100 * (i + 1), self._create_single_tab, tab_info)
-        except Exception as e:
-            message_bus.publish(
-                content=f"Error creating tabs: {e}",
-                level=MessageLevel.ERROR
-            )
-            self.parent.SetStatusText("Error creating tabs")
     
     def _create_single_tab(self, tab_info):
         """
@@ -446,9 +427,6 @@ class DataDisplayManager:
             )
             
             # Check if this is the last tab and trigger refresh if needed
-            if len(tab_creator.tab_references) == len(self._get_required_tabs()):
-                # All tabs created, trigger initial data load
-                wx.CallLater(500, self._refresh_all_tabs)
         except Exception as e:
             message_bus.publish(
                 content=f"Error creating tab \"{tab_info.get('title', 'unknown')}\": {e}",
@@ -489,14 +467,6 @@ class DataDisplayManager:
                 level=MessageLevel.ERROR
             )
 
-    def _get_required_tabs(self):
-        """Get the list of required tabs - factored out for maintainability"""
-        return [
-            "Stats", 
-            "SC Default", 
-            "SC Squadrons Battle", 
-            "Materials"
-        ]
 
     def _get_required_tab_configs(self):
         """Get the list of tab configurations - centralized for maintainability"""
@@ -513,3 +483,29 @@ class DataDisplayManager:
                 "form_fields": {"Material": "text", "Qty": "number", "committed": "check"}
             }
         ]
+
+    def on_datasource_change(self, old_datasource, new_datasource):
+        """
+        Event handler for datasource changes from the config manager.
+        
+        Args:
+            old_datasource (str): The previous datasource value
+            new_datasource (str): The new datasource value
+        """
+        try:
+            message_bus.publish(
+                content=f"Datasource changed from '{old_datasource}' to '{new_datasource}'",
+                level=MessageLevel.INFO
+            )
+            
+            # Update the UI to reflect the new data source
+            wx.CallAfter(self.update_data_source_tabs)
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error handling datasource change: {e}",
+                level=MessageLevel.ERROR
+            )
+            message_bus.publish(
+                content=traceback.format_exc(),
+                level=MessageLevel.DEBUG
+            )
