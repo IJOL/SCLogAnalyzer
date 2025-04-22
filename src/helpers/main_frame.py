@@ -401,10 +401,9 @@ class LogAnalyzerFrame(wx.Frame):
             
         if self.monitoring_service.is_monitoring():
             self.monitoring_service.stop_monitoring()
-            self.monitoring_service.update_monitoring_buttons(started=False)
         else:
             self.monitoring_service.start_monitoring()
-            self.monitoring_service.update_monitoring_buttons(started=True)
+        self.monitoring_service.update_monitoring_buttons()
     
     def on_autoshard(self, event):
         """Handle Auto Shard button click."""

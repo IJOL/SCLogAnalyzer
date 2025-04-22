@@ -145,7 +145,7 @@ class MonitoringService:
         """
         return self.monitoring
         
-    def update_monitoring_buttons(self, started):
+    def update_monitoring_buttons(self):
         """
         Update the state of the monitoring and process buttons.
 
