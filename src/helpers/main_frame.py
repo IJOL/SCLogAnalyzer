@@ -97,12 +97,12 @@ class LogAnalyzerFrame(wx.Frame):
         if STARTUP_COMMAND_FLAG in sys.argv:
             self.Hide()  # Hide the main window at startup
             
-        # Check for updates at app initialization
-        wx.CallAfter(self.check_for_updates)
+        # Check for updates after UI is visible, not blocking startup
+        wx.CallAfter(lambda: wx.CallLater(1000, self.check_for_updates))
 
-        # Start monitoring by default when GUI is launched
+        # Start monitoring by default when GUI is launched, but with a smaller delay
         if self.log_file_path:
-            wx.CallAfter(self.monitoring_service.start_monitoring, 1500)
+            wx.CallAfter(self.monitoring_service.start_monitoring, 500)
 
         # Restore window position, size, and state
         self.window_manager.restore_window_info()
