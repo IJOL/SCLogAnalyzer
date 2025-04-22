@@ -58,7 +58,8 @@ class MonitoringService:
             )
         else:
             self._start_monitoring_thread(log_file, process_all, use_discord, datasource)
-    
+        self.update_monitoring_buttons()
+
     def _start_monitoring_thread(self, log_file, process_all, use_discord, datasource):
         """
         Start the actual monitoring thread after any delay.
@@ -122,8 +123,8 @@ class MonitoringService:
                 content=f"Error starting monitoring: {e}",
                 level=MessageLevel.ERROR
             ))
-            wx.CallAfter(self.parent.monitoring_service.update_monitoring_buttons, False)
             self.monitoring = False
+            wx.CallAfter(self.parent.monitoring_service.update_monitoring_buttons)
     
     def stop_monitoring(self):
         """Stop log file monitoring."""
@@ -135,7 +136,8 @@ class MonitoringService:
             self.event_handler = None
             self.observer = None
         self.monitoring = False  # Ensure monitoring state is updated
-        
+        wx.CallAfter(self.update_monitoring_buttons())
+
     def is_monitoring(self):
         """
         Check if monitoring is currently active.

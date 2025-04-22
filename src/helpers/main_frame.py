@@ -103,7 +103,6 @@ class LogAnalyzerFrame(wx.Frame):
         # Start monitoring by default when GUI is launched
         if self.log_file_path:
             wx.CallAfter(self.monitoring_service.start_monitoring, 1500)
-        wx.CallAfter(self.monitoring_service.update_monitoring_buttons, True)
 
         # Restore window position, size, and state
         self.window_manager.restore_window_info()
@@ -403,7 +402,7 @@ class LogAnalyzerFrame(wx.Frame):
             self.monitoring_service.stop_monitoring()
         else:
             self.monitoring_service.start_monitoring()
-        self.monitoring_service.update_monitoring_buttons()
+        
     
     def on_autoshard(self, event):
         """Handle Auto Shard button click."""
