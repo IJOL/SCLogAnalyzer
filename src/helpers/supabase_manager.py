@@ -474,7 +474,7 @@ class SupabaseManager:
             else:
                 log_message(f"Purging all data from table: {sanitized_table}", "INFO")
                 delete_sql = f"""
-                DELETE FROM "{sanitized_table}";
+                DELETE FROM "{sanitized_table}" WHERE TRUE;
                 """
             
             # Execute the SQL using the run_sql RPC function
