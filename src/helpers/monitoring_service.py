@@ -136,7 +136,7 @@ class MonitoringService:
             self.event_handler = None
             self.observer = None
         self.monitoring = False  # Ensure monitoring state is updated
-        wx.CallAfter(self.update_monitoring_buttons())
+        wx.CallAfter(self.update_monitoring_buttons)
 
     def is_monitoring(self):
         """
