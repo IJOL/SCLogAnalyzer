@@ -705,6 +705,25 @@ class SupabaseDataProvider(DataProvider):
                 ea_squadronbattle_stats
             GROUP BY 
                 username
+        ),
+        
+        -- Calculate average kills for each mode
+        avg_stats AS (
+            SELECT 
+                AVG(kills_live) AS avg_kills_live,
+                AVG(kills_sb) AS avg_kills_sb,
+                AVG(kills_live + COALESCE(kills_sb, 0)) AS avg_total_kills
+            FROM (
+                SELECT 
+                    live.kills_live,
+                    sb.kills_sb
+                FROM 
+                    aggregated_live_stats live
+                FULL OUTER JOIN
+                    aggregated_sb_stats sb ON live.username = sb.username
+                WHERE 
+                    COALESCE(live.kills_live, 0) > 0 OR COALESCE(sb.kills_sb, 0) > 0
+            ) subq
         )
         
         -- Combine all stats with separate columns for each game mode
@@ -719,29 +738,81 @@ class SupabaseDataProvider(DataProvider):
             -- Total kills and deaths across both modes
             COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0) AS total_kills,
             COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0) AS total_deaths,
-            -- KDR for Live mode
+            -- KDR for Live mode with adjusted calculation (KD * kills/avg_kills)
             CASE 
-                WHEN COALESCE(live.deaths_live, 0) = 0 THEN COALESCE(live.kills_live, 0)
-                ELSE ROUND(CAST(COALESCE(live.kills_live, 0) AS NUMERIC) / 
-                     NULLIF(COALESCE(live.deaths_live, 0), 0), 2)
+                WHEN COALESCE(live.deaths_live, 0) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_kills_live > 0 THEN 
+                            ROUND(COALESCE(live.kills_live, 0) * (COALESCE(live.kills_live, 0) / NULLIF(avg.avg_kills_live, 0)), 2)
+                        ELSE COALESCE(live.kills_live, 0)
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_kills_live > 0 THEN 
+                            ROUND(
+                                (CAST(COALESCE(live.kills_live, 0) AS NUMERIC) / NULLIF(COALESCE(live.deaths_live, 0), 0)) * 
+                                (COALESCE(live.kills_live, 0) / NULLIF(avg.avg_kills_live, 0)), 
+                                2
+                            )
+                        ELSE 
+                            ROUND(CAST(COALESCE(live.kills_live, 0) AS NUMERIC) / NULLIF(COALESCE(live.deaths_live, 0), 0), 2)
+                    END
             END AS kdr_live,
-            -- KDR for Squadron Battle mode
+            -- KDR for Squadron Battle mode with adjusted calculation (KD * kills/avg_kills)
             CASE 
-                WHEN COALESCE(sb.deaths_sb, 0) = 0 THEN COALESCE(sb.kills_sb, 0)
-                ELSE ROUND(CAST(COALESCE(sb.kills_sb, 0) AS NUMERIC) / 
-                     NULLIF(COALESCE(sb.deaths_sb, 0), 0), 2)
+                WHEN COALESCE(sb.deaths_sb, 0) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_kills_sb > 0 THEN 
+                            ROUND(COALESCE(sb.kills_sb, 0) * (COALESCE(sb.kills_sb, 0) / NULLIF(avg.avg_kills_sb, 0)), 2)
+                        ELSE COALESCE(sb.kills_sb, 0)
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_kills_sb > 0 THEN 
+                            ROUND(
+                                (CAST(COALESCE(sb.kills_sb, 0) AS NUMERIC) / NULLIF(COALESCE(sb.deaths_sb, 0), 0)) * 
+                                (COALESCE(sb.kills_sb, 0) / NULLIF(avg.avg_kills_sb, 0)), 
+                                2
+                            )
+                        ELSE 
+                            ROUND(CAST(COALESCE(sb.kills_sb, 0) AS NUMERIC) / NULLIF(COALESCE(sb.deaths_sb, 0), 0), 2)
+                    END
             END AS kdr_sb,
-            -- Overall KDR across both modes
+            -- Overall KDR across both modes with adjusted calculation (KD * kills/avg_kills)
             CASE 
-                WHEN (COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)) = 0 
-                THEN (COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0))
-                ELSE ROUND(CAST((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) AS NUMERIC) / 
-                     NULLIF((COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)), 0), 2)
+                WHEN (COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_total_kills > 0 THEN 
+                            ROUND(
+                                (COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) * 
+                                ((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) / NULLIF(avg.avg_total_kills, 0)),
+                                2
+                            )
+                        ELSE (COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0))
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_total_kills > 0 THEN 
+                            ROUND(
+                                (CAST((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) AS NUMERIC) / 
+                                NULLIF((COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)), 0)) * 
+                                ((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) / NULLIF(avg.avg_total_kills, 0)),
+                                2
+                            )
+                        ELSE 
+                            ROUND(
+                                CAST((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) AS NUMERIC) / 
+                                NULLIF((COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)), 0), 
+                                2
+                            )
+                    END
             END AS kdr_total
         FROM 
             aggregated_live_stats live
         FULL OUTER JOIN
             aggregated_sb_stats sb ON live.username = sb.username
+        CROSS JOIN
+            avg_stats avg
         ORDER BY 
             total_kills DESC;
         """

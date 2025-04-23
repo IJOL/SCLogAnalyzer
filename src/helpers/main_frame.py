@@ -356,10 +356,7 @@ class LogAnalyzerFrame(wx.Frame):
             if self.datasource == 'googlesheets' and not self.google_sheets_webhook:
                 missing_settings.append("Google Sheets webhook URL")
                 
-            if self.datasource == 'supabase' and (
-                not self.supabase_url or 
-                not self.supabase_key
-            ):
+            if self.datasource == 'supabase' and not self.supabase_key:
                 missing_settings.append("Supabase credentials")
                 
             if not self.discord_webhook_url:
@@ -540,7 +537,6 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Check if both Google Sheets and Supabase are configured
         google_sheets_webhook = self.config_manager.get('google_sheets_webhook', '')
-        supabase_url = self.config_manager.get('supabase_url', '')
         supabase_key = self.config_manager.get('supabase_key', '')
         
         # Validate configurations
@@ -549,7 +545,7 @@ class LogAnalyzerFrame(wx.Frame):
         if not google_sheets_webhook:
             missing_config.append("Google Sheets webhook URL")
             
-        if not supabase_url or not supabase_key:
+        if not supabase_key:
             missing_config.append("Supabase credentials")
         
         if missing_config:
