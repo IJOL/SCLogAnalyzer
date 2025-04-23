@@ -4,7 +4,6 @@
     "google_sheets_webhook": "{?google_sheets_webhook}",
     "google_sheets_mapping": ["player_death"],
     "datasource": "googlesheets",
-    "supabase_url": "",
     "supabase_key": "",
     "regex_patterns": {
         "player_death" : "<(?P<timestamp>.*?)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>(?!(Kopion_|PU_|NPC_|vlk_|ARGO_|AIModule_)).*?)' \\[(?P<victim_id>\\d+)\\] in zone '(?P<zone>.*?)' killed by '(?P<killer>(?!(Kopion_|PU_|NPC_|vlk_|ARGO_|AIModule_)).*?)' \\[(?P<killer_id>\\d+)\\] using '(?P<weapon>.*?)' \\[Class (?P<weapon_class>.*?)\\] with damage type '(?P<damage_type>(?!(Crash|Suicide|SelfDestruct|Hazard)).*?)' from direction x: (?P<direction_x>[\\d\\.-]+), y: (?P<direction_y>[\\d\\.-]+), z: (?P<direction_z>[\\d\\.-]+) \\[Team_ActorTech\\]\\[Actor\\]",

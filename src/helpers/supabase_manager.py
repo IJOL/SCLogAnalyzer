@@ -58,6 +58,54 @@ class SupabaseManager:
         self.supabase: Client = None
         self.is_initialized = False
         self.connection_attempted = False  # Track if connection has been attempted
+    
+    def _extract_url_from_key(self, api_key):
+        """
+        Extract the Supabase URL from the API key.
+        
+        Args:
+            api_key (str): The Supabase API key
+            
+        Returns:
+            str: The extracted Supabase URL or None if extraction fails
+        """
+        if not api_key:
+            return None
+            
+        # Supabase API keys typically have this format: 
+        # eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhtaXd2a3BteWF0aXR6dHZ0ZnFidiIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNjkyNjMyODg5LCJleHAiOjIwMDgyMDg4ODl9.M0Q_xmXwwSnQ8walRV0epTh3P0lSBzLxCZQDliZ64N4
+        
+        try:
+            # Split the JWT token into its parts
+            parts = api_key.split('.')
+            if len(parts) != 3:
+                log_message("Invalid API key format: does not consist of three parts", "ERROR")
+                return None
+                
+            # Decode the payload (middle part)
+            import base64
+            # Fix padding if needed
+            payload = parts[1]
+            payload += '=' * ((4 - len(payload) % 4) % 4)
+            
+            # Decode the payload
+            decoded = base64.urlsafe_b64decode(payload).decode('utf-8')
+            payload_data = json.loads(decoded)
+            
+            # Extract the reference (ref) from the payload
+            project_ref = payload_data.get('ref')
+            if not project_ref:
+                log_message("Could not extract project reference from API key", "ERROR")
+                return None
+                
+            # Construct the Supabase URL
+            supabase_url = f"https://{project_ref}.supabase.co"
+            log_message(f"Generated Supabase URL: {supabase_url}", "DEBUG")
+            return supabase_url
+            
+        except Exception as e:
+            log_message(f"Error extracting URL from API key: {e}", "ERROR")
+            return None
         
     def connect(self, config_manager=None):
         """
@@ -83,14 +131,20 @@ class SupabaseManager:
                 from .config_utils import get_config_manager
                 config_manager = get_config_manager()
             
-            # Get Supabase credentials from config
-            self.supabase_url = config_manager.get('supabase_url')
+            # Get Supabase key from config
             self.supabase_key = config_manager.get('supabase_key')
             
-            if not self.supabase_url or not self.supabase_key:
-                log_message("Supabase URL or key not found in config.", "ERROR")
+            if not self.supabase_key:
+                log_message("Supabase key not found in config.", "ERROR")
                 return False
-                
+            
+            # Always generate the URL from the API key
+            self.supabase_url = self._extract_url_from_key(self.supabase_key)
+            
+            if not self.supabase_url:
+                log_message("Could not extract Supabase URL from API key.", "ERROR")
+                return False
+            
             # Create client without any additional parameters that might cause issues
             self.supabase = create_client(self.supabase_url, self.supabase_key)
             self.is_initialized = True
