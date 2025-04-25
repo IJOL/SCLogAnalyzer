@@ -867,33 +867,11 @@ class SupabaseDataProvider(DataProvider):
                 "key": "sample_key",
                 "value": "sample_value"
             }
-            
-            # Define RLS policies for the config table
-            rls_policies = [
-                {
-                    "name": "Allow read access to config",
-                    "action": "SELECT",
-                    "using": "true"
-                },
-                {
-                    "name": "Allow insert access to config",
-                    "action": "INSERT",
-                    "check": "true"
-                },
-                {
-                    "name": "Allow update access to config",
-                    "action": "UPDATE",
-                    "using": "true",
-                    "check": "true"
-                }
-            ]
-            
+                      
             # Use the enhanced _create_table method with RLS support
             if not supabase_manager._create_table(
                 config_table, 
-                sample_data, 
-                enable_rls=True, 
-                rls_policies=rls_policies
+                sample_data
             ):
                 message_bus.publish(
                     content=f"Failed to create config table",

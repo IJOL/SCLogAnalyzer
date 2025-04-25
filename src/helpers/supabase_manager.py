@@ -269,14 +269,14 @@ class SupabaseManager:
             log_message(f"Error executing SQL via RPC: {e}", "ERROR")
             return False, str(e)
     
-    def _create_table(self, table_name, data, enable_rls=False, rls_policies=None):
+    def _create_table(self, table_name, data, enable_rls=True, rls_policies=None):
         """
         Create a new table based on the data structure using raw SQL.
         
         Args:
             table_name (str): The name of the table to create
             data (dict): Sample data to determine column structure
-            enable_rls (bool): Whether to enable Row Level Security on the table
+            enable_rls (bool): Whether to enable Row Level Security on the table (default: True)
             rls_policies (list): List of RLS policy dictionaries, each containing:
                 - name: Policy name
                 - action: SELECT, INSERT, UPDATE, DELETE, ALL
@@ -338,41 +338,88 @@ class SupabaseManager:
             );
             """
             
-            # Add RLS if requested
+            # Enable RLS if specified
             if enable_rls:
                 create_table_sql += f"""
                 -- Enable Row Level Security
                 ALTER TABLE "{table_name}" ENABLE ROW LEVEL SECURITY;
                 """
                 
-                # Add RLS policies if provided
-                if rls_policies:
-                    for policy in rls_policies:
-                        policy_name = policy.get('name', f"policy_{table_name}_{policy.get('action', 'all')}")
-                        action = policy.get('action', 'ALL')
-                        using_expr = policy.get('using', 'true')
+                # If no custom policies are provided, use the default policies from sc_default table
+                if not rls_policies:
+                    # Default policies from the sc_default table
+                    rls_policies = [
+                        {
+                            'name': 'Public SELECT',
+                            'action': 'SELECT',
+                            'using': 'true'
+                        },
+                        {
+                            'name': 'Public INSERT',
+                            'action': 'INSERT',
+                            'check': 'true'
+                        },
+                        {
+                            'name': 'Admin UPDATE only',
+                            'action': 'UPDATE',
+                            'using': "CURRENT_USER = 'postgres'"
+                        },
+                        {
+                            'name': 'Admin DELETE only',
+                            'action': 'DELETE',
+                            'using': "CURRENT_USER = 'postgres'"
+                        }
+                    ]
+                
+                # Add all RLS policies
+                for policy in rls_policies:
+                    policy_name = policy.get('name', f"policy_{table_name}_{policy.get('action', 'all')}")
+                    action = policy.get('action', 'ALL')
+                    
+                    # Create appropriate policy based on action type
+                    if action.upper() == 'INSERT':
+                        # INSERT policies only use WITH CHECK
                         check_expr = policy.get('check', 'true')
+                        create_table_sql += f"""
+                        -- Create {action} policy
+                        CREATE POLICY "{policy_name}" ON "{table_name}"
+                            FOR {action} WITH CHECK ({check_expr});
+                        """
+                    elif action.upper() == 'UPDATE':
+                        # UPDATE policies can use both USING and WITH CHECK
+                        using_expr = policy.get('using', 'true')
                         
-                        # Create appropriate policy based on action type
-                        if action.upper() in ('INSERT', 'UPDATE'):
+                        if 'check' in policy:
+                            check_expr = policy.get('check')
                             create_table_sql += f"""
                             -- Create {action} policy
                             CREATE POLICY "{policy_name}" ON "{table_name}"
-                                FOR {action} WITH CHECK ({check_expr});
+                                FOR {action} USING ({using_expr}) WITH CHECK ({check_expr});
                             """
-                        elif action.upper() in ('SELECT', 'DELETE'):
+                        else:
                             create_table_sql += f"""
                             -- Create {action} policy
                             CREATE POLICY "{policy_name}" ON "{table_name}"
                                 FOR {action} USING ({using_expr});
                             """
-                        else:  # ALL
-                            create_table_sql += f"""
-                            -- Create general policy
-                            CREATE POLICY "{policy_name}" ON "{table_name}"
-                                USING ({using_expr})
-                                WITH CHECK ({check_expr});
-                            """
+                    elif action.upper() == 'SELECT' or action.upper() == 'DELETE':
+                        # SELECT and DELETE policies only use USING
+                        using_expr = policy.get('using', 'true')
+                        create_table_sql += f"""
+                        -- Create {action} policy
+                        CREATE POLICY "{policy_name}" ON "{table_name}"
+                            FOR {action} USING ({using_expr});
+                        """
+                    else:  # ALL
+                        # ALL policies can use both USING and WITH CHECK
+                        using_expr = policy.get('using', 'true')
+                        check_expr = policy.get('check', 'true')
+                        create_table_sql += f"""
+                        -- Create general policy
+                        CREATE POLICY "{policy_name}" ON "{table_name}"
+                            USING ({using_expr})
+                            WITH CHECK ({check_expr});
+                        """
             
             # Execute the SQL
             success, result = self._execute_sql(create_table_sql)
