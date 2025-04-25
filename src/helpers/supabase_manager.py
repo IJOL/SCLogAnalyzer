@@ -434,22 +434,7 @@ class SupabaseManager:
         except Exception as e:
             log_message(f"Error creating table {table_name}: {e}", "ERROR")
             return False
-
-    def _lowercase_keys(self, data_dict):
-        """
-        Convert all dictionary keys to lowercase for PostgreSQL compatibility.
-        
-        Args:
-            data_dict (dict): Dictionary with possibly mixed-case keys
-            
-        Returns:
-            dict: New dictionary with all lowercase keys
-        """
-        if not isinstance(data_dict, dict):
-            return data_dict
-            
-        return {k.lower(): v for k, v in data_dict.items()}
-        
+      
     def insert_data(self, sheet, data):
         """
         Insert game log data into Supabase.
@@ -474,13 +459,9 @@ class SupabaseManager:
             # Flag to track if we just created a new table
             table_newly_created = False
             
-            # Convert data keys to lowercase for PostgreSQL compatibility
-            # This preserves UI labels while ensuring database compatibility
-            lowercase_data = self._lowercase_keys(data)
-            
             # Check if the table exists, create it if it doesn't
             if not self._table_exists(table_name):
-                if not self._create_table(table_name, lowercase_data):
+                if not self._create_table(table_name, data):
                     log_message("Failed to create table. Aborting insert.", "ERROR")
                     return False
                 table_newly_created = True
@@ -500,7 +481,8 @@ class SupabaseManager:
                         time.sleep(delay_seconds)
                         delay_seconds *= 2  # Exponential backoff
                     
-                    result = self.supabase.table(table_name).insert(lowercase_data).execute()
+                    
+                    result = self.supabase.table(table_name).insert(data).execute()
                     
                     # Check for errors - more robust error checking
                     if hasattr(result, 'error') and result.error is not None:

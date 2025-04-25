@@ -369,7 +369,10 @@ class SupabaseDataProvider(DataProvider):
         """
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        # Single list of excluded fields for all tables
+        self.excluded_fields = ['direction_x', 'direction_y', 'direction_z']
         
+    
     def is_connected(self) -> bool:
         """
         Check if Supabase provider is connected.
@@ -406,7 +409,8 @@ class SupabaseDataProvider(DataProvider):
                 data = item.get('data', {})
                 sheet = item.get('sheet', 'game_logs')
                 
-                if supabase_manager.insert_data(sheet, data):
+                if supabase_manager.insert_data(sheet, 
+                                                {k.lower(): v for k, v in data.items() if k not in self.excluded_fields}):
                     success_count += 1
             
             # Report results
