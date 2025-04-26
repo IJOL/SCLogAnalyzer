@@ -36,6 +36,11 @@ class DataDisplayManager:
         # Subscribe to datasource change events if config manager is available
         if self.config_manager is not None:
             self.config_manager.datasource_changed.subscribe(self.on_datasource_change)
+            
+        # Rastreo de operaciones de actualización
+        self._refresh_operations = set()  # Conjunto de operaciones de refresco activas
+        self._refresh_timer = None
+        self._refresh_operation_counter = 0  # Contador para generar IDs únicos
     
     def _set_log_level_filter(self, level):
         """
@@ -280,23 +285,66 @@ class DataDisplayManager:
         Args:
             refresh_tabs (list): List of tab titles to refresh, empty for all tabs
         """
-        # Get the datasource and webhook URL from ConfigManager
-        # Define the tabs we want to ensure exist
-        tab_creator = self.parent.tab_creator
+        # Generar un ID único para esta operación
+        operation_id = f"create_{int(time.time())}_{self._refresh_operation_counter}"
+        self._refresh_operation_counter += 1
         
-        if not len(tab_creator.tab_references):
-            # If no tabs exist yet, create them
-            required_tabs = self._get_required_tab_configs()
+        # Comprobar si ya tenemos una operación de creación reciente (en los últimos 3 segundos)
+        current_time = time.time()
+        recent_operations = [op for op in self._refresh_operations 
+                           if op.startswith("create_") and 
+                           current_time - float(op.split('_')[1]) < 3]
+        
+        if recent_operations:
+            message_bus.publish(
+                content="Tab creation already in progress, skipping duplicate request",
+                level=MessageLevel.INFO
+            )
+            return
             
-            # Create each tab
-            for tab_info in required_tabs:
-                self._create_single_tab(tab_info)
-            wx.CallLater(500, self._refresh_all_tabs)                
-        else:            
-            # If tabs already exist, just refresh them
-            for title, tab_components in tab_creator.tab_references.items():
-                if title in refresh_tabs or len(refresh_tabs) == 0:
-                    self.execute_refresh_event(tab_components[1])
+        # Registrar esta operación
+        self._refresh_operations.add(operation_id)
+        
+        message_bus.publish(
+            content="Starting tab creation and refresh",
+            level=MessageLevel.INFO
+        )
+        
+        try:
+            tab_creator = self.parent.tab_creator
+            
+            if not len(tab_creator.tab_references):
+                # If no tabs exist yet, create them
+                required_tabs = self._get_required_tab_configs()
+                
+                # Create each tab in sequence
+                for tab_info in required_tabs:
+                    self._create_single_tab(tab_info)
+                
+                # After ALL tabs are created, schedule a single refresh operation
+                wx.CallLater(500, self._refresh_all_tabs)
+            else:            
+                # If tabs already exist, just refresh them
+                if refresh_tabs:
+                    # Solo refrescar tabs específicos
+                    for title, tab_components in tab_creator.tab_references.items():
+                        if title in refresh_tabs:
+                            self.execute_refresh_event(tab_components[1])
+                else:
+                    # Refrescar todos los tabs
+                    self._refresh_all_tabs()
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error in tab creation: {e}",
+                level=MessageLevel.ERROR
+            )
+            message_bus.publish(
+                content=traceback.format_exc(),
+                level=MessageLevel.DEBUG
+            )
+        finally:
+            # Eliminar esta operación del conjunto después de un tiempo razonable
+            wx.CallLater(4000, lambda op_id=operation_id: self._refresh_operations.discard(op_id))
     
     def update_data_source_tabs(self):
         """
@@ -304,7 +352,6 @@ class DataDisplayManager:
         Called when toggling between data sources.
         """
         try:
-            
             # Import our data provider system
             from .data_provider import get_data_provider
             
@@ -316,7 +363,7 @@ class DataDisplayManager:
                     content=f"Using data provider: {data_provider.__class__.__name__}",
                     level=MessageLevel.INFO
                 )
-                # Recreate tabs with the current data provider
+                # Use the standard create_tabs method to recreate tabs with the current data provider
                 wx.CallAfter(self.create_tabs)
             else:
                 message_bus.publish(
@@ -390,8 +437,18 @@ class DataDisplayManager:
         # Update status to indicate we're loading tabs
         self.parent.SetStatusText("Loading data tabs...")
         
+        # Cancel any existing refresh timer
+        if self._refresh_timer is not None:
+            self._refresh_timer.Stop()
+            self._refresh_timer = None
+            
+        message_bus.publish(
+            content="Scheduling initial tab creation",
+            level=MessageLevel.INFO
+        )
+            
         # Create a timer to delay tab creation (ensures window is fully rendered)
-        wx.CallLater(1000, self.create_tabs)
+        self._refresh_timer = wx.CallLater(1000, self.create_tabs)
     
     
     def _create_single_tab(self, tab_info):
@@ -434,7 +491,10 @@ class DataDisplayManager:
             )
     
     def _refresh_all_tabs(self):
-        """Refresh all tabs with current data"""
+        """
+        Refresh all tabs with current data in a staggered manner.
+        This method ensures that not all tabs are refreshed at the same time.
+        """
         try:
             self.parent.SetStatusText("Loading tab data...")
             tab_creator = self.parent.tab_creator
@@ -443,24 +503,61 @@ class DataDisplayManager:
             current_username = getattr(self.parent, "username", None)
             if current_username is None or current_username == "Unknown":
                 message_bus.publish(
-                    content="Skipping initial data load until valid username is available",
+                    content="Skipping data load until valid username is available",
                     level=MessageLevel.INFO
                 )
                 self.parent.SetStatusText("Waiting for user login...")
                 return
+                
+            # Generar un ID único para esta operación de refresco
+            operation_id = f"refresh_{int(time.time())}_{self._refresh_operation_counter}"
+            self._refresh_operation_counter += 1
+            
+            # Comprobar si ya tenemos una operación de refresco reciente (en los últimos 2 segundos)
+            current_time = time.time()
+            recent_operations = [op for op in self._refresh_operations 
+                               if op.startswith("refresh_") and 
+                               current_time - float(op.split('_')[1]) < 2]
+                
+            if recent_operations:
+                message_bus.publish(
+                    content=f"Skipping duplicate refresh request (recent operation in progress)",
+                    level=MessageLevel.INFO
+                )
+                return
+                
+            # Registrar esta operación
+            self._refresh_operations.add(operation_id)
                 
             message_bus.publish(
                 content=f"Loading data for user: {current_username}",
                 level=MessageLevel.INFO
             )
             
-            for title, (grid, refresh_button) in tab_creator.tab_references.items():
-                # Stagger refresh calls to prevent simultaneous requests
-                wx.CallLater(300, self.execute_refresh_event, refresh_button)
+            # Use a single staggered refresh approach
+            tab_count = len(tab_creator.tab_references)
+            index = 0
             
-            # Update status when complete
-            wx.CallLater(500 + (300 * len(tab_creator.tab_references)), 
+            for title, (grid, refresh_button) in tab_creator.tab_references.items():
+                # Log the scheduled refresh
+                message_bus.publish(
+                    content=f"Scheduling refresh for tab: {title}",
+                    level=MessageLevel.DEBUG
+                )
+                
+                # Usar un retraso progresivo para evitar solicitudes simultáneas
+                delay = 300 + (400 * index)
+                wx.CallLater(delay, self.execute_refresh_event, refresh_button)
+                index += 1
+            
+            # Update status when complete - add extra time based on tab count
+            wx.CallLater(500 + (600 * tab_count), 
                          lambda: self.parent.SetStatusText("Ready"))
+            
+            # Eliminar esta operación del conjunto después de completarse
+            wx.CallLater(500 + (800 * tab_count), 
+                         lambda op_id=operation_id: self._refresh_operations.discard(op_id))
+                         
         except Exception as e:
             message_bus.publish(
                 content=f"Error refreshing tabs: {e}",

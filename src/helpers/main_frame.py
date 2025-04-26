@@ -329,10 +329,9 @@ class LogAnalyzerFrame(wx.Frame):
         # Update the stored username
         self.username = username
         self.update_dynamic_labels()
-        for tab_title, (grid, refresh_button) in self.tab_creator.tab_references.items():
-            if refresh_button and refresh_button.grid == grid:
-                # Update the grid's username if it matches the current tab
-                safe_call_after(wx.CallLater, 500, self.data_manager.execute_refresh_event, refresh_button)
+        
+        # Usar el método _refresh_all_tabs con el nombre original
+        safe_call_after(wx.CallLater, 500, self.data_manager._refresh_all_tabs)
     
     def on_about(self, event):
         """Show the About dialog."""
