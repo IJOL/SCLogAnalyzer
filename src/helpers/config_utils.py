@@ -85,21 +85,17 @@ def get_template_path():
 
 def get_application_path():
     """Determine the correct application path whether running as .py or .exe."""
-    # Try Nuitka specific approach first - this works for both onefile and standalone
-    try:
-        return os.path.dirname(__compiled__.containing_dir)
-    except NameError:
-        # Fall back to other methods if not a Nuitka build
-        if getattr(sys, 'frozen', False):
-            # If the application is run as a bundle (exe) through PyInstaller
-            return os.path.dirname(sys.executable)
-        elif '__compiled__' in globals():
-            # If the application is run as a compiled script (e.g. Nuitka)
-            return os.path.dirname(__file__)
-        else:
-            # If the application is run as a Python script
-            # Get the directory of the current file
-            return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Fall back to other methods if not a Nuitka build
+    if getattr(sys, 'frozen', False):
+        # If the application is run as a bundle (exe) through PyInstaller
+        return os.path.dirname(sys.executable)
+    elif '__compiled__' in globals():
+        # If the application is run as a compiled script (e.g. Nuitka)
+        return os.path.dirname(__file__)
+    else:
+        # If the application is run as a Python script
+        # Get the directory of the script that was used to invoke the Python interpreter
+        return os.path.dirname(os.path.abspath(sys.argv[0]))
 
 def fetch_dynamic_config(config_manager=None):
     """
