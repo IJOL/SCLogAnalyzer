@@ -244,6 +244,11 @@ class GridManager:
         # Auto-size columns only if there are valid rows and columns
         if grid.GetNumberCols() > 0 and grid.GetNumberRows() > 0:
             grid.AutoSizeColumns()
+            
+        # Disable column and row resizing
+        grid.EnableDragColSize(False)
+        grid.EnableDragRowSize(False)
+        grid.EnableDragGridSize(False)
 
 
 class DynamicLabels:
