@@ -66,9 +66,10 @@ class StatusBoardBot(commands.Cog):
         }
         
         # Initialize message IDs
-        self.stats_message_id = None  # ID of the embed message
+        self.stats_live_message_id = None  # ID of the Live stats message
+        self.stats_sb_message_id = None    # ID of the Squadron Battle stats message
         self.ratio_live_message_id = None  # ID of the Ratio/Live leaderboard embed
-        self.ratio_sb_message_id = None  # ID of the Ratio/SB leaderboard embed
+        self.ratio_sb_message_id = None    # ID of the Ratio/SB leaderboard embed
         self.last_update_time = 0  # Track the last update time
 
     @commands.Cog.listener()
@@ -198,36 +199,53 @@ class StatusBoardBot(commands.Cog):
             logger.exception(f"Error updating combined leaderboard: {e}")
 
     async def initialize_stats_message(self):
-        """Create or fetch the stats text message and initialize leaderboards."""
+        """Create or fetch the stats text messages and initialize leaderboards."""
         channel = await self.get_channel(self.stats_channel_id)
         if not channel:
             return
         try:
-            # Search for an existing stats message in the channel
+            # Search for existing stats messages in the channel
             async for message in channel.history(limit=100):  # Adjust limit as needed
                 if message.embeds and message.embeds[0].title == "Real-Time Statistics":
-                    # This is an old embed-based stats message, delete it so we can replace with a text message
+                    # This is an old embed-based stats message, delete it so we can replace with text messages
                     await message.delete()
                     logger.info("Found and deleted old stats embed message.")
-                    break
+                    continue
+                elif message.content and message.content.startswith("🟢 **Live Mode Statistics**"):
+                    # Found an existing Live mode stats message
+                    self.stats_live_message_id = message.id
+                    logger.info("Found existing Live mode stats message.")
+                    continue
+                elif message.content and message.content.startswith("🟣 **Squadron Battle Statistics**"):
+                    # Found an existing Squadron Battle stats message
+                    self.stats_sb_message_id = message.id
+                    logger.info("Found existing Squadron Battle stats message.")
+                    continue
                 elif message.content and message.content.startswith("📊 **Real-Time Statistics**"):
-                    # Found an existing text-based stats message
-                    self.stats_message_id = message.id
-                    logger.info("Found existing stats text message.")
-                    await self.initialize_leaderboard_messages()
-                    self.update_stats_task.start()  # Start periodic updates
-                    return
+                    # Found an old single stats message, delete it
+                    await message.delete()
+                    logger.info("Found and deleted old combined stats message.")
+                    continue
 
-            # If no existing text message is found, create a new one
-            message = await channel.send("📊 **Real-Time Statistics**\n```Loading data...```")
-            self.stats_message_id = message.id
+            # Create new messages if not found
+            if not self.stats_live_message_id:
+                message = await channel.send("🟢 **Live Mode Statistics**\n```Loading data...```")
+                self.stats_live_message_id = message.id
+                logger.info(f"Created new Live mode stats message with ID: {message.id}")
+            
+            if not self.stats_sb_message_id:
+                message = await channel.send("🟣 **Squadron Battle Statistics**\n```Loading data...```")
+                self.stats_sb_message_id = message.id
+                logger.info(f"Created new Squadron Battle stats message with ID: {message.id}")
+            
+            # Initialize leaderboard messages and start update task
             await self.initialize_leaderboard_messages()
             self.update_stats_task.start()  # Start periodic updates
-            logger.info(f"Created new stats text message with ID: {message.id}")
+
         except discord.NotFound:
             logger.error("Channel not found or inaccessible.")
         except Exception as e:
-            logger.exception(f"An unexpected error occurred while initializing the stats message: {e}")
+            logger.exception(f"An unexpected error occurred while initializing the stats messages: {e}")
 
     @tasks.loop(minutes=1)  # Use a fixed interval of 1 minute
     async def update_stats_task(self):
@@ -244,12 +262,12 @@ class StatusBoardBot(commands.Cog):
         # Update the last update time
         self.last_update_time = current_time
             
-        if not self.stats_channel_id or not self.stats_message_id:
-            logger.warning("Cannot update stats message: incomplete configuration.")
+        if not self.stats_channel_id or not self.stats_live_message_id or not self.stats_sb_message_id:
+            logger.warning("Cannot update stats messages: incomplete configuration.")
             return
 
         try:
-            # Use data provider to fetch data instead of direct Google Sheets API call
+            # Use data provider to fetch data
             if not self.data_provider.is_connected():
                 logger.error("Data provider is not connected. Cannot update stats.")
                 return
@@ -263,57 +281,121 @@ class StatusBoardBot(commands.Cog):
 
             # Normalize the data
             data = self.normalize_data(data)
-
-            # Update the stats message with text formatting
-            stats_text = self.generate_stats_text(data)
+            
             channel = await self.get_channel(self.stats_channel_id)
             if not channel:
                 return
 
-            # Fetch and update the stats message
+            # Generate and update Live mode stats
+            live_stats_text = self.generate_stats_text(data, mode="live")
             try:
-                message = await channel.fetch_message(self.stats_message_id)
-                await message.edit(content=stats_text)
-                logger.info("Stats text message updated successfully.")
+                live_message = await channel.fetch_message(self.stats_live_message_id)
+                await live_message.edit(content=live_stats_text)
+                logger.info("Live mode stats message updated successfully.")
             except discord.NotFound:
                 # If the message was deleted, create a new one
-                new_message = await channel.send(stats_text)
-                self.stats_message_id = new_message.id
-                logger.info(f"Created new stats text message with ID: {new_message.id}")
+                new_live_message = await channel.send(live_stats_text)
+                self.stats_live_message_id = new_live_message.id
+                logger.info(f"Created new Live mode stats message with ID: {new_live_message.id}")
+            
+            # Generate and update Squadron Battle stats
+            sb_stats_text = self.generate_stats_text(data, mode="sb")
+            try:
+                sb_message = await channel.fetch_message(self.stats_sb_message_id)
+                await sb_message.edit(content=sb_stats_text)
+                logger.info("Squadron Battle stats message updated successfully.")
+            except discord.NotFound:
+                # If the message was deleted, create a new one
+                new_sb_message = await channel.send(sb_stats_text)
+                self.stats_sb_message_id = new_sb_message.id
+                logger.info(f"Created new Squadron Battle stats message with ID: {new_sb_message.id}")
 
-            # Update the leaderboard embeds (these will still use embeds)
+            # Update the leaderboard embeds
             await self.update_leaderboard_embeds(data)
 
-            logger.info(f"Stats and leaderboard messages updated successfully. Next update in {update_period} minutes.")
+            logger.info(f"All stats and leaderboard messages updated successfully. Next update in {update_period} minutes.")
         except Exception as e:
-            logger.exception(f"Error updating stats message: {e}")
+            logger.exception(f"Error updating stats messages: {e}")
 
-    def generate_stats_text(self, data):
-        """Generate a formatted text message with statistics fetched from the data provider."""
-    
-        # Define which columns to display and their abbreviations
-        column_names = {
-            "Jugador": "Player",
-            "Kills/Live": "K/L",
-            "Deaths/Live": "D/L", 
-            "Ratio/Live": "R/L",
-            "Kills/SB": "K/SB",
-            "Deaths/SB": "D/SB",
-            "Ratio/SB": "R/SB"
-        }
+    def generate_stats_text(self, data, mode="live"):
+        """Generate a formatted text message with statistics fetched from the data provider.
+        
+        Args:
+            data (list): The normalized data to display
+            mode (str): Which mode to display - "live" or "sb"
+            
+        Returns:
+            str: Formatted message text
+        """
+        # Define which columns to display based on mode
+        if mode.lower() == "live":
+            column_names = {
+                "Jugador": "Player",
+                "Kills/Live": "Kills",
+                "Deaths/Live": "Deaths", 
+                "Ratio/Live": "Ratio"
+            }
+            title = "🟢 **Live Mode Statistics**"
+            sort_key = "Ratio/Live"
+            kills_key = "Kills/Live"
+            deaths_key = "Deaths/Live"
+        else:  # Squadron Battle
+            column_names = {
+                "Jugador": "Player",
+                "Kills/SB": "Kills",
+                "Deaths/SB": "Deaths",
+                "Ratio/SB": "Ratio"
+            }
+            title = "🟣 **Squadron Battle Statistics**"
+            sort_key = "Ratio/SB"
+            kills_key = "Kills/SB"
+            deaths_key = "Deaths/SB"
         
         # Ensure all required columns exist, add empty values if they don't
         for row in data:
             for col in column_names.keys():
                 if col not in row:
                     row[col] = ""
+        
+        # Filter out players with 0 kills AND 0 deaths
+        filtered_data = []
+        for row in data:
+            # Convert values to float, handle empty strings or non-numeric values
+            try:
+                kills = float(row.get(kills_key, 0))
+            except (ValueError, TypeError):
+                kills = 0
+                
+            try:
+                deaths = float(row.get(deaths_key, 0))
+            except (ValueError, TypeError):
+                deaths = 0
+                
+            # Only include players with non-zero kills or deaths
+            if kills > 0 or deaths > 0:
+                filtered_data.append(row)
+                
+        # If all players are filtered out, show a message instead
+        if not filtered_data:
+            message = f"{title}\n```No active players found in this mode.```"
+            datasource = self.config_manager.get('datasource', 'googlesheets')
+            message += f"\nData source: {datasource}"
+            return message
+        
+        # Sort the data by ratio (higher values first)
+        try:
+            sorted_data = sorted(filtered_data, key=lambda x: float(x.get(sort_key, 0)), reverse=True)
+        except (ValueError, TypeError):
+            # If sorting fails (e.g., non-numeric values), use the filtered data
+            sorted_data = filtered_data
+            logger.warning(f"Failed to sort data by {sort_key}, displaying unsorted data.")
     
         # Calculate column widths based on content
         column_widths = {}
         for col, short in column_names.items():
             # Get maximum width needed for this column
             header_width = len(short)
-            content_width = max(len(str(row.get(col, ''))) for row in data) if data else 0
+            content_width = max(len(str(row.get(col, ''))) for row in sorted_data) if sorted_data else 0
             column_widths[col] = max(header_width, content_width)
     
         # Build the table header
@@ -325,10 +407,10 @@ class StatusBoardBot(commands.Cog):
         separator = "-" * (sum(column_widths.values()) + len(column_names) * 3 - 1)
     
         # Create the message with header and separator
-        message = f"📊 **Real-Time Statistics**\n```\n{header}\n{separator}\n"
+        message = f"{title}\n```\n{header}\n{separator}\n"
     
         # Add rows to the table, handling missing values
-        for row in data:
+        for row in sorted_data:
             row_parts = []
             for col in column_names:
                 value = str(row.get(col, ''))[:column_widths[col]]
@@ -513,9 +595,6 @@ class StatusBoardBot(commands.Cog):
 async def main():
     # Get the config manager instance
     config_manager = get_config_manager()
-    
-    # Ensure the config is loaded
-    config_manager.load_config()
     
     # Check if we have a Discord bot token
     if not config_manager.get('discord_bot_token'):
