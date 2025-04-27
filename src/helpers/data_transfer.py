@@ -196,7 +196,7 @@ class DataTransfer:
                         str(record.get('username', '')) +
                         str(record.get('killer', '')) +
                         str(record.get('victim', '')) +
-                        str(record.get('timestamp', record.get('timestamp', '')))
+                        str(record.get('timestamp', '')) 
                     )
                     record_hash = hashlib.md5(hash_input.encode()).hexdigest()
                     

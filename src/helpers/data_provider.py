@@ -997,14 +997,13 @@ class SupabaseDataProvider(DataProvider):
 
     def fetch_record_hashes(self, table_name: str) -> List[str]:
         """
-        Fetch only MD5 hashes of records in the table for efficient duplicate detection.
-        Uses a dedicated RPC function in Supabase.
+        Fetch all hash values from a table using pagination to overcome the 1000-row limit.
         
         Args:
             table_name: The table name to fetch hashes from
             
         Returns:
-            List of MD5 hash strings for existing records
+            List of all hash values in the table
         """
         if not supabase_manager.is_connected():
             message_bus.publish(
@@ -1026,79 +1025,102 @@ class SupabaseDataProvider(DataProvider):
             )
             return []
         
-        attempt = 0
-        last_error = None
+        # Implement pagination to get all hash values
+        all_hashes = []
+        page_size = 1000  # Maximum number of records per page
+        current_page = 0
+        has_more = True
+        total_fetched = 0
         
-        while attempt < self.max_retries:
-            try:
-                # Call the RPC function to get hashes directly from Supabase
-                result = supabase_manager.supabase.rpc(
-                    'get_table_record_hashes',
-                    {'table_name': sanitized_table}
-                ).execute()
-                
-                if hasattr(result, 'error') and result.error:
+        message_bus.publish(
+            content=f"Starting paginated fetch of all hash_values from '{sanitized_table}'",
+            level=MessageLevel.INFO,
+            metadata={"source": self.SOURCE}
+        )
+        
+        while has_more:
+            attempt = 0
+            last_error = None
+            success = False
+            
+            # Calculate range for this page
+            start_range = current_page * page_size
+            end_range = start_range + page_size - 1
+            
+            while attempt < self.max_retries and not success:
+                try:
+                    # Use range query for pagination
+                    result = supabase_manager.supabase.table(sanitized_table) \
+                        .select('hash_value') \
+                        .range(start_range, end_range) \
+                        .execute()
+                    
+                    if hasattr(result, 'error') and result.error:
+                        message_bus.publish(
+                            content=f"Error fetching hash_values (page {current_page + 1}): {result.error}",
+                            level=MessageLevel.ERROR,
+                            metadata={"source": self.SOURCE}
+                        )
+                        attempt += 1
+                        if attempt < self.max_retries:
+                            time.sleep(self.retry_delay)
+                        continue
+                    
+                    # Extract hashes from the result
+                    page_hashes = []
+                    if hasattr(result, 'data') and result.data:
+                        for row in result.data:
+                            if isinstance(row, dict) and 'hash_value' in row:
+                                page_hashes.append(row['hash_value'])
+                    
+                    # Add to our collection
+                    all_hashes.extend(page_hashes)
+                    total_fetched += len(page_hashes)
+                    
                     message_bus.publish(
-                        content=f"Error fetching hashes via RPC: {result.error}",
-                        level=MessageLevel.ERROR,
+                        content=f"Page {current_page + 1}: Retrieved {len(page_hashes)} hash_values (total so far: {total_fetched})",
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": self.SOURCE}
+                    )
+                    
+                    # Check if we need to fetch more pages
+                    has_more = len(page_hashes) == page_size
+                    current_page += 1
+                    success = True
+                    
+                except Exception as e:
+                    last_error = str(e)
+                    message_bus.publish(
+                        content=f"Error fetching hash_values page {current_page + 1} (attempt {attempt + 1}/{self.max_retries}): {e}",
+                        level=MessageLevel.WARNING,
+                        metadata={"source": self.SOURCE}
+                    )
+                    message_bus.publish(
+                        content=traceback.format_exc(),
+                        level=MessageLevel.DEBUG,
                         metadata={"source": self.SOURCE}
                     )
                     attempt += 1
                     if attempt < self.max_retries:
                         time.sleep(self.retry_delay)
-                    continue
-                
-                # Extract hashes from the result
-                hashes = []
-                if hasattr(result, 'data') and result.data:
-                    for row in result.data:
-                        if isinstance(row, dict) and 'hash_value' in row:
-                            hashes.append(row['hash_value'])
-                
-                message_bus.publish(
-                    content=f"Retrieved {len(hashes)} record hashes from table '{sanitized_table}' via RPC",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": self.SOURCE}
-                )
-                return hashes
-                
-            except Exception as e:
-                last_error = str(e)
-                message_bus.publish(
-                    content=f"Error calling get_table_record_hashes RPC for table '{sanitized_table}' (attempt {attempt+1}/{self.max_retries}): {e}",
-                    level=MessageLevel.WARNING,
-                    metadata={"source": self.SOURCE}
-                )
-                message_bus.publish(
-                    content=traceback.format_exc(),
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": self.SOURCE}
-                )
-                
-                # If RPC function might not exist, try the fallback direct SQL approach
-                if "function get_table_record_hashes() does not exist" in str(e).lower():
-                    message_bus.publish(
-                        content="RPC function get_table_record_hashes not found, using fallback SQL approach",
-                        level=MessageLevel.WARNING,
-                        metadata={"source": self.SOURCE}
-                    )
-                    return self._fetch_record_hashes_fallback(sanitized_table)
             
-            # Increment attempt counter and delay before retry
-            attempt += 1
-            if attempt < self.max_retries:
-                time.sleep(self.retry_delay)
+            # If all retries failed for this page
+            if not success:
+                message_bus.publish(
+                    content=f"Failed to fetch hash_values page {current_page + 1} after {self.max_retries} attempts: {last_error}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                break
         
-        # All attempts failed
         message_bus.publish(
-            content=f"All {self.max_retries} attempts failed to fetch hashes from '{sanitized_table}': {last_error}",
-            level=MessageLevel.ERROR,
+            content=f"Completed fetching all hash_values from '{sanitized_table}'. Total records: {total_fetched}",
+            level=MessageLevel.INFO,
             metadata={"source": self.SOURCE}
         )
         
-        # Try fallback method as last resort
-        return []
-        
+        return all_hashes
+
 def get_data_provider(config_manager) -> DataProvider:
     """
     Factory function to get the appropriate data provider based on configuration.
