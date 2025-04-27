@@ -343,7 +343,7 @@ class LogAnalyzerFrame(wx.Frame):
         try:
             # 1. Load configuration values from ConfigManager
             self.default_log_file_path = self.log_file_path
-            self.discord_check.Check(self.use_discord or False)
+            self.discord_check.Check(self.use_discord or True)
             
             # 3. Validate critical settings and prompt for missing ones
             missing_settings = []

@@ -264,10 +264,10 @@ class DataTransfer:
         Transfer all data from Google Sheets to Supabase.
         
         Args:
-            purge_first (bool): Whether to purge existing data before transfer (default: True)
+            purge_first (bool): Whether to check for duplicates on tables with "_" in name
             This will be overridden for:
-            - Materials table: Always purged
-            - Tables with "_" in name: Never purged (only new records added)
+            - Tables WITHOUT "_" in name: Always purged before transfer
+            - Tables WITH "_" in name: Will respect purge_first parameter
             
         Returns:
             Dict[str, Tuple[int, int]]: Results for each sheet (processed, successful)
@@ -302,21 +302,19 @@ class DataTransfer:
         for sheet in sheets:
             try:
                 # Determine whether to purge based on sheet name:
-                # - Materials: Always purge
-                # - Tables with "_": Never purge (only add new records)
-                # - Other tables: Use the provided purge_first parameter
-                sheet_purge_first = purge_first
-                if sheet == "Materials":
-                    sheet_purge_first = True  # Always purge Materials table
+                # - Tables WITH "_": Follow the purge_first parameter (for duplicate checking)
+                # - Tables WITHOUT "_": Always purge before transfer
+                if "_" in sheet:
+                    sheet_purge_first = purge_first
                     message_bus.publish(
-                        content=f"Materials table will be purged before transfer (forced)",
+                        content=f"Table {sheet} contains an underscore - {'checking for duplicates' if not purge_first else 'will be purged as requested'}",
                         level=MessageLevel.INFO,
                         metadata={"source": self.SOURCE}
                     )
-                elif "_" in sheet:
-                    sheet_purge_first = False  # Never purge tables with underscore
+                else:
+                    sheet_purge_first = True  # Always purge tables without underscore
                     message_bus.publish(
-                        content=f"Table {sheet} contains an underscore - only new records will be added",
+                        content=f"Table {sheet} does not contain an underscore - will be purged before transfer (forced)",
                         level=MessageLevel.INFO,
                         metadata={"source": self.SOURCE}
                     )
