@@ -465,7 +465,7 @@ class ConfigManager:
             # Connect to Supabase if it's the selected datasource
             if datasource == 'supabase':
                 from .supabase_manager import supabase_manager
-                    # Pass the config_manager instance to the connect method
+                # Pass the config_manager instance to the connect method
                 if supabase_manager.connect(config_manager=self):
                     message_bus.publish(
                         content="Successfully connected to Supabase",
@@ -482,6 +482,10 @@ class ConfigManager:
                     self.set('datasource', 'googlesheets')
                     # Save the changed configuration to disk
                     self.save_config()
+                    
+                # Successfully connected to Supabase, no need to apply dynamic config
+                # as this could cause a deadlock during startup when switching datasources
+                return True
             
             # Apply dynamic configuration if Google Sheets is the selected datasource and webhook is available
             if self.apply_dynamic_config():
