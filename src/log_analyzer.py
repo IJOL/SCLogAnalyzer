@@ -264,13 +264,13 @@ class LogFileHandler(FileSystemEventHandler):
     def add_state_data(self, data):
         """
         Add state data (current_mode, shard, username, version) as first-level keys to the given data.
-        Only adds keys if they don't already exist in the data.
+        Only adds keys if they don't already exist in the data. Preserves the original order of the data dict.
 
         Args:
             data (dict): The data to which state information will be added.
 
         Returns:
-            dict: The updated data with state information.
+            dict: The updated data with state information, maintaining original data order.
         """
         # Create a default state dict
         state_data = {
@@ -282,8 +282,13 @@ class LogFileHandler(FileSystemEventHandler):
             "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),            
         }
         
-        # Only add keys that don't exist in the input data
-        result = {**state_data, **data}
+        # Create a new dict with state_data keys that don't exist in data
+        result = data.copy()  # Start with a copy of the original data to preserve order
+        
+        # Only add state_data keys that don't already exist in the data
+        for key, value in state_data.items():
+            if key not in result:
+                result[key] = value
         
         return result
 
