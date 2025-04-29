@@ -509,7 +509,7 @@ class SupabaseManager:
                     # If this is the last retry, return failure
                     if retry_count >= max_retries - 1:
                         log_message(f"Failed to insert after {retry_count + 1} attempts", "ERROR")
-                        log_message(f"Table: {table_name}, Data keys: {list(lowercase_data.keys())}", "DEBUG")
+                        log_message(f"Table: {table_name}, Data keys: {list(data.keys())}", "DEBUG")
                         return False
                     
                     # Otherwise, increment retry counter and continue the loop
