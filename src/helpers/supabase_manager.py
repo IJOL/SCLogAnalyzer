@@ -299,6 +299,9 @@ class SupabaseManager:
             # Add created_at timestamp if not in data
             columns.append("created_at TIMESTAMP DEFAULT NOW()")
             
+            # Add hash_value generated column directly
+            columns.append("hash_value TEXT GENERATED ALWAYS AS (generate_hash(username, killer, victim, timestamp)) STORED")
+            
             # ISO 8601 format with timezone and milliseconds: 2025-04-15T18:30:26.650Z
             datetime_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
             
@@ -311,7 +314,7 @@ class SupabaseManager:
             # Process other fields in the data
             for key, value in data.items():
                 # Skip id and created_at which we've already handled
-                if key in ('id', 'created_at'):
+                if key in ('id', 'created_at', 'hash_value'):
                     continue
                     
                 # Determine column type based on value type
@@ -331,7 +334,7 @@ class SupabaseManager:
                     # Default to text for strings and other types
                     columns.append(f"{key} TEXT")
             
-            # Create the full SQL statement
+            # Create the full SQL statement with all columns including hash_value
             create_table_sql = f"""
             CREATE TABLE IF NOT EXISTS "{table_name}" (
                 {','.join(columns)}
