@@ -719,7 +719,7 @@ class LogAnalyzerFrame(wx.Frame):
     
     def async_init_tabs(self):
         """Initialize tabs asynchronously after the main window is loaded."""
-        self.data_manager.async_init_tabs()
+        self.data_manager.create_tabs()
     
     def on_notebook_page_changed(self, event):
         """

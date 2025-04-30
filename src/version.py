@@ -3,7 +3,7 @@
 MAJOR = 0
 MINOR = 6
 RELEASE = 5
-MATURITY = "alpha"  # "alpha", "beta", or "final"
+MATURITY = "wikelo"  # "alpha", "beta", or "final"
 PATCH = "9bf5300"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
