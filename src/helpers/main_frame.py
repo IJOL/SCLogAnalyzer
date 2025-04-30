@@ -49,7 +49,7 @@ class LogAnalyzerFrame(wx.Frame):
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "SCLogAnalyzer.ico")
         if os.path.exists(icon_path):
             self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO))
-            
+        
         # Initialize state properties
         self.username = "Unknown"
         self.shard = "Unknown"
@@ -73,13 +73,21 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Set flag for GUI mode in log_analyzer
         log_analyzer.main.in_gui = True
+
+        
+        # Subscribe to message bus for log messages with history replay
+        message_bus.subscribe(
+            self.log_subscription_name, 
+            self._append_log_message_from_bus,
+            replay_history=True,  # Enable message history replay
+            max_replay_messages=100,  # Replay up to 100 most recent messages
+            min_replay_level=MessageLevel.INFO  # Only replay INFO level and above
+        )
+        
         
         # Set up a custom log handler for GUI
         log_analyzer.main.gui_log_handler = self.append_log_message
-        
-        # Initialize message bus subscription
-        message_bus.subscribe(self.log_subscription_name, self._append_log_message_from_bus)
-        
+      
         # Initialize variables for monitoring
         self.observer = None
         self.event_handler = None

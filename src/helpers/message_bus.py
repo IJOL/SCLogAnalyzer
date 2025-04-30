@@ -302,13 +302,19 @@ class MessageBus:
         )
         self.message_queue.put(message)
     
-    def subscribe(self, name: str, callback: Callable[[Message], None]) -> None:
+    def subscribe(self, name: str, callback: Callable[[Message], None], 
+                   replay_history: bool = False, 
+                   max_replay_messages: Optional[int] = 100,
+                   min_replay_level: Optional[MessageLevel] = None) -> None:
         """
         Add a subscriber to the bus.
         
         Args:
             name: Name of the subscriber for identification and filtering
             callback: Function to call with each message
+            replay_history: Whether to replay historical messages to the new subscriber
+            max_replay_messages: Maximum number of historical messages to replay (newest first)
+            min_replay_level: Minimum message level to include in replay
         """
         subscriber = {
             'name': name,
@@ -322,6 +328,28 @@ class MessageBus:
                 return
                 
         self.subscribers.append(subscriber)
+        
+        # Replay history if requested
+        if replay_history and self.message_history:
+            # Get filtered history for replay
+            historical_messages = self.get_history(
+                max_messages=max_replay_messages,
+                min_level=min_replay_level
+            )
+            
+            # Log that we're replaying messages
+            print(f"Replaying {len(historical_messages)} messages to new subscriber '{name}'")
+            
+            # Send historical messages to the new subscriber
+            for message in historical_messages:
+                try:
+                    # Apply any filters for this subscriber
+                    if self._should_process_message(subscriber, message):
+                        # Call the subscriber's callback function
+                        callback(message)
+                except Exception as e:
+                    # Don't let a subscriber error crash the bus
+                    print(f"Error replaying message to subscriber {name}: {e}")
     
     def unsubscribe(self, name: str) -> None:
         """
@@ -414,13 +442,14 @@ message_bus = MessageBus()
 # Start the message bus on import
 message_bus.start()
 
-def setup_console_handler(debug=False):
+def setup_console_handler(debug=False, replay_history=True):
     """
     Set up a console handler that outputs message bus messages to the console.
     This is useful for command-line scripts that use the message bus.
     
     Args:
         debug (bool): Whether to show debug-level messages. If False, only INFO and above will be shown.
+        replay_history (bool): Whether to replay the message history to the new subscriber.
     """
     # Define a simple handler that prints messages to the console
     def console_handler(message):
@@ -441,11 +470,19 @@ def setup_console_handler(debug=False):
     # Create a unique handler name based on current time to avoid conflicts
     handler_name = f"console_handler_{int(time.time())}"
     
-    # Subscribe to the message bus
-    message_bus.subscribe(handler_name, console_handler)
-    
     # Set the minimum level filter based on the debug parameter
     min_level = MessageLevel.DEBUG if debug else MessageLevel.INFO
+    
+    # Subscribe to the message bus with history replay if requested
+    message_bus.subscribe(
+        name=handler_name,
+        callback=console_handler,
+        replay_history=replay_history,
+        max_replay_messages=100,
+        min_replay_level=min_level
+    )
+    
+    # Set the minimum level filter
     message_bus.set_filter(handler_name, 'level', min_level)
     
     # Configure the default logger to also use similar formatting for consistency
