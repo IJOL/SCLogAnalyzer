@@ -342,7 +342,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.update_dynamic_labels()
         
         # Usar el método _refresh_all_tabs con el nombre original
-        safe_call_after(wx.CallLater, 500, self.data_manager._refresh_all_tabs)
+        #safe_call_after(wx.CallLater, 500, self.data_manager._refresh_all_tabs)
     
     def on_about(self, event):
         """Show the About dialog."""

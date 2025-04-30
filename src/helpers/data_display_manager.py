@@ -321,8 +321,8 @@ class DataDisplayManager:
                 for tab_info in required_tabs:
                     self._create_single_tab(tab_info)
                 
-                # After ALL tabs are created, schedule a single refresh operation
-                wx.CallLater(500, self._refresh_all_tabs)
+                # No longer need to load tabs in advance as refresh is connected to tab change
+                # wx.CallLater(500, self._refresh_all_tabs)
             else:            
                 # If tabs already exist, just refresh them
                 if refresh_tabs:

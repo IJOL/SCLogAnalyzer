@@ -43,8 +43,13 @@ class TabCreator:
         # Create a vertical sizer for the tab
         tab_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Add a refresh button
-        refresh_button = wx.Button(new_tab, label="Refresh")
+        # Create a flat button with only a refresh icon
+        refresh_button = wx.BitmapButton(
+            new_tab,
+            bitmap=wx.ArtProvider.GetBitmap(wx.ART_REDO, wx.ART_BUTTON, (16, 16)),
+            style=wx.BORDER_NONE
+        )
+        refresh_button.SetToolTip("Refresh")
         tab_sizer.Add(refresh_button, 0, wx.ALL | wx.ALIGN_LEFT, 5)
 
         # Add a grid to display the JSON data
