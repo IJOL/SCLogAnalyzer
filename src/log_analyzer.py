@@ -441,15 +441,25 @@ class LogFileHandler(FileSystemEventHandler):
     def update_data_queue(self, data, event_type):
         """
         Add data to the data queue, including state information.
+        Skip sending data if version starts with 'ptu'.
 
         Args:
             data (dict): The data to send.
             event_type (str): The type of event triggering the update.
             
         Returns:
-            bool: True if queued successfully, False otherwise.
+            bool: True if queued successfully, False if skipped due to PTU version or other error.
         """
-        # Add state data to the payload
+        # Check if current version is PTU (case-insensitive check)
+        if self.current_version and self.current_version.lower().startswith('ptu'):
+            message_bus.publish(
+                content=f"Skipping data processing for PTU version: {self.current_version}", 
+                level=MessageLevel.DEBUG,
+                metadata={"source": "log_analyzer"}
+            )
+            return False
+
+        # Add state data to the payload and proceed as normal for non-PTU versions
         data_with_state = self.add_state_data(data)
         self.data_queue.put((data_with_state, event_type))
         return True
