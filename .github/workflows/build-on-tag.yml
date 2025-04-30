@@ -33,7 +33,7 @@ jobs:
       - name: Build executables
         run: |
           .\venv\Scripts\activate
-          pyinstaller --onefile --console --clean --add-data "src/config.json.template;." --name log_analyzer src/log_analyzer.py
+          #pyinstaller --onefile --console --clean --add-data "src/config.json.template;." --name log_analyzer src/log_analyzer.py
           pyinstaller --onefile --windowed --clean --add-data "src/config.json.template;." --add-binary "venv\Lib\site-packages\pyzbar\libiconv.dll;." --add-binary "venv\Lib\site-packages\pyzbar\libzbar-64.dll;." --name SCLogAnalyzer --icon src/SCLogAnalyzer.ico src/gui.py
 
       - name: Archive Windows Executable Artifacts
@@ -46,17 +46,9 @@ jobs:
       - name: Compress executables into a zip
         run: |
           $tag_name = "${{ github.ref_name }}"
-          Compress-Archive -Path dist/log_analyzer.exe -DestinationPath dist/log_analyzer-${tag_name}.zip -Update
+          #Compress-Archive -Path dist/log_analyzer.exe -DestinationPath dist/log_analyzer-${tag_name}.zip -Update
           Compress-Archive -Path dist/SCLogAnalyzer.exe -DestinationPath dist/SCLogAnalyzer-${tag_name}.zip -Update
 
-      - name: Publish log_analyzer release
-        if: startsWith(github.ref_name, 'test-') == false && steps.check_release.outputs.result != 'not_found'
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: dist/log_analyzer-${{ github.ref_name }}.zip
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}-cli
-          name: log_analyzer Release ${{ github.ref_name }}
 
       - name: Publish SCLogAnalyzer release
         if: startsWith(github.ref_name, 'test-') == false && steps.check_release.outputs.result != 'not_found'
