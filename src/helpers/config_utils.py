@@ -259,22 +259,46 @@ class ConfigManager:
                     return False
     
     def save_config(self):
-        """Save the current configuration to file."""
-        with self._lock:
+        """Save the current configuration to file, handling lock contention by deferring to a background thread if needed."""
+        # Use a short timeout to try to acquire the lock
+        acquired = self._lock.acquire(timeout=0.1)
+        if acquired:
             try:
-                # filter unwanted values in json file
                 filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
                                                'live_discord_webhook', 'ac_discord_webhook',])
-                
-                # Save to local file
                 with open(self.config_path, 'w', encoding='utf-8') as config_file:
                     json.dump(filtered_config, config_file, indent=4)
-                    
             except Exception as e:
                 message_bus.publish(
                     content=f"Error saving configuration: {e}",
                     level=MessageLevel.ERROR
                 )
+            finally:
+                self._lock.release()
+            # Reset pending save flag if it was set
+            if hasattr(self, '_pending_save_thread'):
+                self._pending_save_thread = False
+        else:
+            # If already waiting, do not spawn another thread
+            if getattr(self, '_pending_save_thread', False):
+                return
+            self._pending_save_thread = True
+            def wait_and_save():
+                with self._lock:
+                    try:
+                        filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
+                                                       'live_discord_webhook', 'ac_discord_webhook',])
+                        with open(self.config_path, 'w', encoding='utf-8') as config_file:
+                            json.dump(filtered_config, config_file, indent=4)
+                    except Exception as e:
+                        message_bus.publish(
+                            content=f"Error saving configuration (async): {e}",
+                            level=MessageLevel.ERROR
+                        )
+                    finally:
+                        self._pending_save_thread = False
+            t = threading.Thread(target=wait_and_save, daemon=True)
+            t.start()
 
     def filter(self, key_paths):
         """
@@ -483,9 +507,6 @@ class ConfigManager:
                     # Save the changed configuration to disk
                     self.save_config()
                     
-                # Successfully connected to Supabase, no need to apply dynamic config
-                # as this could cause a deadlock during startup when switching datasources
-                return True
             
             # Apply dynamic configuration if Google Sheets is the selected datasource and webhook is available
             if self.apply_dynamic_config():
