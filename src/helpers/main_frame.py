@@ -11,6 +11,9 @@ import winreg
 import wx.grid
 import requests
 import log_analyzer
+import win32event
+import win32api
+import winerror
 
 from .ui_components import TabCreator, DynamicLabels, safe_call_after
 from .monitoring_service import MonitoringService
@@ -33,6 +36,7 @@ DEFAULT_WINDOW_POSITION = (50, 50)
 DEFAULT_WINDOW_SIZE = (800, 600)
 LOG_FILE_WILDCARD = "Log files (*.log)|*.log|All files (*.*)|*.*"
 TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
+MUTEX_NAME = "Global\\SCLogAnalyzer_SingleInstance_Mutex"
 
 # Use constants from the updater module
 from helpers.updater import UPDATER_EXECUTABLE, LEGACY_UPDATER
@@ -158,7 +162,7 @@ class LogAnalyzerFrame(wx.Frame):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Style buttons with icons and custom fonts
-        # IMPORTANT: wx font style constants use UNDERSCORE, not DOT notation (wx.FONTSTYLE_NORMAL, not wx.FONTSTYLE_NORMAL)
+        # IMPORTANT: wx font style constants use UNDERSCORE, not DOT notation (wx.FONTSTYLE_NORMAL, not wx.FONTSTYLE.NORMAL)
         self.process_log_button = wx.Button(self.log_page, label=" Process Log")
         self.process_log_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_FILE_OPEN, wx.ART_BUTTON, (16, 16)))
         self.process_log_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
@@ -759,6 +763,9 @@ class LogAnalyzerFrame(wx.Frame):
 
 def main():
     """Main entry point for the application."""
+    # Create the wx.App instance first, before any wx operations
+    app = wx.App()
+    
     # Check if running as script or executable
     is_script = getattr(sys, 'frozen', False) == False
     
@@ -777,7 +784,16 @@ def main():
             level=MessageLevel.DEBUG
         )
     
-    app = wx.App()
+    # Mutex-based single-instance check
+    mutex = win32event.CreateMutex(None, False, MUTEX_NAME)
+    if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+        wx.MessageBox(
+            "Another instance of SC Log Analyzer is already running.",
+            "Instance Check",
+            wx.OK | wx.ICON_WARNING
+        )
+        return
+    
     frame = LogAnalyzerFrame()
     
     # Set debug mode if running as script but don't update visibility yet
