@@ -230,6 +230,8 @@ class LogFileHandler(FileSystemEventHandler):
         self.mode_start_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Context Establisher Done> establisher=\"(?P<establisher>.*?)\" runningTime=(?P<running_time>[\d\.]+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" sessionId=\"(?P<session_id>[\w-]+)\" \[(?P<tags>.*?)\]")
         self.nickname_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Connection Complete> map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>.*?) localAddr=(?P<local_addr>.*?) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session_id>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+)")
         self.mode_end_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected> cause=(?P<cause>\d+) reason=\"(?P<reason>.*?)\" frame=(?P<frame>\d+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>[\d\.:\w]+) localAddr=(?P<local_addr>[\d\.:\w]+) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+) \[(?P<tags>.*?)\]")
+        # Add server endpoint regex to detect PU/PTU version
+        self.server_endpoint_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <ReuseChannel> Reusing channel for .* to endpoint dns:///(?P<server_version>[^\.]+)\..*? \(transport security: \d\)")
 
         # Process entire log if requested
         if self.process_all:
@@ -279,7 +281,7 @@ class LogFileHandler(FileSystemEventHandler):
             "username": self.username or "Unknown",
             "version": self.current_version or "Unknown",
             "script_version": self.script_version or "Unknown",
-            "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),            
+                        "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),            
         }
         
         # Create a new dict with state_data keys that don't exist in data
@@ -771,6 +773,35 @@ class LogFileHandler(FileSystemEventHandler):
                     self.send_discord_message(mode_data, pattern_name='mode_change')
 
                 return True
+                
+        # Check for server endpoint version (PU/PTU)
+        endpoint_match = self.server_endpoint_regex.search(entry)
+        if endpoint_match:
+            endpoint_data = endpoint_match.groupdict()
+            new_server_version = endpoint_data.get('server_version')
+            timestamp = endpoint_data.get('timestamp')
+
+            # If it's a different server version than the current one, update it
+            if new_server_version != self.current_version:
+                old_server_version = self.current_version
+                self.current_version = new_server_version
+
+                # Output message
+                output_message(timestamp, f"Server version changed: '{old_server_version or 'None'}' → '{new_server_version}'", 'server_version_change')
+                
+                # Emit the event to notify subscribers about version update
+                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
+
+                # Format the server version data for output
+                endpoint_data['old_server_version'] = old_server_version or 'None'
+                endpoint_data = self.add_state_data(endpoint_data)  # Add state data to the server version data
+
+                # Send to Discord if enabled
+                if send_message and self.use_discord and 'server_version_change' in self.discord:
+                    self.send_discord_message(endpoint_data, pattern_name='server_version_change')
+
+                return True
+
         return False
 
     def detect_generic(self, entry, pattern):
@@ -851,7 +882,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.actor_state = {}
         # Emit events to notify subscribers about the reset
         self.on_mode_change.emit(None, self.current_mode)
-        self.on_shard_version_update.emit(None, None, self.username, None)
+        self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
         self.on_username_change.emit(self.username, None)
         output_message(None, "State reset complete")
 
