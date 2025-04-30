@@ -147,6 +147,9 @@ class LogAnalyzerFrame(wx.Frame):
         self.notebook = wx.Notebook(panel)
         self.log_page = wx.Panel(self.notebook)
         self.notebook.AddPage(self.log_page, "Main Log")
+        
+        # Bind the notebook page change event
+        self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_notebook_page_changed)
 
         # Create a vertical sizer for the log page
         log_page_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -713,6 +716,45 @@ class LogAnalyzerFrame(wx.Frame):
     def async_init_tabs(self):
         """Initialize tabs asynchronously after the main window is loaded."""
         self.data_manager.async_init_tabs()
+    
+    def on_notebook_page_changed(self, event):
+        """
+        Handle notebook page change event to refresh the grid of the selected tab.
+        
+        Args:
+            event (wx.BookCtrlEvent): The notebook page changed event.
+        """
+        try:
+            # Skip the event first to ensure normal processing
+            event.Skip()
+            
+            # Get the currently selected page index
+            current_page = event.GetSelection()
+            
+            # Skip refresh for the main log page (index 0)
+            if current_page == 0:
+                return
+            
+            # Get the page title
+            page_title = self.notebook.GetPageText(current_page)
+            
+            message_bus.publish(
+                content=f"Tab changed to: {page_title}, refreshing grid data...",
+                level=MessageLevel.DEBUG
+            )
+            
+            # Find the refresh button for this tab and execute a refresh
+            if hasattr(self, 'tab_creator') and hasattr(self.tab_creator, 'tab_references'):
+                tab_refs = self.tab_creator.tab_references
+                if page_title in tab_refs:
+                    grid, refresh_button = tab_refs[page_title]
+                    # Use a slight delay to ensure UI is updated first
+                    wx.CallLater(100, self.data_manager.execute_refresh_event, refresh_button)
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error refreshing tab after page change: {e}",
+                level=MessageLevel.ERROR
+            )
 
 
 def main():
