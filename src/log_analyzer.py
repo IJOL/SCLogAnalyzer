@@ -630,8 +630,19 @@ class LogFileHandler(FileSystemEventHandler):
         try:
             with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as file:
                 entries = file.readlines()
-                for entry in entries:
+                
+                # Check if we're in GUI mode
+                in_gui_mode = hasattr(main, 'in_gui') and main.in_gui
+                
+                # Process entries with periodic yielding if in GUI mode
+                for i, entry in enumerate(entries):
                     self.parse_log_entry(entry, send_message=False)
+                    
+                    # Yield to the main thread every 10 entries if in GUI mode
+                    if in_gui_mode and i % 10 == 0 and i > 0:
+                        import wx
+                        wx.YieldIfNeeded()
+                        
                 self.last_position = file.tell()
         except PermissionError:
             output_message(None, "Unable to read log file. Make sure it's not locked by another process.")
