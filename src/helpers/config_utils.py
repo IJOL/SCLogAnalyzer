@@ -138,10 +138,7 @@ class ConfigManager:
         self.in_gui = in_gui  # Track whether we're running in GUI mode
         self.new_config = True  # Flag to indicate if a new config was created
         
-        # Import Event here to avoid circular imports
-        from .event_handlers import Event
-        # Create an event for datasource changes
-        self.datasource_changed = Event()
+        # No need to create an Event instance - using MessageBus event system instead
         
         self.load_config()
         # Setup data providers automatically after loading the config
@@ -464,8 +461,8 @@ class ConfigManager:
             # Initialize the new data provider
             success = self.setup_data_providers()
             
-            # Emit event for datasource change
-            self.datasource_changed.emit(old_datasource, new_datasource)
+            # Emit event for datasource change using MessageBus
+            message_bus.emit("datasource_changed", old_datasource, new_datasource)
             
             return success
         except Exception as e:

@@ -172,17 +172,15 @@ def output_message(timestamp, message, regex_pattern=None, level=None):
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, **kwargs):
-        # Initialize events
-        self.on_shard_version_update = Event()  # Event for shard and version updates
-        self.on_mode_change = Event()  # Event for mode changes
-        self.on_username_change = Event()  # Event for username changes        
+        # Remove Event instantiations - using MessageBus event system instead
+        
         # Handle subscriptions passed via kwargs
         if 'on_shard_version_update' in kwargs and callable(kwargs['on_shard_version_update']):
-            self.on_shard_version_update.subscribe(kwargs['on_shard_version_update'])
+            message_bus.on("shard_version_update", kwargs['on_shard_version_update'])
         if 'on_mode_change' in kwargs and callable(kwargs['on_mode_change']):
-            self.on_mode_change.subscribe(kwargs['on_mode_change'])
+            message_bus.on("mode_change", kwargs['on_mode_change'])
         if 'on_username_change' in kwargs and callable(kwargs['on_username_change']):
-            self.on_username_change.subscribe(kwargs['on_username_change'])
+            message_bus.on("username_change", kwargs['on_username_change'])
             
         # Get the singleton config manager instead of having it passed
         self.config_manager = get_config_manager()
@@ -551,7 +549,12 @@ class LogFileHandler(FileSystemEventHandler):
                             output_message(None, f"Shard updated: {self.current_shard}, Version updated: {self.current_version}")
 
                             # Emit the event to notify subscribers
-                            self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
+                            message_bus.emit("shard_version_update", 
+                                self.current_shard, 
+                                self.current_version, 
+                                self.username, 
+                                self.current_mode
+                            )
                     else:
                         output_message(None, "QR code does not contain sufficient information.")
                 else:
@@ -697,7 +700,7 @@ class LogFileHandler(FileSystemEventHandler):
                 output_message(nickname_data.get('timestamp'), f"Username updated: '{old_username}' → '{new_nickname}'")
                 
                 # Emit the event to notify subscribers about nickname/username change
-                self.on_username_change.emit(self.username, old_username)
+                message_bus.emit("username_change", self.username, old_username)
                 
                 # Send startup Discord message after getting the username for the first time
                 if old_username == 'Unknown' and not self.process_once:
@@ -728,7 +731,7 @@ class LogFileHandler(FileSystemEventHandler):
                     output_message(timestamp, f"EA mode detected: '{new_mode}'. Exit events will be ignored until next mode change.", level="debug")
 
                 # Emit the event to notify subscribers about mode change
-                self.on_mode_change.emit(new_mode, old_mode)
+                message_bus.emit("mode_change", new_mode, old_mode)
 
                 # Format the mode data for output
                 mode_data['status'] = 'entered'
@@ -736,7 +739,12 @@ class LogFileHandler(FileSystemEventHandler):
                 mode_data=self.add_state_data(mode_data)  # Add state data to the mode data
 
                 # Emit the event to notify subscribers
-                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
+                message_bus.emit("shard_version_update", 
+                    self.current_shard, 
+                    self.current_version, 
+                    self.username, 
+                    self.current_mode
+                )
 
                 # Output message
                 output_message(timestamp, f"Mode changed: '{old_mode or 'None'}' → '{new_mode}'",'mode_change')
@@ -762,13 +770,18 @@ class LogFileHandler(FileSystemEventHandler):
                     return False
                 
                 # Emit the event to notify subscribers about mode exit
-                self.on_mode_change.emit(None, self.current_mode)
+                message_bus.emit("mode_change", None, self.current_mode)
 
                 # Format the mode data for output
                 mode_data['status'] = 'exited'
                 mode_data=self.add_state_data(mode_data)  # Add state data to the mode data
                 # Emit the event to notify subscribers
-                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
+                message_bus.emit("shard_version_update", 
+                    self.current_shard, 
+                    self.current_version, 
+                    self.username, 
+                    self.current_mode
+                )
 
                 # Output message
                 output_message(timestamp, f"Exited mode: '{self.current_mode}'")
@@ -800,7 +813,12 @@ class LogFileHandler(FileSystemEventHandler):
                 output_message(timestamp, f"Server version changed: '{old_server_version or 'None'}' → '{new_server_version}'", 'server_version_change')
                 
                 # Emit the event to notify subscribers about version update
-                self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
+                message_bus.emit("shard_version_update", 
+                    self.current_shard, 
+                    self.current_version, 
+                    self.username, 
+                    self.current_mode
+                )
 
                 # Format the server version data for output
                 endpoint_data['old_server_version'] = old_server_version or 'None'
@@ -891,9 +909,9 @@ class LogFileHandler(FileSystemEventHandler):
         self.last_position = 0
         self.actor_state = {}
         # Emit events to notify subscribers about the reset
-        self.on_mode_change.emit(None, self.current_mode)
-        self.on_shard_version_update.emit(self.current_shard, self.current_version, self.username, self.current_mode)
-        self.on_username_change.emit(self.username, None)
+        message_bus.emit("mode_change", None, self.current_mode)
+        message_bus.emit("shard_version_update", self.current_shard, self.current_version, self.username, self.current_mode)
+        message_bus.emit("username_change", self.username, None)
         output_message(None, "State reset complete")
 
 

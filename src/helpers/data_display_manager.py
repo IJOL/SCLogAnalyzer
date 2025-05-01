@@ -33,9 +33,8 @@ class DataDisplayManager:
         # Set default log level filter to INFO on startup
         self._set_log_level_filter(MessageLevel.INFO)
         
-        # Subscribe to datasource change events if config manager is available
-        if self.config_manager is not None:
-            self.config_manager.datasource_changed.subscribe(self.on_datasource_change)
+        # Subscribe to datasource change events using MessageBus
+        message_bus.on("datasource_changed", self.on_datasource_change)
             
         # Rastreo de operaciones de actualización
         self._refresh_operations = set()  # Conjunto de operaciones de refresco activas
