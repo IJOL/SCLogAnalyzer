@@ -651,7 +651,7 @@ class LogFileHandler(FileSystemEventHandler):
                     self.parse_log_entry(entry, send_message=False)
                     
                     # Yield to the main thread every 10 entries if in GUI mode
-                    if in_gui_mode and i % 10 == 0 and i > 0:
+                    if in_gui_mode and i % 4 == 0 and i > 0:
                         import wx
                         wx.YieldIfNeeded()
                         
