@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 6
-RELEASE = 6
+RELEASE = 7
 MATURITY = "wikelo"  # "alpha", "beta", or "final"
-PATCH = "67cbb03"
+PATCH = "ea69837"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -15,12 +15,10 @@ def get_version():
 
 # Recent commit messages
 COMMIT_MESSAGES = [
-    "67cbb03: Refactor tab initialization method and update version maturity label",
-    "12fdc3f: Implement single-instance check using mutex in main application entry point",
-    "d5f4899: Refactor build-on-tag workflow to comment out log_analyzer build and release steps, focusing on SCLogAnalyzer",
-    "51399de: Add GUI mode support to LogFileHandler for periodic yielding during log processing",
-    "a6a1d91: Refactor tab refresh logic to eliminate unnecessary pre-loading and update refresh button to use an icon",
-    "fd19be5: Add event handling for notebook page changes to refresh grid data",
-    "ba7cf57: Enhance message bus subscription to support historical message replay and add parameters for filtering",
-    "c7f9a0a: Improve save_config method to handle lock contention with background thread support",
+    "ea69837: Enhance ConfigManager: Add new keys to preserve and streamline config filtering",
+    "282cbe8: Adjust GUI mode log entry yield frequency from 10 to 4",
+    "e3f3790: Update player_death regex pattern to exclude Shipjacker_ from victim matching",
+    "267b3b4: Skip data processing for PTU versions in LogFileHandler",
+    "3121e94: Add server endpoint regex to detect version changes and notify on updates",
+    "c772bd2: Add hash_value generated column to table creation in SupabaseManager",
 ]
