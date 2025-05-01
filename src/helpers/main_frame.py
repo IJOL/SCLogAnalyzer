@@ -166,7 +166,6 @@ class LogAnalyzerFrame(wx.Frame):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Style buttons with icons and custom fonts
-        # IMPORTANT: wx font style constants use UNDERSCORE, not DOT notation (wx.FONTSTYLE_NORMAL, not wx.FONTSTYLE.NORMAL)
         self.process_log_button = wx.Button(self.log_page, label=" Process Log")
         self.process_log_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_FILE_OPEN, wx.ART_BUTTON, (16, 16)))
         self.process_log_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
@@ -208,7 +207,7 @@ class LogAnalyzerFrame(wx.Frame):
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL | wx.TE_RICH2
         )
         fixed_font = wx.Font(
-            10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_NORMAL
+            10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL
         )
         self.log_text.SetFont(fixed_font)
         self.log_text.SetForegroundColour(wx.Colour(0, 255, 0))  # Green text
@@ -791,6 +790,8 @@ def main():
     # Mutex-based single-instance check
     mutex = win32event.CreateMutex(None, False, MUTEX_NAME)
     if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+        print("\nERROR: Another instance of SC Log Analyzer is already running.")
+        print("Please close the existing instance before starting a new one.\n")
         wx.MessageBox(
             "Another instance of SC Log Analyzer is already running.",
             "Instance Check",

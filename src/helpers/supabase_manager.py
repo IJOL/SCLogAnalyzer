@@ -300,7 +300,8 @@ class SupabaseManager:
             columns.append("created_at TIMESTAMP DEFAULT NOW()")
             
             # Add hash_value generated column directly
-            columns.append("hash_value TEXT GENERATED ALWAYS AS (generate_hash(username, killer, victim, timestamp)) STORED")
+            columns.append("hash_value TEXT GENERATED ALWAYS AS"
+            " (MD5(COALESCE(username, '') || COALESCE(killer, '') || COALESCE(victim, '') || COALESCE(extract(epoch from \"timestamp\")::TEXT, '')))  STORED")
             
             # ISO 8601 format with timezone and milliseconds: 2025-04-15T18:30:26.650Z
             datetime_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
