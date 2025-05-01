@@ -17,7 +17,6 @@ from pyzbar.pyzbar import decode  # For QR code detection
 # Using absolute imports instead of relative ones
 from helpers.config_utils import get_application_path, get_config_manager
 from helpers.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
-from helpers.event_handlers import Event  # Import Event from event_handlers module
 from helpers.message_bus import message_bus, MessageLevel  # Import at module level
 from helpers.data_provider import get_data_provider  # Import data provider
 

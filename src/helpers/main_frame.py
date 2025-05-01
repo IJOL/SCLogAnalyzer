@@ -166,29 +166,13 @@ class LogAnalyzerFrame(wx.Frame):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Style buttons with icons and custom fonts
-        self.process_log_button = wx.Button(self.log_page, label=" Process Log")
-        self.process_log_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_FILE_OPEN, wx.ART_BUTTON, (16, 16)))
-        self.process_log_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
-
-        self.autoshard_button = wx.Button(self.log_page, label=" Auto Shard")
-        self.autoshard_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_TIP, wx.ART_BUTTON, (16, 16)))
-        self.autoshard_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.process_log_button = self._create_button(self.log_page, " Process Log", wx.ART_FILE_OPEN)
+        self.autoshard_button = self._create_button(self.log_page, " Auto Shard", wx.ART_TIP)
         self.autoshard_button.Enable(False)  # Start in disabled state
-        
-        self.monitor_button = wx.Button(self.log_page, label=" Start Monitoring")
-        self.monitor_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_EXECUTABLE_FILE, wx.ART_BUTTON, (16, 16)))
-        self.monitor_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
-
-        # Add the data transfer button
-        self.data_transfer_button = wx.Button(self.log_page, label=" Data Transfer")
-        self.data_transfer_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_COPY, wx.ART_BUTTON, (16, 16)))
-        self.data_transfer_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.monitor_button = self._create_button(self.log_page, " Start Monitoring", wx.ART_EXECUTABLE_FILE)
+        self.data_transfer_button = self._create_button(self.log_page, " Data Transfer", wx.ART_COPY)
         self.data_transfer_button.Hide()  # Hidden by default (debug mode only)
-
-        # Add the test button for data provider (hidden by default)
-        self.test_data_provider_button = wx.Button(self.log_page, label=" Test Data Provider")
-        self.test_data_provider_button.SetBitmap(wx.ArtProvider.GetBitmap(wx.ART_LIST_VIEW, wx.ART_BUTTON, (16, 16)))
-        self.test_data_provider_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.test_data_provider_button = self._create_button(self.log_page, " Test Data Provider", wx.ART_LIST_VIEW)
         self.test_data_provider_button.Hide()  # Hidden by default (debug mode only)
 
         # Add buttons to the horizontal button sizer
@@ -252,6 +236,13 @@ class LogAnalyzerFrame(wx.Frame):
         # Status bar
         self.CreateStatusBar()
         self.SetStatusText("Ready")
+    
+    def _create_button(self, parent, label, art_id):
+        """Helper method to create styled buttons."""
+        button = wx.Button(parent, label=label)
+        button.SetBitmap(wx.ArtProvider.GetBitmap(art_id, wx.ART_BUTTON, (16, 16)))
+        button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        return button
     
     def __getattr__(self, name):
         """

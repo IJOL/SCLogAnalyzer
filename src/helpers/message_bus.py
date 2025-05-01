@@ -451,12 +451,39 @@ class MessageBus:
             'kwargs': kwargs
         }
         
-        # Use existing publish method with additional metadata
-        self.publish(
-            content=f"Event: {event_name}",
-            level=MessageLevel.INFO,
-            metadata=metadata
-        )
+        # Use different logging behavior based on debug mode
+        if self.debug_mode:
+            # In debug mode, format and include parameter information at DEBUG level
+            param_info = []
+            
+            # Format positional arguments
+            if args:
+                param_info.append(f"args: {repr(args)}")
+                
+            # Format keyword arguments
+            if kwargs:
+                # Format each kwarg for better readability
+                kwarg_items = [f"{k}={repr(v)}" for k, v in kwargs.items()]
+                param_info.append(f"kwargs: {{{', '.join(kwarg_items)}}}")
+                
+            # Create detailed content for debug logging
+            detailed_content = f"Event: {event_name}"
+            if param_info:
+                detailed_content += f" with {', '.join(param_info)}"
+                
+            # Publish with detailed content at DEBUG level
+            self.publish(
+                content=detailed_content,
+                level=MessageLevel.DEBUG,
+                metadata=metadata
+            )
+        else:
+            # Normal mode - just use event name at INFO level
+            self.publish(
+                content=f"Event: {event_name}",
+                level=MessageLevel.INFO,
+                metadata=metadata
+            )
 
     def on(self, event_name, callback):
         """
