@@ -436,6 +436,66 @@ class MessageBus:
         """Clear the message history."""
         self.message_history.clear()
 
+    def emit(self, event_name, *args, **kwargs):
+        """
+        Emit an event through the message bus.
+        
+        Args:
+            event_name: Name of the event
+            *args, **kwargs: Parameters to pass to event handlers
+        """
+        metadata = {
+            'is_event': True,
+            'event_name': event_name,
+            'args': args,
+            'kwargs': kwargs
+        }
+        
+        # Use existing publish method with additional metadata
+        self.publish(
+            content=f"Event: {event_name}",
+            level=MessageLevel.INFO,
+            metadata=metadata
+        )
+
+    def on(self, event_name, callback):
+        """
+        Subscribe to an event.
+        
+        Args:
+            event_name: Name of the event to subscribe to
+            callback: Function to call when the event occurs
+            
+        Returns:
+            Subscription ID that can be used for unsubscribing
+        """
+        subscription_id = f"event_{event_name}_{int(time.time())}_{id(callback)}"
+        
+        # Create wrapper to extract and pass arguments
+        def event_callback_wrapper(message):
+            if (message.metadata.get('is_event', False) and 
+                message.metadata.get('event_name') == event_name):
+                args = message.metadata.get('args', ())
+                kwargs = message.metadata.get('kwargs', {})
+                callback(*args, **kwargs)
+        
+        # Subscribe the wrapper to receive messages
+        self.subscribe(
+            name=subscription_id,
+            callback=event_callback_wrapper
+        )
+        
+        return subscription_id
+
+    def off(self, subscription_id):
+        """
+        Unsubscribe from an event.
+        
+        Args:
+            subscription_id: Subscription ID returned by on()
+        """
+        self.unsubscribe(subscription_id)
+
 
 # Create a global message bus instance
 message_bus = MessageBus()
