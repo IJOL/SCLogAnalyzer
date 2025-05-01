@@ -207,7 +207,8 @@ class ConfigManager:
                     # Default keys to preserve if none specified
                     preserve_keys = preserve_keys or ["discord_webhook_url", "google_sheets_webhook", 
                                                      "log_file_path", "console_key", "version",
-                                                     "supabase_key","datasource"]
+                                                     "supabase_key","datasource", "live_discord_webhook",
+                                                     "ac_discord_webhook"]
                     
                     # Check if the config has already been renewed for this version
                     config_renew_version = self.get("version")
@@ -261,11 +262,13 @@ class ConfigManager:
     def save_config(self):
         """Save the current configuration to file, handling lock contention by deferring to a background thread if needed."""
         # Use a short timeout to try to acquire the lock
+        config_items_to_filter = ['use_discord', 'use_googlesheet', 
+                                  'process_once', 'process_all',]
         acquired = self._lock.acquire(timeout=0.1)
         if acquired:
             try:
-                filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
-                                               'live_discord_webhook', 'ac_discord_webhook',])
+                
+                filtered_config = self.filter(config_items_to_filter)
                 with open(self.config_path, 'w', encoding='utf-8') as config_file:
                     json.dump(filtered_config, config_file, indent=4)
             except Exception as e:
@@ -286,8 +289,7 @@ class ConfigManager:
             def wait_and_save():
                 with self._lock:
                     try:
-                        filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
-                                                       'live_discord_webhook', 'ac_discord_webhook',])
+                        filtered_config = self.filter(config_items_to_filter)
                         with open(self.config_path, 'w', encoding='utf-8') as config_file:
                             json.dump(filtered_config, config_file, indent=4)
                     except Exception as e:
@@ -507,8 +509,6 @@ class ConfigManager:
                     # Save the changed configuration to disk
                     self.save_config()
                     
-            
-            # Apply dynamic configuration if Google Sheets is the selected datasource and webhook is available
             if self.apply_dynamic_config():
                 return True
             
@@ -517,8 +517,9 @@ class ConfigManager:
     def get_all(self):
         """Get a copy of the entire configuration dictionary."""
         with self._lock:
-            filtered_config = self.filter(['use_discord', 'use_googlesheet', 'process_once', 'process_all', 
-                                               'live_discord_webhook', 'ac_discord_webhook','version'])
+            filtered_config = self.filter(['use_discord', 'use_googlesheet', 
+                                           'process_once', 'process_all',
+                                           'version'])
             return filtered_config
     
     def update(self, new_config):
