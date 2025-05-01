@@ -290,7 +290,7 @@ class SupabaseManager:
             return False
             
         try:
-            # Generate a CREATE TABLE statement based on the data structure
+                        # Generate a CREATE TABLE statement based on the data structure
             columns = []
             
             # Add id as primary key if not in data
@@ -328,9 +328,9 @@ class SupabaseManager:
                     columns.append(f"{key} NUMERIC")
                 elif isinstance(value, dict) or isinstance(value, list):
                     columns.append(f"{key} JSONB")
-                elif is_datetime_string(value):
+#                elif is_datetime_string(value):
                     # If string matches ISO 8601 datetime pattern, use TIMESTAMP
-                    columns.append(f"{key} TIMESTAMP")
+#                    columns.append(f"{key} TIMESTAMP")
                 else:
                     # Default to text for strings and other types
                     columns.append(f"{key} TEXT")
