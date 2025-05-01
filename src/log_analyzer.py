@@ -172,16 +172,6 @@ def output_message(timestamp, message, regex_pattern=None, level=None):
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, **kwargs):
-        # Remove Event instantiations - using MessageBus event system instead
-        
-        # Handle subscriptions passed via kwargs
-        if 'on_shard_version_update' in kwargs and callable(kwargs['on_shard_version_update']):
-            message_bus.on("shard_version_update", kwargs['on_shard_version_update'])
-        if 'on_mode_change' in kwargs and callable(kwargs['on_mode_change']):
-            message_bus.on("mode_change", kwargs['on_mode_change'])
-        if 'on_username_change' in kwargs and callable(kwargs['on_username_change']):
-            message_bus.on("username_change", kwargs['on_username_change'])
-            
         # Get the singleton config manager instead of having it passed
         self.config_manager = get_config_manager()
         

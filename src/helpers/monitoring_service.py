@@ -98,16 +98,13 @@ class MonitoringService:
             datasource (str): The datasource to use ('googlesheets' or 'supabase')
         """
         try:
-            # Call startup with event subscriptions passed as kwargs
+            # Call startup without passing event subscriptions
             result = log_analyzer.startup(
                 process_all=process_all,
                 use_discord=use_discord,
                 process_once=False,
                 datasource=datasource,
-                log_file_path=log_file,
-                on_shard_version_update=self.parent.on_shard_version_update,
-                on_mode_change=self.parent.on_mode_change,
-                on_username_change=self.parent.on_username_change,
+                log_file_path=log_file
             )
 
             if result:

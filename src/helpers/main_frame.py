@@ -88,6 +88,10 @@ class LogAnalyzerFrame(wx.Frame):
             min_replay_level=MessageLevel.INFO  # Only replay INFO level and above
         )
         
+        # Subscribe to events using MessageBus
+        message_bus.on("shard_version_update", self.on_shard_version_update)
+        message_bus.on("mode_change", self.on_mode_change)
+        message_bus.on("username_change", self.on_username_change)
         
         # Set up a custom log handler for GUI
         log_analyzer.main.gui_log_handler = self.append_log_message
@@ -204,7 +208,7 @@ class LogAnalyzerFrame(wx.Frame):
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL | wx.TE_RICH2
         )
         fixed_font = wx.Font(
-            10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL
+            10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_NORMAL
         )
         self.log_text.SetFont(fixed_font)
         self.log_text.SetForegroundColour(wx.Colour(0, 255, 0))  # Green text
