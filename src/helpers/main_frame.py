@@ -108,7 +108,7 @@ class LogAnalyzerFrame(wx.Frame):
             self.Hide()  # Hide the main window at startup
             
         # Check for updates after UI is visible, not blocking startup
-        wx.CallAfter(lambda: wx.CallLater(1000, self.check_for_updates))
+#        wx.CallAfter(lambda: wx.CallLater(1000, self.check_for_updates))
 
         # Start monitoring by default when GUI is launched, but with a smaller delay
         if self.log_file_path:
