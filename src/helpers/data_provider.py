@@ -498,6 +498,16 @@ class SupabaseDataProvider(DataProvider):
         Returns:
             List of dictionaries containing the fetched data
         """
+        # Check if the table exists before attempting to query it
+        # Skip check for resumen_view which is created on demand with _ensure_resumen_view_exists
+        if table_name != "resumen_view" and not supabase_manager._table_exists(table_name):
+            message_bus.publish(
+                content=f"Table '{table_name}' does not exist yet. It will be created when data is first inserted.",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            return []  # Return empty results instead of attempting to query a non-existent table
+        
         attempt = 0
         last_error = None
         
@@ -595,6 +605,25 @@ class SupabaseDataProvider(DataProvider):
         # Check if view already exists using table_exists method
         if supabase_manager._table_exists("resumen_view"):
             return True
+            
+        # Before creating the view, check if the required tables exist
+        sc_default_exists = supabase_manager._table_exists("sc_default")
+        ea_squadronbattle_exists = supabase_manager._table_exists("ea_squadronbattle")
+        
+        if not sc_default_exists or not ea_squadronbattle_exists:
+            missing_tables = []
+            if not sc_default_exists:
+                missing_tables.append("sc_default")
+            if not ea_squadronbattle_exists:
+                missing_tables.append("ea_squadronbattle")
+                
+            message_bus.publish(
+                content=f"Cannot create Resumen view: required table(s) {', '.join(missing_tables)} do not exist yet. " +
+                        f"The view will be created automatically after data is inserted into these tables.",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            return False
             
         message_bus.publish(
             content="Creating or updating Resumen view in Supabase",
