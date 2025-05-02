@@ -566,7 +566,8 @@ class DataDisplayManager:
 
     def _get_required_tab_configs(self):
         """Get the list of tab configurations - centralized for maintainability"""
-        return [
+        # Hardcoded tabs - these will always be available
+        hardcoded_tabs = [
             {"title": "Stats", "params": {"sheet": "Resumen"}},
             {"title": "SC Default", "params": {"sheet": "SC_Default", "username": lambda self: self.username}},
             {
@@ -579,4 +580,33 @@ class DataDisplayManager:
                 "form_fields": {"Material": "text", "Qty": "number", "committed": "check"}
             }
         ]
-            
+        
+        # Get dynamic tabs from config.json if any
+        dynamic_tabs = []
+        if self.config_manager:
+            config_tabs = self.config_manager.get('tabs', {})
+            if config_tabs and isinstance(config_tabs, dict):
+                message_bus.publish(
+                    content=f"Found {len(config_tabs)} dynamic tabs in configuration",
+                    level=MessageLevel.INFO
+                )
+                
+                # Create a tab config for each entry in the tabs section
+                for tab_name, query in config_tabs.items():
+                    # Skip any tab that matches a hardcoded tab name to avoid collisions
+                    if any(tab["title"] == tab_name for tab in hardcoded_tabs):
+                        message_bus.publish(
+                            content=f"Skipping dynamic tab '{tab_name}' as it conflicts with a hardcoded tab name",
+                            level=MessageLevel.WARNING
+                        )
+                        continue
+                    
+                    # Create a tab configuration for this dynamic tab
+                    dynamic_tabs.append({
+                        "title": tab_name, 
+                        "params": {"sheet": tab_name},  # Use the tab name as the "sheet" parameter
+                        "query": query  # Store the SQL query for later view creation
+                    })
+        
+        # Combine hardcoded and dynamic tabs
+        return hardcoded_tabs + dynamic_tabs

@@ -195,16 +195,24 @@ class SupabaseManager:
     
     def _sanitize_table_name(self, name):
         """
-        Sanitize a string to be used as a table name.
+        DEPRECATED: Use _normalize_db_object_name instead.
+        Keeping for backward compatibility.
+        """
+        return self._normalize_db_object_name(name, "table")
+        
+    def _normalize_db_object_name(self, name, object_type="table"):
+        """
+        Normalize a database object name to ensure it's compatible with SQL naming conventions.
         
         Args:
             name (str): Original name
+            object_type (str): Type of database object ('table' or 'view')
             
         Returns:
-            str: Sanitized name valid for SQL tables
+            str: Normalized name valid for SQL database objects
         """
         if not name:
-            return "default_logs"
+            return "default_logs" if object_type == "table" else "default_view"
             
         # Convert to lowercase
         name = name.lower()
@@ -214,11 +222,24 @@ class SupabaseManager:
         
         # Ensure it starts with a letter
         if not name[0].isalpha():
-            name = "t_" + name
+            prefix = "t_" if object_type == "table" else "v_"
+            name = prefix + name
+            
+        # Add view suffix if it's a view and doesn't already have it
+        if object_type == "view" and not name.endswith('_view'):
+            name = name + "_view"
             
         # Truncate if too long (PostgreSQL limit is typically 63 characters)
-        if len(name) > 60:
-            name = name[:60]
+        max_length = 60
+        if object_type == "view" and not name.endswith('_view'):
+            max_length = 55  # Leave room for _view suffix
+        
+        if len(name) > max_length:
+            name = name[:max_length]
+            
+        # Make sure view suffix is added after truncation
+        if object_type == "view" and not name.endswith('_view'):
+            name = name + "_view"
             
         return name
     

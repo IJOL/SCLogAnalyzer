@@ -2,6 +2,7 @@ import requests
 import json
 import time
 import traceback
+import re
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Tuple, Union
 from .message_bus import message_bus, MessageLevel
@@ -372,6 +373,86 @@ class SupabaseDataProvider(DataProvider):
         # Single list of excluded fields for all tables
         self.excluded_fields = ['direction_x', 'direction_y', 'direction_z']
         
+    def create_or_ensure_view_exists(self, view_name: str, query: str) -> bool:
+        """
+        Create or update a view in the database based on the provided SQL query.
+        
+        Args:
+            view_name: The name of the view to create or update
+            query: SQL query that defines the view
+            
+        Returns:
+            bool: True if the view was created or updated successfully, False otherwise
+        """
+        if not supabase_manager.is_connected():
+            message_bus.publish(
+                content="Supabase is not connected",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+            
+        # Normalize the view name
+        normalized_view_name = self._normalize_view_name(view_name)
+        
+        message_bus.publish(
+            content=f"Creating or updating view: {normalized_view_name}",
+            level=MessageLevel.INFO,
+            metadata={"source": self.SOURCE}
+        )
+        
+        # Create or replace view SQL
+        create_view_sql = f"CREATE OR REPLACE VIEW {normalized_view_name} AS {query}"
+        
+        # Execute the SQL
+        success, result = supabase_manager._execute_sql(create_view_sql)
+        
+        if success:
+            message_bus.publish(
+                content=f"Successfully created or updated view: {normalized_view_name}",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            return True
+        else:
+            message_bus.publish(
+                content=f"Failed to create or update view '{normalized_view_name}': {result}",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+    
+    def _normalize_view_name(self, view_name: str) -> str:
+        """
+        Normalize a view name to ensure it's compatible with SQL naming conventions.
+        
+        Args:
+            view_name: The original view name
+            
+        Returns:
+            str: A normalized view name suitable for SQL
+        """
+        # Use the unified normalization method from supabase_manager
+        return supabase_manager._normalize_db_object_name(view_name, "view")
+        
+    def view_exists(self, view_name: str) -> bool:
+        """
+        
+        Args:
+            view_name: The name of the view to check
+            
+        Returns:
+            bool: True if the view exists, False otherwise
+        """
+        if not supabase_manager.is_connected():
+            return False
+            
+        # Normalize the view name
+        normalized_view_name = self._normalize_view_name(view_name)
+        
+        # Check if the view exists using the _table_exists method
+        # since views appear in the same namespace as tables in Postgres
+        return supabase_manager._table_exists(normalized_view_name)
     
     def is_connected(self) -> bool:
         """
@@ -482,7 +563,46 @@ class SupabaseDataProvider(DataProvider):
             # Use the view directly - table_name is already "resumen_view" in the database
             return self._execute_table_query("resumen_view", username=username)
             
-        # Standard table query for non-Resumen tables
+        # Check if this is a dynamic tab from config (not a standard table)
+        # We need to look for the query in the config
+        normalized_view_name = self._normalize_view_name(table_name)
+        config_tabs = {}
+        
+        try:
+            from .config_utils import get_config_manager
+            config_manager = get_config_manager()
+            config_tabs = config_manager.get('tabs', {})
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error getting config tabs: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+        
+        # Check if this is a dynamic tab from the config
+        if table_name in config_tabs:
+            # This is a dynamic tab, create or verify the view exists
+            query = config_tabs[table_name]
+            
+            message_bus.publish(
+                content=f"Found dynamic tab '{table_name}', ensuring view exists",
+                level=MessageLevel.DEBUG,
+                metadata={"source": self.SOURCE}
+            )
+            
+            # Create the view if it doesn't exist or update it
+            if not self.create_or_ensure_view_exists(table_name, query):
+                message_bus.publish(
+                    content=f"Failed to create or verify view for tab '{table_name}'",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                return []
+            
+            # Query the view directly
+            return self._execute_table_query(normalized_view_name, username=username)
+            
+        # Standard table query for regular tables
         # Sanitize the table name to match how it would be stored
         sanitized_table = supabase_manager._sanitize_table_name(table_name)
         return self._execute_table_query(sanitized_table, username=username)
@@ -520,11 +640,13 @@ class SupabaseDataProvider(DataProvider):
                 if username:
                     query = query.eq('username', username)
                     
-                # Check if this is the resumen_view which doesn't have a created_at column
-                # Instead, it should be ordered by total_kills which is included in the view
-                if table_name == "resumen_view":
+                # Determine if this is a view by checking if the name ends with "_view"
+                is_view = table_name.endswith("_view")
+                
+                if is_view:
+                    # For views, don't try to order by created_at as it may not exist
                     try:
-                        result = query.order('total_kills', desc=True).execute()
+                        result = query.execute()
                         data = result.data if hasattr(result, 'data') else []
                         message_bus.publish(
                             content=f"Successfully fetched {len(data)} records from view '{table_name}'",
@@ -532,17 +654,20 @@ class SupabaseDataProvider(DataProvider):
                             metadata={"source": self.SOURCE}
                         )
                         return data
-                    except Exception as order_error:
+                    except Exception as e:
                         message_bus.publish(
-                            content=f"Order by total_kills failed for {table_name}, trying without ordering: {order_error}",
+                            content=f"Error querying view '{table_name}': {e}",
+                            level=MessageLevel.ERROR,
+                            metadata={"source": self.SOURCE}
+                        )
+                        message_bus.publish(
+                            content=traceback.format_exc(),
                             level=MessageLevel.DEBUG,
                             metadata={"source": self.SOURCE}
                         )
-                        result = query.execute()
-                        data = result.data if hasattr(result, 'data') else []
-                        return data
+                        raise  # Re-raise to handle in the outer exception block
                 else:
-                    # First try ordered query (by created_at)
+                    # For regular tables, try ordered query (by created_at)
                     try:
                         result = query.order('created_at', desc=True).execute()
                         data = result.data if hasattr(result, 'data') else []
