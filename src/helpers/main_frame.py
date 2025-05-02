@@ -522,7 +522,7 @@ class LogAnalyzerFrame(wx.Frame):
                     level=MessageLevel.INFO
                 )
                 # Use the existing handle_datasource_change method for consistency
-                self.config_manager.handle_datasource_change(original_datasource, 'supabase')
+                message_bus.emit("datasource_changed", original_datasource, datasource)
             elif supabase_key_changed:
                 message_bus.publish(
                     content=f"Supabase key changed from '{original_supabase_key[:5]}...' to '{current_supabase_key[:5]}...', checking if onboarding is needed",
