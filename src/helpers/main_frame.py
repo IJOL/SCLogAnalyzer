@@ -502,9 +502,56 @@ class LogAnalyzerFrame(wx.Frame):
         event.Skip()
         # Only reload configuration if changes were saved
         if self.config_dialog.config_saved:
+            # Get the original config values from the dialog
+            original_supabase_key = self.config_dialog.original_config.get('supabase_key', '')
+            original_datasource = self.config_dialog.original_config.get('datasource', 'googlesheets')
+            
+            # Reload configuration
             self.initialize_config()
-            # If Supabase was enabled, try to connect and verify connection
+            
+            # Get the current datasource and Supabase key after config reload
             datasource = self.config_manager.get('datasource', 'googlesheets')
+            current_supabase_key = self.config_manager.get('supabase_key', '')
+            
+            # Detect if datasource changed to Supabase from another source
+            datasource_changed_to_supabase = (datasource == 'supabase' and original_datasource != 'supabase')
+            
+            # Detect if the Supabase key was changed while using Supabase datasource
+            supabase_key_changed = (datasource == 'supabase' and 
+                                   original_supabase_key != current_supabase_key and 
+                                   current_supabase_key)
+            
+            # Handle datasource change to Supabase or Supabase key change
+            if datasource_changed_to_supabase:
+                message_bus.publish(
+                    content="Datasource changed to Supabase, triggering onboarding if needed",
+                    level=MessageLevel.INFO
+                )
+                # Use the existing handle_datasource_change method for consistency
+                self.config_manager.handle_datasource_change(original_datasource, 'supabase')
+            elif supabase_key_changed:
+                message_bus.publish(
+                    content=f"Supabase key changed from '{original_supabase_key[:5]}...' to '{current_supabase_key[:5]}...', checking if onboarding is needed",
+                    level=MessageLevel.INFO
+                )
+                # Force reconnect with the new key using force parameter
+                supabase_manager.connect(self.config_manager, force=True)
+                
+                # Import here to avoid circular imports
+                from .supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
+                
+                # Check if onboarding is needed
+                if check_needs_onboarding(self.config_manager):
+                    # Create and run onboarding
+                    onboarding = SupabaseOnboarding(self)
+                    if onboarding.check_onboarding_needed():
+                        message_bus.publish(
+                            content="Starting Supabase onboarding after key change",
+                            level=MessageLevel.INFO
+                        )
+                        onboarding.start_onboarding()
+            
+            # If Supabase is the current datasource, verify connection
             if datasource == 'supabase':
                 if not supabase_manager.is_connected():
                     connection_result = supabase_manager.connect()

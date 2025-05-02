@@ -120,6 +120,12 @@ class ConfigDialog(wx.Frame):
         self.app_name = "SCLogAnalyzer"
         self.app_path = f'"{os.path.join(get_application_path(), "SCLogAnalyzer.exe")}" --start-hidden'
         self.config_saved = False  # Track whether config was saved
+        
+        # Store the original config values for change detection
+        self.original_config = {
+            'datasource': config_manager.get('datasource', 'googlesheets'),
+            'supabase_key': config_manager.get('supabase_key', '')
+        }
 
         # Load the configuration data from the manager
         self.config_data = self.config_manager.get_all()
