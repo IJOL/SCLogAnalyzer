@@ -217,6 +217,8 @@ $function$
                 "Setup Complete",
                 wx.OK | wx.ICON_INFORMATION
             )
+            # Save configuration changes to disk
+            self.config_manager.setup_data_providers()
             
             progress_dialog.Destroy()
             return True

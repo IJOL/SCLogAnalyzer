@@ -242,8 +242,8 @@ class ConfigManager:
                     self.set("version", current_version)
                     
                     # Save the renewed config
-                    self.save_config()
                     self.apply_dynamic_config()
+                    self.save_config()
                     message_bus.publish(
                         content=f"Configuration renewed successfully for version {current_version}.",
                         level=MessageLevel.INFO
@@ -416,7 +416,7 @@ class ConfigManager:
                         level=MessageLevel.INFO,
                         metadata={"source": "config_manager"}
                     )
-                    self.handle_datasource_change(original_datasource, new_datasource)
+                    message_bus.emit("datasource_changed", original_datasource, new_datasource)
                 
                 return True
             except Exception as e:
@@ -427,106 +427,6 @@ class ConfigManager:
                 )
                 return False
                 
-    def handle_datasource_change(self, old_datasource, new_datasource):
-        """
-        Explicitly handle changes to the datasource configuration.
-        
-        Args:
-            old_datasource (str): Previous datasource value
-            new_datasource (str): New datasource value
-            
-        Returns:
-            bool: True if handled successfully, False otherwise
-        """
-        try:
-            message_bus.publish(
-                content=f"Handling datasource change from '{old_datasource}' to '{new_datasource}'...",
-                level=MessageLevel.INFO,
-                metadata={"source": "config_manager"}
-            )
-            
-            # Validate the new datasource
-            if new_datasource not in ['googlesheets', 'supabase']:
-                message_bus.publish(
-                    content=f"Invalid datasource '{new_datasource}', reverting to '{old_datasource}'",
-                    level=MessageLevel.WARNING,
-                    metadata={"source": "config_manager"}
-                )
-                self.set('datasource', old_datasource)
-                return False
-            
-            # If changing to 'supabase', check if we need onboarding
-            if new_datasource == 'supabase' and old_datasource != 'supabase':
-                if hasattr(self, 'in_gui') and self.in_gui:
-                    # Only try onboarding in GUI mode
-                    from .supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
-                    
-                    if check_needs_onboarding(self):
-                        # Get the parent window 
-                        import wx
-                        parent = wx.GetActiveWindow() or wx.GetApp().GetTopWindow()
-                        
-                        if parent:
-                            onboarding = SupabaseOnboarding(parent)
-                            
-                            if onboarding.check_onboarding_needed():
-                                message_bus.publish(
-                                    content="Starting Supabase onboarding process",
-                                    level=MessageLevel.INFO,
-                                    metadata={"source": "config_manager"}
-                                )
-                                
-                                # Start the onboarding process
-                                success = onboarding.start_onboarding()
-                                
-                                if not success:
-                                    # Onboarding failed or was cancelled, revert to previous datasource
-                                    message_bus.publish(
-                                        content="Supabase onboarding was cancelled or failed",
-                                        level=MessageLevel.WARNING,
-                                        metadata={"source": "config_manager"}
-                                    )
-                                    self.set('datasource', old_datasource)
-                                    return False
-                                
-                                message_bus.publish(
-                                    content="Supabase onboarding completed successfully",
-                                    level=MessageLevel.INFO,
-                                    metadata={"source": "config_manager"}
-                                )
-                        else:
-                            # No parent window available, cannot run onboarding
-                            message_bus.publish(
-                                content="No parent window available for Supabase onboarding",
-                                level=MessageLevel.WARNING,
-                                metadata={"source": "config_manager"}
-                            )
-                else:
-                    # Not in GUI mode, cannot run onboarding
-                    message_bus.publish(
-                        content="Supabase selected outside GUI mode, onboarding will be required at next GUI startup",
-                        level=MessageLevel.INFO,
-                        metadata={"source": "config_manager"}
-                    )
-            
-            # Save configuration changes to disk
-            self.save_config()
-            
-            # Initialize the new data provider
-            success = self.setup_data_providers()
-            
-            # Emit event for datasource change using MessageBus
-            message_bus.emit("datasource_changed", old_datasource, new_datasource)
-            
-            return success
-        except Exception as e:
-            message_bus.publish(
-                content=f"Error handling datasource change: {e}",
-                level=MessageLevel.ERROR,
-                metadata={"source": "config_manager"}
-            )
-            return False
-
     def setup_data_providers(self):
         """
         Configure data providers based on the datasource configuration.
@@ -558,9 +458,9 @@ class ConfigManager:
                     # Fall back to Google Sheets if Supabase connection fails
                     self.set('datasource', 'googlesheets')
                     # Save the changed configuration to disk
-                    self.save_config()
                     
             if self.apply_dynamic_config():
+                self.save_config()
                 return True
             
             return datasource in ['googlesheets', 'supabase']

@@ -34,7 +34,7 @@ class DataDisplayManager:
         self._set_log_level_filter(MessageLevel.INFO)
         
         # Subscribe to datasource change events using MessageBus
-        message_bus.on("datasource_changed", self.on_datasource_change)
+        # message_bus.on("datasource_changed", self.on_datasource_change)
             
         # Rastreo de operaciones de actualización
         self._refresh_operations = set()  # Conjunto de operaciones de refresco activas
@@ -579,29 +579,4 @@ class DataDisplayManager:
                 "form_fields": {"Material": "text", "Qty": "number", "committed": "check"}
             }
         ]
-
-    def on_datasource_change(self, old_datasource, new_datasource):
-        """
-        Event handler for datasource changes from the config manager.
-        
-        Args:
-            old_datasource (str): The previous datasource value
-            new_datasource (str): The new datasource value
-        """
-        try:
-            message_bus.publish(
-                content=f"Datasource changed from '{old_datasource}' to '{new_datasource}'",
-                level=MessageLevel.INFO
-            )
             
-            # Update the UI to reflect the new data source
-            wx.CallAfter(self.update_data_source_tabs)
-        except Exception as e:
-            message_bus.publish(
-                content=f"Error handling datasource change: {e}",
-                level=MessageLevel.ERROR
-            )
-            message_bus.publish(
-                content=traceback.format_exc(),
-                level=MessageLevel.DEBUG
-            )

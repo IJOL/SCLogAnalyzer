@@ -2,23 +2,16 @@
 import wx
 import os
 import sys
-import threading
-import time
 import webcolors
-from watchdog.observers.polling import PollingObserver as Observer
-import json
-import winreg
-import wx.grid
-import requests
 import log_analyzer
 import win32event
 import win32api
 import winerror
 
-from .ui_components import TabCreator, DynamicLabels, safe_call_after
+from .ui_components import TabCreator, DynamicLabels
 from .monitoring_service import MonitoringService
 from .data_display_manager import DataDisplayManager
-from .window_state_manager import WindowStateManager, is_app_in_startup
+from .window_state_manager import WindowStateManager
 from .gui_module import ConfigDialog, ProcessDialog, TaskBarIcon, AboutDialog
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
@@ -48,6 +41,7 @@ class LogAnalyzerFrame(wx.Frame):
     def __init__(self):
         """Initialize the main application frame."""
         super().__init__(None, title="SC Log Analyzer", size=(800, 600))
+        message_bus.on("datasource_changed", self.handle_datasource_change)
         
         # Set the application icon
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "SCLogAnalyzer.ico")
@@ -618,7 +612,79 @@ class LogAnalyzerFrame(wx.Frame):
         # Create and show the dialog
         dialog = DataTransferDialog(self)
         dialog.ShowModal()
-    
+
+    def handle_datasource_change(self, old_datasource, new_datasource):
+        """
+        Explicitly handle changes to the datasource configuration.
+        
+        Args:
+            old_datasource (str): Previous datasource value
+            new_datasource (str): New datasource value
+            
+        Returns:
+            bool: True if handled successfully, False otherwise
+        """
+        try:
+            message_bus.publish(
+                content=f"Handling datasource change from '{old_datasource}' to '{new_datasource}'...",
+                level=MessageLevel.INFO,
+                metadata={"source": "config_manager"}
+            )
+            
+            # Validate the new datasource
+            if new_datasource not in ['googlesheets', 'supabase']:
+                message_bus.publish(
+                    content=f"Invalid datasource '{new_datasource}', reverting to '{old_datasource}'",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": "config_manager"}
+                )
+                self.config_manager.set('datasource', old_datasource)
+                return False
+            
+            # If changing to 'supabase', check if we need onboarding
+            if new_datasource == 'supabase' and old_datasource != 'supabase':
+                from .supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
+                
+                if check_needs_onboarding(self.config_manager):
+                    # Get the parent window 
+                    onboarding = SupabaseOnboarding(self.config_manager)
+                    
+                    if onboarding.check_onboarding_needed():
+                        message_bus.publish(
+                            content="Starting Supabase onboarding process",
+                            level=MessageLevel.INFO,
+                            metadata={"source": "config_manager"}
+                        )
+                        
+                        # Start the onboarding process
+                        success = onboarding.start_onboarding()
+                        
+                        if not success:
+                            # Onboarding failed or was cancelled, revert to previous datasource
+                            message_bus.publish(
+                                content="Supabase onboarding was cancelled or failed",
+                                level=MessageLevel.WARNING,
+                                metadata={"source": "config_manager"}
+                            )
+                            self.config_manager.set('datasource', old_datasource)
+                            return False
+                        
+                        message_bus.publish(
+                            content="Supabase onboarding completed successfully",
+                            level=MessageLevel.INFO,
+                            metadata={"source": "config_manager"}
+                        )
+
+            return True
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error handling datasource change: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "config_manager"}
+            )
+            return False
+
+
     def on_close(self, event):
         """Handle window close event."""
         # Use the window manager to clean up and save state
