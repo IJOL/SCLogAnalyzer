@@ -142,32 +142,57 @@ $function$
             # Phase 2: Create list_tables function using run_sql
             progress_dialog.Update(60, "Creating list_tables function...")
             
-            list_tables_created = self._create_list_tables_function()
+            # Create the list_tables function
+            self._create_list_tables_function()
             
-            if not list_tables_created:
-                wx.MessageBox(
-                    "Failed to create the list_tables function.\n"
-                    "Reverting to Google Sheets datasource.",
-                    "Setup Failed",
-                    wx.OK | wx.ICON_WARNING
+            # Keep checking for list_tables function until it's available or user cancels
+            attempt = 0
+            retry_delay = 1.5  # Start with 1.5 seconds
+            list_tables_available = False
+
+            while not list_tables_available:
+                # Update progress dialog with current status
+                message = f"Waiting for list_tables function to be available (attempt {attempt+1})...\nThis may take some time, please be patient."
+                if attempt > 0:
+                    message += "\nPress Cancel to abort and revert to Google Sheets."
+                
+                cont, skip = progress_dialog.Update(70, message)
+                
+                if not cont:  # User pressed Cancel
+                    if wx.MessageBox(
+                        "Do you want to cancel the Supabase setup and revert to Google Sheets?",
+                        "Confirm Cancellation",
+                        wx.YES_NO | wx.ICON_QUESTION
+                    ) == wx.YES:
+                        self._switch_to_google_sheets()
+                        progress_dialog.Destroy()
+                        return False
+                
+                # Test if the list_tables function is available
+                if self._test_list_tables():
+                    list_tables_available = True
+                    message_bus.publish(
+                        content=f"list_tables function available after {attempt+1} attempt(s)",
+                        level=MessageLevel.INFO,
+                        metadata={"source": self.SOURCE}
+                    )
+                    break
+                
+                # Log retry attempt
+                message_bus.publish(
+                    content=f"list_tables not available yet, retrying (attempt {attempt+1})...",
+                    level=MessageLevel.INFO,
+                    metadata={"source": self.SOURCE}
                 )
-                self._switch_to_google_sheets()
-                progress_dialog.Destroy()
-                return False
+                
+                # Increase delay with exponential backoff but cap at 10 seconds
+                retry_delay = min(retry_delay * 1.2, 10.0)
+                attempt += 1
+                
+                # Wait before retrying
+                time.sleep(retry_delay)
             
-            progress_dialog.Update(80, "Testing list_tables function...")
-            
-            # Test the list_tables function
-            if not self._test_list_tables():
-                wx.MessageBox(
-                    "The list_tables function is not working correctly.\n"
-                    "Reverting to Google Sheets datasource.",
-                    "Setup Failed",
-                    wx.OK | wx.ICON_WARNING
-                )
-                self._switch_to_google_sheets()
-                progress_dialog.Destroy()
-                return False
+            progress_dialog.Update(80, "list_tables function is available! Testing it...")
             
             # Phase 3: Create Config table if it doesn't exist
             progress_dialog.Update(90, "Creating Config table if needed...")
@@ -264,7 +289,48 @@ $function$
                 )
                 return False
             
-            return True
+            # Add retry logic to verify the function is available
+            message_bus.publish(
+                content="Waiting for list_tables function to be available...",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            
+            # Give the database some time to make the function available
+            max_retries = 5
+            retry_delay = 1.5  # Start with 1.5 seconds
+            
+            for attempt in range(max_retries):
+                # Exponential backoff for retries
+                if attempt > 0:
+                    time.sleep(retry_delay)
+                    retry_delay *= 1.5  # Increase delay with each attempt
+                
+                # Test if the function is available
+                if self._test_list_tables():
+                    message_bus.publish(
+                        content=f"list_tables function available after {attempt+1} attempt(s)",
+                        level=MessageLevel.INFO,
+                        metadata={"source": self.SOURCE}
+                    )
+                    return True
+                
+                message_bus.publish(
+                    content=f"list_tables not available yet, retrying ({attempt+1}/{max_retries})...",
+                    level=MessageLevel.INFO,
+                    metadata={"source": self.SOURCE}
+                )
+            
+            # Final check after all retries
+            if self._test_list_tables():
+                return True
+                
+            message_bus.publish(
+                content=f"list_tables function not available after {max_retries} attempts",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
             
         except Exception as e:
             message_bus.publish(
@@ -449,5 +515,27 @@ def check_needs_onboarding(config_manager):
     supabase_key = config_manager.get('supabase_key')
     if not supabase_key:
         return False
+    
+    # Connect to Supabase with the key
+    from .supabase_manager import supabase_manager
+    if not supabase_manager.is_connected() or supabase_manager.supabase_key != supabase_key:
+        if not supabase_manager.connect(config_manager):
+            # Can't connect to Supabase at all, likely invalid key
+            return False
+    
+    # Now check if onboarding is needed by testing if the run_sql function exists
+    try:
+        result = supabase_manager.supabase.rpc(
+            'run_sql', 
+            {'query': 'SELECT 1'}
+        ).execute()
         
-    return True
+        # If there's an error, the function doesn't exist - onboarding IS needed
+        if hasattr(result, 'error') and result.error:
+            return True
+            
+        # Function exists and works, no onboarding needed
+        return False
+    except Exception:
+        # If we get an exception, assume onboarding is needed
+        return True

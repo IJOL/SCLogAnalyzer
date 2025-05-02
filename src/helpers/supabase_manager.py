@@ -107,19 +107,28 @@ class SupabaseManager:
             log_message(f"Error extracting URL from API key: {e}", "ERROR")
             return None
         
-    def connect(self, config_manager=None):
+    def connect(self, config_manager=None, force=False):
         """
         Connect to Supabase using values from config.
         
         Args:
             config_manager (ConfigManager, optional): If provided, use this config manager
                 instance instead of getting a new one from get_config_manager().
+            force (bool, optional): If True, force reconnection even if already connected.
+                Use this when the API key has changed.
         
         Returns:
             bool: True if connection is successful, False otherwise.
         """
+        # If force=True, reset connection state to enable reconnection
+        if force:
+            self.is_initialized = False
+            self.connection_attempted = False
+            self.supabase = None
+            log_message("Forcing reconnection to Supabase", "INFO")
+            
         # If we've already tried connecting, don't try again unless explicitly asked to reconnect
-        if self.connection_attempted and self.is_initialized:
+        if self.connection_attempted and self.is_initialized and not force:
             return True
             
         self.connection_attempted = True
@@ -290,7 +299,7 @@ class SupabaseManager:
             return False
             
         try:
-                        # Generate a CREATE TABLE statement based on the data structure
+            # Generate a CREATE TABLE statement based on the data structure
             columns = []
             
             # Add id as primary key if not in data
@@ -299,9 +308,16 @@ class SupabaseManager:
             # Add created_at timestamp if not in data
             columns.append("created_at TIMESTAMP DEFAULT NOW()")
             
-            # Add hash_value generated column directly
-            columns.append("hash_value TEXT GENERATED ALWAYS AS"
-            " (MD5(COALESCE(username, '') || COALESCE(killer, '') || COALESCE(victim, '') || COALESCE(extract(epoch from \"timestamp\")::TEXT, '')))  STORED")
+            # Check if sample data has all fields needed for hash_value computation
+            hash_fields_present = all(field in data for field in ['username', 'killer', 'victim', 'timestamp'])
+            
+            # Add hash_value generated column only if all required fields are present
+            if hash_fields_present:
+                columns.append("hash_value TEXT GENERATED ALWAYS AS"
+                " (MD5(COALESCE(username, '') || COALESCE(killer, '') || COALESCE(victim, '') || COALESCE(extract(epoch from \"timestamp\")::TEXT, '')))  STORED")
+                log_message(f"Added hash_value computed column to {table_name} as all required fields are present", "DEBUG")
+            else:
+                log_message(f"Skipped hash_value column for {table_name} as some required fields are missing", "DEBUG")
             
             # ISO 8601 format with timezone and milliseconds: 2025-04-15T18:30:26.650Z
             datetime_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
@@ -314,7 +330,7 @@ class SupabaseManager:
             
             # Process other fields in the data
             for key, value in data.items():
-                # Skip id and created_at which we've already handled
+                # Skip id, created_at and hash_value which we've already handled
                 if key in ('id', 'created_at', 'hash_value'):
                     continue
                     
@@ -335,7 +351,7 @@ class SupabaseManager:
                     # Default to text for strings and other types
                     columns.append(f"{key} TEXT")
             
-            # Create the full SQL statement with all columns including hash_value
+            # Create the full SQL statement with all columns including hash_value if present
             create_table_sql = f"""
             CREATE TABLE IF NOT EXISTS "{table_name}" (
                 {','.join(columns)}
