@@ -454,7 +454,61 @@ class ConfigManager:
                 )
                 self.set('datasource', old_datasource)
                 return False
-                
+            
+            # If changing to 'supabase', check if we need onboarding
+            if new_datasource == 'supabase' and old_datasource != 'supabase':
+                if hasattr(self, 'in_gui') and self.in_gui:
+                    # Only try onboarding in GUI mode
+                    from .supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
+                    
+                    if check_needs_onboarding(self):
+                        # Get the parent window 
+                        import wx
+                        parent = wx.GetActiveWindow() or wx.GetApp().GetTopWindow()
+                        
+                        if parent:
+                            onboarding = SupabaseOnboarding(parent)
+                            
+                            if onboarding.check_onboarding_needed():
+                                message_bus.publish(
+                                    content="Starting Supabase onboarding process",
+                                    level=MessageLevel.INFO,
+                                    metadata={"source": "config_manager"}
+                                )
+                                
+                                # Start the onboarding process
+                                success = onboarding.start_onboarding()
+                                
+                                if not success:
+                                    # Onboarding failed or was cancelled, revert to previous datasource
+                                    message_bus.publish(
+                                        content="Supabase onboarding was cancelled or failed",
+                                        level=MessageLevel.WARNING,
+                                        metadata={"source": "config_manager"}
+                                    )
+                                    self.set('datasource', old_datasource)
+                                    return False
+                                
+                                message_bus.publish(
+                                    content="Supabase onboarding completed successfully",
+                                    level=MessageLevel.INFO,
+                                    metadata={"source": "config_manager"}
+                                )
+                        else:
+                            # No parent window available, cannot run onboarding
+                            message_bus.publish(
+                                content="No parent window available for Supabase onboarding",
+                                level=MessageLevel.WARNING,
+                                metadata={"source": "config_manager"}
+                            )
+                else:
+                    # Not in GUI mode, cannot run onboarding
+                    message_bus.publish(
+                        content="Supabase selected outside GUI mode, onboarding will be required at next GUI startup",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "config_manager"}
+                    )
+            
             # Save configuration changes to disk
             self.save_config()
             
