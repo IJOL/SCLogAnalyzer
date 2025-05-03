@@ -58,6 +58,11 @@ class SupabaseManager:
         self.supabase: Client = None
         self.is_initialized = False
         self.connection_attempted = False  # Track if connection has been attempted
+        self.metadata_cache = None  # Cache for metadata results
+        
+        # Subscribe to schema change events to invalidate cache when needed
+        if message_bus:
+            message_bus.on("schema_change", self._invalidate_metadata_cache)
     
     def _extract_url_from_key(self, api_key):
         """
@@ -219,7 +224,7 @@ class SupabaseManager:
     
     def _table_exists(self, table_name):
         """
-        Check if a table exists in Supabase in real-time by calling the list_tables RPC function.
+        Check if a table exists using the metadata cache when possible
         
         Args:
             table_name (str): The table name to check
@@ -231,20 +236,12 @@ class SupabaseManager:
             return False
             
         try:
-            # Call the list_tables RPC function to get all available tables
-            result = self.supabase.rpc('list_tables').execute()
+            # Get metadata (from cache if available)
+            metadata = self.get_metadata()
             
-            # Check for errors
-            if hasattr(result, 'error') and result.error:
-                log_message(f"Error listing tables: {result.error}", "ERROR")
-                return False
-                
-            # Check if the table_name exists in the returned list of tables
-            if result.data:
-                table_list = [table['table_name'] for table in result.data if 'table_name' in table]
-                return table_name in table_list
-                
-            return False
+            # Check if the table exists in metadata
+            return table_name in metadata
+            
         except Exception as e:
             log_message(f"Error checking table existence: {e}", "ERROR")
             return False
@@ -446,6 +443,11 @@ class SupabaseManager:
             
             if success:
                 log_message(f"Created table {table_name} in Supabase using SQL", "DEBUG")
+                
+                # Emit schema change event to invalidate cache
+                if message_bus:
+                    message_bus.emit("schema_change")
+                
                 return True
             else:
                 # Log the error but don't use fallback
@@ -596,6 +598,71 @@ class SupabaseManager:
         except Exception as e:
             log_message(f"Exception during purge of table '{table_name}': {e}", "ERROR")
             return False
+
+    def get_metadata(self, force_refresh=False):
+        """
+        Get database metadata (tables, columns, types), using cache if available
+        
+        Args:
+            force_refresh (bool): Force a refresh of the cache
+            
+        Returns:
+            dict: Processed metadata with tables and their columns
+        """
+        # If cache exists and no forced refresh, use the cache
+        if not force_refresh and self.metadata_cache is not None:
+            return self.metadata_cache
+        
+        # Otherwise, refresh the cache
+        try:
+            result = self.supabase.rpc('get_metadata').execute()
+            
+            if hasattr(result, 'error') and result.error:
+                log_message(f"Error fetching metadata: {result.error}", "ERROR")
+                return {} if self.metadata_cache is None else self.metadata_cache
+            
+            # Process and organize the results into a structured format
+            processed_metadata = self._process_metadata_results(result.data)
+            
+            # Update cache
+            self.metadata_cache = processed_metadata
+            return processed_metadata
+            
+        except Exception as e:
+            log_message(f"Exception getting metadata: {e}", "ERROR")
+            return {} if self.metadata_cache is None else self.metadata_cache
+    
+    def _process_metadata_results(self, raw_metadata):
+        """
+        Process raw metadata results into a structured format
+        
+        Args:
+            raw_metadata (list): List of dicts with table_name, column_name, data_type
+            
+        Returns:
+            dict: Structured metadata by table and column
+        """
+        structured_metadata = {}
+        
+        # Group by table name
+        for item in raw_metadata:
+            table_name = item['table_name']
+            column_name = item['column_name']
+            data_type = item['data_type']
+            
+            if table_name not in structured_metadata:
+                structured_metadata[table_name] = {'columns': {}}
+                
+            structured_metadata[table_name]['columns'][column_name] = data_type
+        
+        return structured_metadata
+    
+    def _invalidate_metadata_cache(self):
+        """
+        Invalidate the metadata cache when schema changes
+        """
+        self.metadata_cache = None
+        log_message("Metadata cache invalidated due to schema change", "DEBUG")
 
 # Create a singleton instance
 supabase_manager = SupabaseManager()

@@ -139,20 +139,20 @@ $function$
                     progress_dialog.Destroy()
                     return False
             
-            # Phase 2: Create list_tables function using run_sql
-            progress_dialog.Update(60, "Creating list_tables function...")
+            # Phase 2: Create get_metadata function using run_sql
+            progress_dialog.Update(60, "Creating get_metadata function...")
             
-            # Create the list_tables function
-            self._create_list_tables_function()
+            # Create the get_metadata function
+            self._create_get_metadata_function()
             
-            # Keep checking for list_tables function until it's available or user cancels
+            # Keep checking for get_metadata function until it's available or user cancels
             attempt = 0
             retry_delay = 1.5  # Start with 1.5 seconds
-            list_tables_available = False
+            get_metadata_available = False
 
-            while not list_tables_available:
+            while not get_metadata_available:
                 # Update progress dialog with current status
-                message = f"Waiting for list_tables function to be available (attempt {attempt+1})...\nThis may take some time, please be patient."
+                message = f"Waiting for get_metadata function to be available (attempt {attempt+1})...\nThis may take some time, please be patient."
                 if attempt > 0:
                     message += "\nPress Cancel to abort and revert to Google Sheets."
                 
@@ -168,11 +168,11 @@ $function$
                         progress_dialog.Destroy()
                         return False
                 
-                # Test if the list_tables function is available
-                if self._test_list_tables():
-                    list_tables_available = True
+                # Test if the get_metadata function is available
+                if self._test_get_metadata():
+                    get_metadata_available = True
                     message_bus.publish(
-                        content=f"list_tables function available after {attempt+1} attempt(s)",
+                        content=f"get_metadata function available after {attempt+1} attempt(s)",
                         level=MessageLevel.INFO,
                         metadata={"source": self.SOURCE}
                     )
@@ -180,7 +180,7 @@ $function$
                 
                 # Log retry attempt
                 message_bus.publish(
-                    content=f"list_tables not available yet, retrying (attempt {attempt+1})...",
+                    content=f"get_metadata not available yet, retrying (attempt {attempt+1})...",
                     level=MessageLevel.INFO,
                     metadata={"source": self.SOURCE}
                 )
@@ -192,7 +192,7 @@ $function$
                 # Wait before retrying
                 time.sleep(retry_delay)
             
-            progress_dialog.Update(80, "list_tables function is available! Testing it...")
+            progress_dialog.Update(80, "get_metadata function is available! Testing it...")
             
             # Phase 3: Create Config table if it doesn't exist
             progress_dialog.Update(90, "Creating Config table if needed...")
@@ -259,33 +259,43 @@ $function$
         except Exception:
             return False
     
-    def _create_list_tables_function(self) -> bool:
-        """Create the list_tables function using run_sql."""
+    def _create_get_metadata_function(self) -> bool:
+        """Create the get_metadata function using run_sql."""
         if not self._test_run_sql():
             return False
         
         try:
-            # SQL to create list_tables function
-            list_tables_sql = """
-CREATE OR REPLACE FUNCTION public.list_tables()
- RETURNS TABLE(table_name text)
+            # SQL to create get_metadata function
+            get_metadata_sql = """
+CREATE OR REPLACE FUNCTION public.get_metadata()
+ RETURNS TABLE(table_name text, column_name text, data_type text)
  LANGUAGE sql
 AS $function$
-    select table_name
-    from information_schema.tables
-    where table_schema = 'public';
+    SELECT 
+        t.table_name,
+        c.column_name,
+        c.data_type
+    FROM 
+        information_schema.tables t
+    JOIN 
+        information_schema.columns c ON t.table_name = c.table_name AND t.table_schema = c.table_schema
+    WHERE 
+        t.table_schema = 'public'
+    ORDER BY 
+        t.table_name, 
+        c.ordinal_position;
 $function$
 ;
 """
             # Call run_sql to create the function
             result = supabase_manager.supabase.rpc(
                 'run_sql', 
-                {'query': list_tables_sql}
+                {'query': get_metadata_sql}
             ).execute()
             
             if hasattr(result, 'error') and result.error:
                 message_bus.publish(
-                    content=f"Failed to create list_tables function: {result.error}",
+                    content=f"Failed to create get_metadata function: {result.error}",
                     level=MessageLevel.ERROR,
                     metadata={"source": self.SOURCE}
                 )
@@ -293,7 +303,7 @@ $function$
             
             # Add retry logic to verify the function is available
             message_bus.publish(
-                content="Waiting for list_tables function to be available...",
+                content="Waiting for get_metadata function to be available...",
                 level=MessageLevel.INFO,
                 metadata={"source": self.SOURCE}
             )
@@ -309,26 +319,26 @@ $function$
                     retry_delay *= 1.5  # Increase delay with each attempt
                 
                 # Test if the function is available
-                if self._test_list_tables():
+                if self._test_get_metadata():
                     message_bus.publish(
-                        content=f"list_tables function available after {attempt+1} attempt(s)",
+                        content=f"get_metadata function available after {attempt+1} attempt(s)",
                         level=MessageLevel.INFO,
                         metadata={"source": self.SOURCE}
                     )
                     return True
                 
                 message_bus.publish(
-                    content=f"list_tables not available yet, retrying ({attempt+1}/{max_retries})...",
+                    content=f"get_metadata not available yet, retrying ({attempt+1}/{max_retries})...",
                     level=MessageLevel.INFO,
                     metadata={"source": self.SOURCE}
                 )
             
             # Final check after all retries
-            if self._test_list_tables():
+            if self._test_get_metadata():
                 return True
                 
             message_bus.publish(
-                content=f"list_tables function not available after {max_retries} attempts",
+                content=f"get_metadata function not available after {max_retries} attempts",
                 level=MessageLevel.ERROR,
                 metadata={"source": self.SOURCE}
             )
@@ -336,16 +346,16 @@ $function$
             
         except Exception as e:
             message_bus.publish(
-                content=f"Error creating list_tables function: {e}",
+                content=f"Error creating get_metadata function: {e}",
                 level=MessageLevel.ERROR,
                 metadata={"source": self.SOURCE}
             )
             return False
     
-    def _test_list_tables(self) -> bool:
-        """Test if the list_tables function works."""
+    def _test_get_metadata(self) -> bool:
+        """Test if the get_metadata function works."""
         try:
-            result = supabase_manager.supabase.rpc('list_tables').execute()
+            result = supabase_manager.supabase.rpc('get_metadata').execute()
             
             # If there's an error, the function doesn't exist or isn't working
             if hasattr(result, 'error') and result.error:
@@ -356,17 +366,26 @@ $function$
             
         except Exception:
             return False
+
+    # Kept for backward compatibility
+    def _create_list_tables_function(self) -> bool:
+        """Create the list_tables function using run_sql (deprecated)."""
+        return self._create_get_metadata_function()
+    
+    # Kept for backward compatibility    
+    def _test_list_tables(self) -> bool:
+        """Test if the list_tables function works (deprecated)."""
+        return self._test_get_metadata()
     
     def _create_config_table(self) -> bool:
         """Create the config table if it doesn't exist."""
         try:
-            # Check if the table already exists
-            result = supabase_manager.supabase.rpc('list_tables').execute()
+            # Check if the table already exists using the metadata cache system
+            metadata = supabase_manager.get_metadata()
             
-            if hasattr(result, 'data') and result.data:
-                table_list = [table['table_name'] for table in result.data if 'table_name' in table]
-                if 'config' in table_list:
-                    return True  # Table already exists
+            # With the cache system, tables are keys in the metadata dictionary
+            if 'config' in metadata:
+                return True  # Table already exists
             
             # Create the table
             sample_data = {
