@@ -495,10 +495,13 @@ class LogAnalyzerFrame(wx.Frame):
         # Process the event first
         event.Skip()
         # Only reload configuration if changes were saved
-        if self.config_dialog.config_saved:
+        if hasattr(self, 'config_dialog') and self.config_dialog.config_saved:
             # Get the original config values from the dialog
             original_supabase_key = self.config_dialog.original_config.get('supabase_key', '')
             original_datasource = self.config_dialog.original_config.get('datasource', 'googlesheets')
+            
+            # Store original tabs configuration 
+            original_tabs = self.config_manager.get('tabs', {})
             
             # Reload configuration
             self.initialize_config()
@@ -507,13 +510,41 @@ class LogAnalyzerFrame(wx.Frame):
             datasource = self.config_manager.get('datasource', 'googlesheets')
             current_supabase_key = self.config_manager.get('supabase_key', '')
             
+            # Get the current tabs configuration
+            current_tabs = self.config_manager.get('tabs', {})
+            
+            # Detect if tabs configuration changed
+            tabs_changed = (original_tabs != current_tabs)
+            
             # Detect if datasource changed to Supabase from another source
             datasource_changed_to_supabase = (datasource == 'supabase' and original_datasource != 'supabase')
             
             # Detect if the Supabase key was changed while using Supabase datasource
             supabase_key_changed = (datasource == 'supabase' and 
-                                   original_supabase_key != current_supabase_key and 
-                                   current_supabase_key)
+                                  original_supabase_key != current_supabase_key and 
+                                  current_supabase_key)
+            
+            # Handle tabs configuration change when using Supabase
+            if tabs_changed and datasource == 'supabase':
+                message_bus.publish(
+                    content="Dynamic tabs configuration has changed, updating views...",
+                    level=MessageLevel.INFO
+                )
+                
+                # Import at function call time to avoid circular imports
+                from .data_provider import get_data_provider, SupabaseDataProvider
+                
+                # Get the data provider
+                data_provider = get_data_provider(self.config_manager)
+                
+                # If it's a Supabase provider and the tabs changed, ensure views exist
+                if isinstance(data_provider, SupabaseDataProvider) and current_tabs:
+                    if hasattr(data_provider, 'ensure_dynamic_views'):
+                        message_bus.publish(
+                            content="Updating dynamic tab views in Supabase...",
+                            level=MessageLevel.INFO
+                        )
+                        data_provider.ensure_dynamic_views(current_tabs)
             
             # Handle datasource change to Supabase or Supabase key change
             if datasource_changed_to_supabase:

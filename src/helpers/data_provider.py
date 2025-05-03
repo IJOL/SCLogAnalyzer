@@ -373,9 +373,59 @@ class SupabaseDataProvider(DataProvider):
         # Single list of excluded fields for all tables
         self.excluded_fields = ['direction_x', 'direction_y', 'direction_z']
         
-    def create_or_ensure_view_exists(self, view_name: str, query: str) -> bool:
+    def ensure_dynamic_views(self, tab_configs):
         """
-        Create or update a view in the database based on the provided SQL query.
+        Ensure that all dynamic views exist in the database.
+        This is a centralized method to handle view creation for all dynamic tabs.
+        
+        Args:
+            tab_configs (dict): Dictionary of {tab_name: query} entries
+            
+        Returns:
+            bool: True if all views were created successfully, False otherwise
+        """
+        if not supabase_manager.is_connected():
+            message_bus.publish(
+                content="Supabase is not connected, cannot ensure dynamic views",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+        
+        success = True
+        views_created = False
+        
+        for tab_name, query in tab_configs.items():
+            try:
+                # For each view, call the low-level method without schema change events
+                if not self._create_view_without_schema_change(tab_name, query):
+                    success = False
+                else:
+                    views_created = True
+                    
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Error creating view for dynamic tab '{tab_name}': {e}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                success = False
+        
+        # Only emit a schema_change event if at least one view was created or updated
+        if views_created and message_bus:
+            message_bus.emit("schema_change")
+            message_bus.publish(
+                content="Schema change event emitted after processing dynamic views",
+                level=MessageLevel.DEBUG,
+                metadata={"source": self.SOURCE}
+            )
+        
+        return success
+        
+    def _create_view_without_schema_change(self, view_name: str, query: str) -> bool:
+        """
+        Internal method to create or update a view without emitting schema_change events.
+        This is used by ensure_dynamic_views to batch schema change events.
         
         Args:
             view_name: The name of the view to create or update
@@ -422,6 +472,31 @@ class SupabaseDataProvider(DataProvider):
             )
             return False
     
+    def create_or_ensure_view_exists(self, view_name: str, query: str) -> bool:
+        """
+        Create or update a view in the database based on the provided SQL query.
+        
+        Args:
+            view_name: The name of the view to create or update
+            query: SQL query that defines the view
+            
+        Returns:
+            bool: True if the view was created or updated successfully, False otherwise
+        """
+        # Use the internal method to create the view
+        success = self._create_view_without_schema_change(view_name, query)
+        
+        # Emit schema_change event if the view was created or updated successfully
+        if success and message_bus:
+            message_bus.emit("schema_change")
+            message_bus.publish(
+                content="Emitted schema_change event to invalidate metadata cache",
+                level=MessageLevel.DEBUG,
+                metadata={"source": self.SOURCE}
+            )
+        
+        return success
+    
     def _normalize_view_name(self, view_name: str) -> str:
         """
         Normalize a view name to ensure it's compatible with SQL naming conventions.
@@ -437,12 +512,13 @@ class SupabaseDataProvider(DataProvider):
         
     def view_exists(self, view_name: str) -> bool:
         """
+        Verifica si existe una vista utilizando el sistema de caché de metadata.
         
         Args:
-            view_name: The name of the view to check
+            view_name: El nombre de la vista a verificar
             
         Returns:
-            bool: True if the view exists, False otherwise
+            bool: True si la vista existe, False en caso contrario
         """
         if not supabase_manager.is_connected():
             return False
@@ -450,8 +526,8 @@ class SupabaseDataProvider(DataProvider):
         # Normalize the view name
         normalized_view_name = self._normalize_view_name(view_name)
         
-        # Check if the view exists using the _table_exists method
-        # since views appear in the same namespace as tables in Postgres
+        # Aprovechar el sistema de caché de metadata para verificar si la vista existe
+        # Las vistas aparecen en el mismo espacio de nombres que las tablas en Postgres
         return supabase_manager._table_exists(normalized_view_name)
     
     def is_connected(self) -> bool:
@@ -727,7 +803,7 @@ class SupabaseDataProvider(DataProvider):
         Returns:
             bool: True if the view exists or was created successfully, False otherwise
         """
-        # Check if view already exists using table_exists method
+        # Check if view already exists using the metadata cache when possible
         if supabase_manager._table_exists("resumen_view"):
             return True
             
@@ -984,6 +1060,16 @@ class SupabaseDataProvider(DataProvider):
                 level=MessageLevel.INFO,
                 metadata={"source": self.SOURCE}
             )
+            
+            # Invalidate the metadata cache after creating/updating the Resumen view
+            if message_bus:
+                message_bus.emit("schema_change")
+                message_bus.publish(
+                    content="Emitted schema_change event to invalidate metadata cache after Resumen view creation",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": self.SOURCE}
+                )
+                
             return True
         else:
             message_bus.publish(
