@@ -628,7 +628,7 @@ class DataDisplayManager:
                     # Create a tab configuration for this dynamic tab
                     dynamic_tabs.append({
                         "title": tab_name, 
-                        "params": {"sheet": tab_name},  # Use the tab name as the "sheet" parameter
+                        "params": {"sheet": tab_name, 'username': lambda self: self.username},  # Use the tab name as the "sheet" parameter
                         "query": query  # Store the SQL query for later view creation
                     })
         

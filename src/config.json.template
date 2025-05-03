@@ -8,7 +8,9 @@
     "tabs": {
         "Weapons Analysis": "SELECT weapon, COUNT(*) as kills, COUNT(DISTINCT killer) as unique_killers FROM sc_default WHERE damage_type != 'Crash' GROUP BY weapon ORDER BY kills DESC",
         "Killer Stats": "SELECT killer, COUNT(*) as kills FROM sc_default WHERE killer != victim GROUP BY killer ORDER BY kills DESC",
-        "Damage Types": "SELECT damage_type, COUNT(*) as occurrences FROM sc_default GROUP BY damage_type ORDER BY occurrences DESC"
+        "Damage Types": "SELECT damage_type, COUNT(*) as occurrences FROM sc_default GROUP BY damage_type ORDER BY occurrences DESC",
+        "User Weapons": "SELECT username, weapon, COUNT(*) as kills FROM sc_default WHERE killer = username GROUP BY username, weapon ORDER BY username, kills DESC",
+        "User Zones": "SELECT username, zone, COUNT(*) as visits FROM sc_default GROUP BY username, zone ORDER BY username, visits DESC"
     },
     "regex_patterns": {
         "player_death" : "<(?P<timestamp>.*?)> \\[Notice\\] <Actor Death> CActor::Kill: '(?P<victim>(?!(Kopion_|PU_|NPC_|vlk_|ARGO_|AIModule_|Shipjacker_)).*?)' \\[(?P<victim_id>\\d+)\\] in zone '(?P<zone>.*?)' killed by '(?P<killer>(?!(Kopion_|PU_|NPC_|vlk_|ARGO_|AIModule_|Shipjacker_)).*?)' \\[(?P<killer_id>\\d+)\\] using '(?P<weapon>.*?)' \\[Class (?P<weapon_class>.*?)\\] with damage type '(?P<damage_type>(?!(Crash|Suicide|SelfDestruct|Hazard)).*?)' from direction x: (?P<direction_x>[\\d\\.-]+), y: (?P<direction_y>[\\d\\.-]+), z: (?P<direction_z>[\\d\\.-]+) \\[Team_ActorTech\\]\\[Actor\\]",

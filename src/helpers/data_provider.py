@@ -637,7 +637,7 @@ class SupabaseDataProvider(DataProvider):
                 return []
             
             # Use the view directly - table_name is already "resumen_view" in the database
-            return self._execute_table_query("resumen_view", username=username)
+            return self._execute_table_query("resumen_view")
             
         # Check if this is a dynamic tab from config (not a standard table)
         # We need to look for the query in the config
@@ -682,6 +682,24 @@ class SupabaseDataProvider(DataProvider):
         # Sanitize the table name to match how it would be stored
         sanitized_table = supabase_manager._sanitize_table_name(table_name)
         return self._execute_table_query(sanitized_table, username=username)
+   
+    def has_column(self, table_name: str, column_name: str) -> bool:
+        """
+        Check if a column exists in a table.
+        
+        Args:
+            table_name: The name of the table to check
+            column_name: The name of the column to check for
+        
+        Returns:
+            bool: True if the column exists, False otherwise
+        """
+        if not supabase_manager.is_connected():
+            return False
+        
+        metadata = supabase_manager.get_metadata()
+        # Use the Supabase manager to check for the column existence
+        return table_name in metadata and metadata[table_name].get('columns', {}).get(column_name, False)
     
     def _execute_table_query(self, table_name: str, username: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -713,7 +731,7 @@ class SupabaseDataProvider(DataProvider):
                 query = supabase_manager.supabase.table(table_name).select('*')
                 
                 # Add username filter if provided
-                if username:
+                if username and self.has_column(table_name, 'username'):
                     query = query.eq('username', username)
                     
                 # Determine if this is a view by checking if the name ends with "_view"
