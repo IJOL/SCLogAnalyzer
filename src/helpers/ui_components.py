@@ -21,7 +21,7 @@ class TabCreator:
         self.parent = parent_frame
         self.tab_references = {}
         
-    def _add_tab(self, notebook, tab_title, params=None):
+    def _add_tab(self, notebook, tab_title, params=None, tab_info=None):
         """
         Create a new tab with a grid and a refresh button.
 
@@ -29,6 +29,7 @@ class TabCreator:
             notebook (wx.Notebook): The notebook to add the tab to.
             tab_title (str): The title of the new tab.
             params (dict, optional): Parameters to pass to the request.
+            tab_info (dict, optional): Complete tab configuration information.
             
         Returns:
             Tuple: (grid, refresh_button) or None if the tab already exists
@@ -55,6 +56,11 @@ class TabCreator:
         # Add a grid to display the JSON data
         grid = wx.grid.Grid(new_tab)
         grid.CreateGrid(0, 0)  # Start with an empty grid
+        
+        # Store tab_info directly on the grid
+        if tab_info:
+            grid.tab_info = tab_info
+            
         tab_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 2)
 
         # Set the sizer for the tab
@@ -75,7 +81,7 @@ class TabCreator:
 
         return grid, refresh_button  # Return the grid for further updates
 
-    def add_tab(self, tab_title, params=None, top_panel=None):
+    def add_tab(self, tab_title, params=None, top_panel=None, tab_info=None):
         """
         Add a new tab to the notebook with a grid and optional top panel.
 
@@ -83,6 +89,7 @@ class TabCreator:
             tab_title (str): The title of the new tab.
             params (dict, optional): A dictionary of parameters to pass to the request.
             top_panel (wx.Panel, optional): A panel to place above the grid (e.g., a form).
+            tab_info (dict, optional): Complete tab configuration information.
             
         Returns:
             Tuple: (grid, refresh_button)
@@ -94,7 +101,7 @@ class TabCreator:
             return grid, refresh_button
         
         # If tab doesn't exist, use _add_tab to create it
-        grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, params)
+        grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, params, tab_info)
 
         if grid and top_panel:
             # Add the top panel to the tab's sizer
@@ -106,7 +113,7 @@ class TabCreator:
         # Trigger initial refresh if the grid was created
         return grid, refresh_button
         
-    def add_form_tab(self, tab_title, form_fields={}, params=None):
+    def add_form_tab(self, tab_title, form_fields={}, params=None, tab_info=None):
         """
         Add a new tab with a form at the top and a grid at the bottom.
 
@@ -114,6 +121,7 @@ class TabCreator:
             tab_title (str): The title of the new tab.
             form_fields (dict): A dictionary where keys are field names and values are input types.
             params (dict, optional): Parameters to pass to the request.
+            tab_info (dict, optional): Complete tab configuration information.
             
         Returns:
             Tuple: (grid, refresh_button)
@@ -125,7 +133,7 @@ class TabCreator:
             return grid, refresh_button
                 
         # Create the base tab if it doesn't exist
-        grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, params)
+        grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, params, tab_info)
 
         if grid:
             # Use the grid's parent as the correct parent for the form panel
@@ -227,6 +235,15 @@ class GridManager:
 
         # Get the keys from the first dictionary as column headers
         headers = [h for h in list(json_data[0].keys()) if h not in ["id", "created_at"]]
+        
+        # Check if this is a dynamic tab with username filtering using the stored tab_info
+        if (hasattr(grid, "tab_info") and 
+            "params" in grid.tab_info and 
+            "username" in grid.tab_info["params"] and
+            grid.tab_info["title"] != "Stats" and
+            "username" in headers):
+            # Hide username column in dynamic tabs with username filtering
+            headers = [h for h in headers if h != "username"]
 
         # Resize the grid to fit the data
         grid.ClearGrid()

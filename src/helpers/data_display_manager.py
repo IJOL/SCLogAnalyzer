@@ -428,28 +428,7 @@ class DataDisplayManager:
             wx.MessageBox(f"Error testing data provider: {e}", 
                          "Error", wx.OK | wx.ICON_ERROR)
     
-    def async_init_tabs(self):
-        """
-        Initialize tabs asynchronously after the main window is loaded and stable.
-        This prevents UI freezing during startup and improves user experience.
-        """
-        # Update status to indicate we're loading tabs
-        self.parent.SetStatusText("Loading data tabs...")
-        
-        # Cancel any existing refresh timer
-        if self._refresh_timer is not None:
-            self._refresh_timer.Stop()
-            self._refresh_timer = None
-            
-        message_bus.publish(
-            content="Scheduling initial tab creation",
-            level=MessageLevel.INFO
-        )
-            
-        # Create a timer to delay tab creation (ensures window is fully rendered)
-        self._refresh_timer = wx.CallLater(1000, self.create_tabs)
-    
-    
+  
     def _create_single_tab(self, tab_info):
         """
         Create a single tab with its configuration.
@@ -468,12 +447,14 @@ class DataDisplayManager:
                 tab_creator.add_form_tab(
                     title,
                     params=tab_info["params"],
-                    form_fields=tab_info["form_fields"]
+                    form_fields=tab_info["form_fields"],
+                    tab_info=tab_info  # Pass the complete tab_info
                 )
             else:
                 tab_creator.add_tab(
                     title, 
-                    params=tab_info["params"]
+                    params=tab_info["params"],
+                    tab_info=tab_info  # Pass the complete tab_info
                 )
                 
             # Update log with creation status
