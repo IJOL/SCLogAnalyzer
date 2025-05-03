@@ -625,6 +625,16 @@ class DataDisplayManager:
                     if any(tab["title"] == tab_name for tab in hardcoded_tabs):
                         continue
                     
+                    # For Supabase, check if the view actually exists before adding the tab
+                    if datasource == "supabase":
+                        # Check if this view actually exists in the database
+                        if not data_provider.view_exists(tab_name):
+                            message_bus.publish(
+                                content=f"Skipping tab '{tab_name}' as the corresponding view does not exist in the database",
+                                level=MessageLevel.INFO
+                            )
+                            continue
+                    
                     # Create a tab configuration for this dynamic tab
                     dynamic_tabs.append({
                         "title": tab_name, 
