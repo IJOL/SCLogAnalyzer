@@ -147,6 +147,7 @@ class ConfigDialog(wx.Frame):
         self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
         self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
         self.colors_grid = self.add_colors_tab(notebook, "Colors", self.config_data.get("colors", {}))  # Add colors tab
+        self.tabs_grid = self.add_tab(notebook, "Dynamic Tabs", "tabs")  # Add tabs configuration grid
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -304,6 +305,10 @@ class ConfigDialog(wx.Frame):
         # Save colors data
         colors_data = self.colors_grid.get_data()
         self.config_manager.set("colors", colors_data)
+        
+        # Save tabs data
+        tabs_data = self.tabs_grid.get_data()
+        self.config_manager.set("tabs", tabs_data)
         
         # Save to file
         self.config_manager.save_config()
