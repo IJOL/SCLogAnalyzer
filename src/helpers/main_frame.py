@@ -42,6 +42,7 @@ class LogAnalyzerFrame(wx.Frame):
         """Initialize the main application frame."""
         super().__init__(None, title="SC Log Analyzer", size=(800, 600))
         message_bus.on("datasource_changed", self.handle_datasource_change)
+        message_bus.on("config.saved", self.on_config_saved)
         
         # Set the application icon
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "SCLogAnalyzer.ico")
@@ -465,8 +466,6 @@ class LogAnalyzerFrame(wx.Frame):
         """Open the configuration dialog."""
         if not hasattr(self, 'config_dialog') or not self.config_dialog:
             self.config_dialog = ConfigDialog(self, self.config_manager)
-            # Bind the close event to reload configuration
-            self.config_dialog.Bind(wx.EVT_WINDOW_DESTROY, self.on_config_dialog_close)
         
         # Ensure the config dialog is within the main window's screen boundaries
         main_window_position = self.GetScreenPosition()
@@ -489,120 +488,6 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Show the dialog non-modally
         self.config_dialog.Show()
-    
-    def on_config_dialog_close(self, event):
-        """Handle the configuration dialog's close event."""
-        # Process the event first
-        event.Skip()
-        # Only reload configuration if changes were saved
-        if hasattr(self, 'config_dialog') and self.config_dialog.config_saved:
-            # Get the original config values from the dialog
-            original_supabase_key = self.config_dialog.original_config.get('supabase_key', '')
-            original_datasource = self.config_dialog.original_config.get('datasource', 'googlesheets')
-            
-            # Store original tabs configuration 
-            original_tabs = self.config_manager.get('tabs', {})
-            
-            # Reload configuration
-            self.initialize_config()
-            
-            # Get the current datasource and Supabase key after config reload
-            datasource = self.config_manager.get('datasource', 'googlesheets')
-            current_supabase_key = self.config_manager.get('supabase_key', '')
-            
-            # Get the current tabs configuration
-            current_tabs = self.config_manager.get('tabs', {})
-            
-            # Detect if tabs configuration changed
-            tabs_changed = (original_tabs != current_tabs)
-            
-            # Detect if datasource changed to Supabase from another source
-            datasource_changed_to_supabase = (datasource == 'supabase' and original_datasource != 'supabase')
-            
-            # Detect if the Supabase key was changed while using Supabase datasource
-            supabase_key_changed = (datasource == 'supabase' and 
-                                  original_supabase_key != current_supabase_key and 
-                                  current_supabase_key)
-            
-            # Handle tabs configuration change when using Supabase
-            if tabs_changed and datasource == 'supabase':
-                message_bus.publish(
-                    content="Dynamic tabs configuration has changed, updating views...",
-                    level=MessageLevel.INFO
-                )
-                
-                # Import at function call time to avoid circular imports
-                from .data_provider import get_data_provider, SupabaseDataProvider
-                
-                # Get the data provider
-                data_provider = get_data_provider(self.config_manager)
-                
-                # If it's a Supabase provider and the tabs changed, ensure views exist
-                if isinstance(data_provider, SupabaseDataProvider) and current_tabs:
-                    if hasattr(data_provider, 'ensure_dynamic_views'):
-                        message_bus.publish(
-                            content="Updating dynamic tab views in Supabase...",
-                            level=MessageLevel.INFO
-                        )
-                        data_provider.ensure_dynamic_views(current_tabs)
-            
-            # Handle datasource change to Supabase or Supabase key change
-            if datasource_changed_to_supabase:
-                message_bus.publish(
-                    content="Datasource changed to Supabase, triggering onboarding if needed",
-                    level=MessageLevel.INFO
-                )
-                # Use the existing handle_datasource_change method for consistency
-                message_bus.emit("datasource_changed", original_datasource, datasource)
-            elif supabase_key_changed:
-                message_bus.publish(
-                    content=f"Supabase key changed from '{original_supabase_key[:5]}...' to '{current_supabase_key[:5]}...', checking if onboarding is needed",
-                    level=MessageLevel.INFO
-                )
-                # Force reconnect with the new key using force parameter
-                supabase_manager.connect(self.config_manager, force=True)
-                
-                # Import here to avoid circular imports
-                from .supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
-                
-                # Check if onboarding is needed
-                if check_needs_onboarding(self.config_manager):
-                    # Create and run onboarding
-                    onboarding = SupabaseOnboarding(self)
-                    if onboarding.check_onboarding_needed():
-                        message_bus.publish(
-                            content="Starting Supabase onboarding after key change",
-                            level=MessageLevel.INFO
-                        )
-                        onboarding.start_onboarding()
-            
-            # If Supabase is the current datasource, verify connection
-            if datasource == 'supabase':
-                if not supabase_manager.is_connected():
-                    connection_result = supabase_manager.connect()
-                    if connection_result:
-                        message_bus.publish(
-                            content="Connected to Supabase successfully after config change.",
-                            level=MessageLevel.INFO
-                        )
-                    else:
-                        wx.MessageBox(
-                            "Failed to connect to Supabase. Check your credentials in config.",
-                            "Connection Failed",
-                            wx.OK | wx.ICON_ERROR
-                        )
-                        message_bus.publish(
-                            content="Failed to connect to Supabase after configuration change.",
-                            level=MessageLevel.ERROR
-                        )
-            
-            # Restart monitoring if it was active
-            if self.monitoring_service.is_monitoring():
-                self.monitoring_service.stop_monitoring()
-                self.monitoring_service.start_monitoring()
-            
-            # Update tabs based on the data source
-            self.data_manager.update_data_source_tabs()
     
     def on_test_data_provider(self, event):
         """Handle the Test Data Provider button click."""
@@ -715,6 +600,122 @@ class LogAnalyzerFrame(wx.Frame):
             )
             return False
 
+    def on_config_saved(self, old_config, new_config, config_manager=None):
+        """
+        Handle the config.saved event to process configuration changes.
+        
+        Args:
+            old_config (dict): The configuration before changes
+            new_config (dict): The configuration after changes
+            config_manager (ConfigManager, optional): The config manager instance
+        """
+        try:
+            message_bus.publish(
+                content="Configuration saved event received, processing changes...",
+                level=MessageLevel.INFO
+            )
+            
+            # Reload configuration to ensure all settings are applied
+            self.initialize_config()
+            
+            # Get important values from old and new configurations
+            old_datasource = old_config.get('datasource', 'googlesheets')
+            new_datasource = new_config.get('datasource', 'googlesheets')
+            
+            old_supabase_key = old_config.get('supabase_key', '')
+            new_supabase_key = new_config.get('supabase_key', '')
+            
+            old_tabs = old_config.get('tabs', {})
+            new_tabs = new_config.get('tabs', {})
+            
+            # Detect specific changes
+            tabs_changed = (old_tabs != new_tabs)
+            datasource_changed_to_supabase = (new_datasource == 'supabase' and old_datasource != 'supabase')
+            supabase_key_changed = (new_datasource == 'supabase' and 
+                                  old_supabase_key != new_supabase_key and 
+                                  new_supabase_key)
+            
+            # Handle tabs configuration change when using Supabase
+            if tabs_changed and new_datasource == 'supabase':
+                message_bus.publish(
+                    content="Dynamic tabs configuration has changed, updating views...",
+                    level=MessageLevel.INFO
+                )
+                
+                # Import at function call time to avoid circular imports
+                from .data_provider import get_data_provider, SupabaseDataProvider
+                
+                # Get the data provider
+                data_provider = get_data_provider(self.config_manager)
+                
+                # If it's a Supabase provider and the tabs changed, ensure views exist
+                if isinstance(data_provider, SupabaseDataProvider) and new_tabs:
+                    if hasattr(data_provider, 'ensure_dynamic_views'):
+                        message_bus.publish(
+                            content="Updating dynamic tab views in Supabase...",
+                            level=MessageLevel.INFO
+                        )
+                        data_provider.ensure_dynamic_views(new_tabs)
+            
+            # NOTE: We don't need to handle datasource_changed_to_supabase here
+            # because our ConfigDialog.save_config already emits the "datasource_changed" event
+            
+            # Handle Supabase key changes
+            if supabase_key_changed:
+                message_bus.publish(
+                    content=f"Supabase key changed from '{old_supabase_key[:5]}...' to '{new_supabase_key[:5]}...', checking if onboarding is needed",
+                    level=MessageLevel.INFO
+                )
+                # Force reconnect with the new key using force parameter
+                supabase_manager.connect(self.config_manager, force=True)
+                
+                # Import here to avoid circular imports
+                from .supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
+                
+                # Check if onboarding is needed
+                if check_needs_onboarding(self.config_manager):
+                    # Create and run onboarding
+                    onboarding = SupabaseOnboarding(self)
+                    if onboarding.check_onboarding_needed():
+                        message_bus.publish(
+                            content="Starting Supabase onboarding after key change",
+                            level=MessageLevel.INFO
+                        )
+                        onboarding.start_onboarding()
+            
+            # If Supabase is the current datasource, verify connection
+            if new_datasource == 'supabase':
+                if not supabase_manager.is_connected():
+                    connection_result = supabase_manager.connect()
+                    if connection_result:
+                        message_bus.publish(
+                            content="Connected to Supabase successfully after config change.",
+                            level=MessageLevel.INFO
+                        )
+                    else:
+                        wx.MessageBox(
+                            "Failed to connect to Supabase. Check your credentials in config.",
+                            "Connection Failed",
+                            wx.OK | wx.ICON_ERROR
+                        )
+                        message_bus.publish(
+                            content="Failed to connect to Supabase after configuration change.",
+                            level=MessageLevel.ERROR
+                        )
+            
+            # Restart monitoring if it was active
+            if self.monitoring_service.is_monitoring():
+                self.monitoring_service.stop_monitoring()
+                self.monitoring_service.start_monitoring()
+            
+            # Update tabs based on the data source
+            self.data_manager.update_data_source_tabs()
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error processing config.saved event: {e}",
+                level=MessageLevel.ERROR
+            )
 
     def on_close(self, event):
         """Handle window close event."""

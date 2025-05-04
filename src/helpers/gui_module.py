@@ -121,12 +121,6 @@ class ConfigDialog(wx.Frame):
         self.app_path = f'"{os.path.join(get_application_path(), "SCLogAnalyzer.exe")}" --start-hidden'
         self.config_saved = False  # Track whether config was saved
         
-        # Store the original config values for change detection
-        self.original_config = {
-            'datasource': config_manager.get('datasource', 'googlesheets'),
-            'supabase_key': config_manager.get('supabase_key', '')
-        }
-
         # Load the configuration data from the manager
         self.config_data = self.config_manager.get_all()
 
@@ -285,6 +279,9 @@ class ConfigDialog(wx.Frame):
 
     def save_config(self):
         """Save configuration using the ConfigManager."""
+        # Store original config before making changes
+        old_config = self.config_manager.get_all().copy()
+        
         # Save general config values 
         for key, control in self.general_controls.items():
             value = control.GetStringSelection() if isinstance(control, wx.Choice) else control.GetValue()
@@ -312,6 +309,23 @@ class ConfigDialog(wx.Frame):
         
         # Save to file
         self.config_manager.save_config()
+        
+        # Get new config after changes
+        new_config = self.config_manager.get_all()
+        
+        # Emit a single event with both old and new configurations
+        message_bus.emit("config.saved", 
+                        old_config=old_config, 
+                        new_config=new_config, 
+                        config_manager=self.config_manager)
+        
+        # Check for specific changes that need immediate handling
+        old_datasource = old_config.get('datasource', 'googlesheets')
+        new_datasource = new_config.get('datasource', 'googlesheets')
+        
+        if old_datasource != new_datasource:
+            # Re-use existing datasource change handling
+            message_bus.emit("datasource_changed", old_datasource, new_datasource)
 
     def on_accept(self, event):
         """Handle the Accept button click."""
@@ -414,7 +428,7 @@ class AboutDialog(wx.Dialog):
             from version import COMMIT_MESSAGES
             if COMMIT_MESSAGES:
                 commits_label = wx.StaticText(panel, label="Recent Changes:")
-                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_BOLD))
                 sizer.Add(commits_label, 0, wx.ALL | wx.ALIGN_LEFT, 5)
                 
                 # Create a scrolled window for commit messages with fixed height
@@ -770,10 +784,10 @@ class DataTransferDialog(wx.Dialog):
         
         # Create larger buttons with clear labels
         self.start_button = wx.Button(panel, wx.ID_OK, label="Start Transfer", size=(140, 40))
-        self.start_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.start_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_BOLD))
         
         self.cancel_button = wx.Button(panel, wx.ID_CANCEL, label="Cancel", size=(140, 40))
-        self.cancel_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        self.cancel_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_NORMAL))
         
         # Add buttons to the standard dialog sizer
         button_sizer.AddButton(self.start_button)
