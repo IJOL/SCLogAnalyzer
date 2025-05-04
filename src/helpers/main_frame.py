@@ -194,6 +194,8 @@ class LogAnalyzerFrame(wx.Frame):
         self.autoshard_button = self._create_button(self.log_page, " Auto Shard", wx.ART_TIP)
         self.autoshard_button.Enable(False)  # Start in disabled state
         self.monitor_button = self._create_button(self.log_page, " Start Monitoring", wx.ART_EXECUTABLE_FILE)
+        self.check_db_button = self._create_button(self.log_page, " Check DB", wx.ART_FIND)
+        self.check_db_button.Hide()  # Hidden by default (debug mode only)
         self.data_transfer_button = self._create_button(self.log_page, " Data Transfer", wx.ART_COPY)
         self.data_transfer_button.Hide()  # Hidden by default (debug mode only)
         self.test_data_provider_button = self._create_button(self.log_page, " Test Data Provider", wx.ART_LIST_VIEW)
@@ -203,6 +205,7 @@ class LogAnalyzerFrame(wx.Frame):
         button_sizer.Add(self.process_log_button, 0, wx.ALL, 2)
         button_sizer.Add(self.autoshard_button, 0, wx.ALL, 2)
         button_sizer.Add(self.monitor_button, 0, wx.ALL, 2)
+        button_sizer.Add(self.check_db_button, 0, wx.ALL, 2)
         button_sizer.Add(self.data_transfer_button, 0, wx.ALL, 2)
         button_sizer.Add(self.test_data_provider_button, 0, wx.ALL, 2)
 
@@ -235,6 +238,7 @@ class LogAnalyzerFrame(wx.Frame):
         self.process_log_button.Bind(wx.EVT_BUTTON, self.on_process_log)
         self.autoshard_button.Bind(wx.EVT_BUTTON, self.on_autoshard)
         self.monitor_button.Bind(wx.EVT_BUTTON, self.on_monitor)
+        self.check_db_button.Bind(wx.EVT_BUTTON, self.on_check_db)
         self.data_transfer_button.Bind(wx.EVT_BUTTON, self.on_data_transfer)
         self.test_data_provider_button.Bind(wx.EVT_BUTTON, self.on_test_data_provider)
 
@@ -558,6 +562,108 @@ class LogAnalyzerFrame(wx.Frame):
         dialog = DataTransferDialog(self)
         dialog.ShowModal()
 
+    def on_check_db(self, event):
+        """Handle Check DB button click."""
+        try:
+            message_bus.publish(
+                content="Checking Supabase database setup...",
+                level=MessageLevel.INFO
+            )
+            
+            # Check if we're using Supabase
+            if self.config_manager.get('datasource') != 'supabase':
+                message_bus.publish(
+                    content="Cannot check DB: Current data source is not Supabase",
+                    level=MessageLevel.WARNING
+                )
+                wx.MessageBox(
+                    "This function is only available when Supabase is set as the data source.",
+                    "Data Source Error",
+                    wx.OK | wx.ICON_WARNING
+                )
+                return
+                
+            # Import here to avoid circular imports
+            from .supabase_onboarding import SupabaseOnboarding
+            
+            # Create onboarding instance with the parent window
+            onboarding = SupabaseOnboarding(self)
+            
+            # Perform comprehensive check of database components
+            check_results = onboarding.check_database_components()
+            
+            # Format detailed results message
+            status_list = []
+            status_list.append("Database Component Status:")
+            status_list.append(f"• run_sql function: {'✓ Present' if check_results['run_sql_function'] else '✗ Missing'}")
+            status_list.append(f"• get_metadata function: {'✓ Present' if check_results['get_metadata_function'] else '✗ Missing'}")
+            
+            # Only show table status if we have metadata access
+            if check_results['get_metadata_function']:
+                status_list.append(f"• config table: {'✓ Present' if check_results['config_table'] else '✗ Missing'}")
+                status_list.append(f"• active_users table: {'✓ Present' if check_results['active_users_table'] else '✗ Missing'}")
+            else:
+                status_list.append("(Cannot check tables without get_metadata function)")
+            
+            status_message = "\n".join(status_list)
+            message_bus.publish(
+                content=status_message,
+                level=MessageLevel.INFO
+            )
+            
+            # If any component is missing, offer to repair
+            if check_results['missing_components']:
+                missing_components = ", ".join(check_results['missing_components'])
+                repair_message = f"The following components are missing: {missing_components}\n\nWould you like to run the repair process?"
+                
+                if wx.MessageBox(
+                    repair_message,
+                    "Missing Components",
+                    wx.YES_NO | wx.ICON_QUESTION
+                ) == wx.YES:
+                    # Run the onboarding process to repair
+                    success = onboarding.start_onboarding()
+                    
+                    if success:
+                        wx.MessageBox(
+                            "Database check and repair completed successfully!",
+                            "DB Check Complete",
+                            wx.OK | wx.ICON_INFORMATION
+                        )
+                    else:
+                        wx.MessageBox(
+                            "Database check and repair failed or was cancelled.",
+                            "DB Check Failed",
+                            wx.OK | wx.ICON_ERROR
+                        )
+                else:
+                    wx.MessageBox(
+                        "No repairs were made. Some components are still missing.",
+                        "Repair Skipped",
+                        wx.OK | wx.ICON_INFORMATION
+                    )
+            else:
+                message_bus.publish(
+                    content="Database check completed - all required components are present",
+                    level=MessageLevel.INFO
+                )
+                wx.MessageBox(
+                    "Database check complete. All required components are present and working correctly.",
+                    "DB Check Complete",
+                    wx.OK | wx.ICON_INFORMATION
+                )
+                
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error during database check: {e}",
+                level=MessageLevel.ERROR
+            )
+            wx.MessageBox(
+                f"An error occurred during the database check:\n\n{str(e)}",
+                "DB Check Error",
+                wx.OK | wx.ICON_ERROR
+            )
+
     def handle_datasource_change(self, old_datasource, new_datasource):
         """
         Explicitly handle changes to the datasource configuration.
@@ -867,10 +973,26 @@ class LogAnalyzerFrame(wx.Frame):
         
     def update_debug_ui_visibility(self):
         """Update UI elements based on debug mode state"""
+        # Debug mode buttons visibility
         if hasattr(self, 'test_data_provider_button'):
             self.test_data_provider_button.Show(self.debug_mode)
         if hasattr(self, 'data_transfer_button'):
             self.data_transfer_button.Show(self.debug_mode)
+            
+        # Check DB button needs special handling - only visible in debug mode and only enabled with Supabase
+        if hasattr(self, 'check_db_button'):
+            # Make the button visible in debug mode
+            self.check_db_button.Show(self.debug_mode)
+            
+            # Only enable it if Supabase is the datasource
+            is_supabase = self.config_manager.get('datasource') == 'supabase'
+            self.check_db_button.Enable(is_supabase)
+            
+            # Update the button label to indicate why it might be disabled
+            if is_supabase:
+                self.check_db_button.SetLabel(" Check DB")
+            else:
+                self.check_db_button.SetLabel(" Check DB (Supabase only)")
             
         # Update log level filtering based on debug mode
         if hasattr(self, 'data_manager'):

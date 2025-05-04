@@ -520,6 +520,63 @@ $function$
                 metadata={"source": self.SOURCE}
             )
 
+    def check_database_components(self) -> dict:
+        """
+        Perform a comprehensive check of all required Supabase database components.
+        
+        Returns:
+            dict: Dictionary with check results for each component
+        """
+        results = {
+            "run_sql_function": False,
+            "get_metadata_function": False,
+            "config_table": False,
+            "active_users_table": False,
+            "missing_components": []
+        }
+        
+        message_bus.publish(
+            content="Checking Supabase database components...",
+            level=MessageLevel.INFO,
+            metadata={"source": self.SOURCE}
+        )
+        
+        # Check if run_sql function exists
+        results["run_sql_function"] = self._test_run_sql()
+        if not results["run_sql_function"]:
+            results["missing_components"].append("run_sql function")
+        
+        # Check if get_metadata function exists
+        results["get_metadata_function"] = self._test_get_metadata()
+        if not results["get_metadata_function"]:
+            results["missing_components"].append("get_metadata function")
+        
+        # Only check for tables if we have metadata access
+        if results["get_metadata_function"]:
+            try:
+                # Get metadata from Supabase
+                metadata = supabase_manager.get_metadata()
+                
+                # Check for config table
+                results["config_table"] = 'config' in metadata
+                if not results["config_table"]:
+                    results["missing_components"].append("config table")
+                
+                # Check for active_users table
+                results["active_users_table"] = 'active_users' in metadata
+                if not results["active_users_table"]:
+                    results["missing_components"].append("active_users table")
+                    
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Error checking tables: {e}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                results["error"] = str(e)
+                
+        return results
+
 
 class SupabaseSetupDialog(wx.Dialog):
     """Dialog that explains the Supabase setup process."""
