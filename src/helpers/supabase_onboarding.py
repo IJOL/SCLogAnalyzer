@@ -3,6 +3,8 @@ import wx.adv
 import threading
 import time
 import pyperclip
+from datetime import datetime
+import uuid
 from typing import Callable, Optional
 
 from .message_bus import message_bus, MessageLevel
@@ -208,6 +210,20 @@ $function$
                 progress_dialog.Destroy()
                 return False
             
+            # Phase 4: Create active_users table if it doesn't exist
+            progress_dialog.Update(95, "Creating active_users table if needed...")
+            
+            if not self._create_active_users_table():
+                wx.MessageBox(
+                    "Failed to create the active_users table.\n"
+                    "Reverting to Google Sheets datasource.",
+                    "Setup Failed",
+                    wx.OK | wx.ICON_WARNING
+                )
+                self._switch_to_google_sheets()
+                progress_dialog.Destroy()
+                return False
+            
             # Onboarding completed successfully
             progress_dialog.Update(100, "Supabase setup completed successfully!")
             time.sleep(1)  # Brief pause to show success message
@@ -400,6 +416,88 @@ $function$
         except Exception as e:
             message_bus.publish(
                 content=f"Error creating config table: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+    
+    def _create_active_users_table(self) -> bool:
+        """Create the active_users table for realtime communication if it doesn't exist."""
+        try:
+            # Check if the table already exists using the metadata cache system
+            metadata = supabase_manager.get_metadata()
+            
+            # With the cache system, tables are keys in the metadata dictionary
+            if 'active_users' in metadata:
+                message_bus.publish(
+                    content="active_users table already exists",
+                    level=MessageLevel.INFO,
+                    metadata={"source": self.SOURCE}
+                )
+                return True  # Table already exists
+            
+            message_bus.publish(
+                content="Creating active_users table for realtime communication...",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            
+            # Create sample data structure for active_users table - simplificado sin client_id
+            sample_data = {
+                "username": "sample_user",  # Clave principal para identificación
+                "shard": "sample_shard",
+                "version": "1.0.0",
+                "user_mode": "spectator",
+                "status": "online",
+                "last_seen": datetime.now().isoformat(),
+                "metadata": {}
+            }
+            
+            # Define RLS policies specific to active_users table
+            # Políticas simples para la tabla
+            rls_policies = [
+                {
+                    'name': 'Public SELECT for active_users',
+                    'action': 'SELECT',
+                    'using': 'true'  # Everyone can see all active users
+                },
+                {
+                    'name': 'Public INSERT',
+                    'action': 'INSERT',
+                    'check': 'true'  # Everyone can insert new records
+                },
+                {
+                    'name': 'Public UPDATE',
+                    'action': 'UPDATE',
+                    'using': "true", 
+                    'check': "true"   
+                },
+                {
+                    'name': 'Admin DELETE only',
+                    'action': 'DELETE',
+                    'using': "CURRENT_USER = 'postgres'"  # Solo admins pueden eliminar
+                }
+            ]
+            
+            # Use the _create_table method from supabase_manager
+            if supabase_manager._create_table("active_users", sample_data, enable_rls=True, rls_policies=rls_policies):
+                message_bus.publish(
+                    content="active_users table created successfully",
+                    level=MessageLevel.INFO,
+                    metadata={"source": self.SOURCE}
+                )
+                return True
+            else:
+                message_bus.publish(
+                    content="Failed to create active_users table",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                return False
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error creating active_users table: {e}",
                 level=MessageLevel.ERROR,
                 metadata={"source": self.SOURCE}
             )

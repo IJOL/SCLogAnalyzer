@@ -67,6 +67,35 @@ class LogAnalyzerFrame(wx.Frame):
         self.window_manager = WindowStateManager(self)
         self.dynamic_labels = DynamicLabels(self)
         
+        # Initialize RealtimeBridge if using Supabase
+        self.realtime_bridge = None
+        if self.config_manager.get('datasource') == 'supabase' and supabase_manager.is_connected():
+            try:
+                # Importar el puente de Realtime
+                from .realtime_bridge import RealtimeBridge
+                
+                # Obtener el cliente Supabase ya configurado
+                supabase_client = supabase_manager.supabase
+                
+                if supabase_client:
+                    # Crear la instancia de RealtimeBridge
+                    self.realtime_bridge = RealtimeBridge(supabase_client, self.config_manager)
+                    
+                    # Iniciar la conexión con Supabase Realtime
+                    self.realtime_bridge.connect()
+                    
+                    message_bus.publish(
+                        content="Realtime intercommunication enabled",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "main_frame"}
+                    )
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Error initializing Realtime bridge: {e}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "main_frame"}
+                )
+        
         # Create main panel and UI components
         self._create_ui_components()
         

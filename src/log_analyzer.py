@@ -875,6 +875,28 @@ class LogFileHandler(FileSystemEventHandler):
             # Send to data queue
             if send_message and pattern_name in self.google_sheets_mapping:
                 self.update_data_queue(data, pattern_name)
+                
+            # Emitir evento en tiempo real si el patrón está en la lista realtime
+            if send_message and pattern_name in self.config_manager.get('realtime', []):
+                # Crear un mensaje con toda la información necesaria
+                realtime_data = {
+                    'timestamp': timestamp,
+                    'type': pattern_name,
+                    'content': output_message_format.format(**data) if output_message_format else f"{pattern_name}: {data.get('player', 'Unknown')}",
+                    'raw_data': data
+                }
+                
+                # Emitir el evento para que RealtimeBridge lo capture
+                message_bus.emit(
+                    "realtime_event",
+                    realtime_data
+                )
+                
+                message_bus.publish(
+                    content=f"Emitted realtime event for pattern: {pattern_name}",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "log_analyzer"}
+                )
     
             return True, data
         return False, None

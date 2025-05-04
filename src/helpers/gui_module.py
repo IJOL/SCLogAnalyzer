@@ -428,7 +428,7 @@ class AboutDialog(wx.Dialog):
             from version import COMMIT_MESSAGES
             if COMMIT_MESSAGES:
                 commits_label = wx.StaticText(panel, label="Recent Changes:")
-                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_BOLD))
+                commits_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
                 sizer.Add(commits_label, 0, wx.ALL | wx.ALIGN_LEFT, 5)
                 
                 # Create a scrolled window for commit messages with fixed height
@@ -784,10 +784,10 @@ class DataTransferDialog(wx.Dialog):
         
         # Create larger buttons with clear labels
         self.start_button = wx.Button(panel, wx.ID_OK, label="Start Transfer", size=(140, 40))
-        self.start_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_BOLD))
+        self.start_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
         
         self.cancel_button = wx.Button(panel, wx.ID_CANCEL, label="Cancel", size=(140, 40))
-        self.cancel_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE.NORMAL, wx.FONTWEIGHT_NORMAL))
+        self.cancel_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
         
         # Add buttons to the standard dialog sizer
         button_sizer.AddButton(self.start_button)

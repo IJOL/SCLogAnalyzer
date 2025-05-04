@@ -320,6 +320,9 @@ class DataDisplayManager:
                 for tab_info in required_tabs:
                     self._create_single_tab(tab_info)
                 
+                # Add Users Connected tab if using Supabase and RealtimeBridge is available
+                self._add_users_connected_tab()
+                
                 # No longer need to load tabs in advance as refresh is connected to tab change
                 # wx.CallLater(500, self._refresh_all_tabs)
             else:            
@@ -544,6 +547,53 @@ class DataDisplayManager:
                 level=MessageLevel.ERROR
             )
 
+    def _add_users_connected_tab(self):
+        """
+        Añade la pestaña de usuarios conectados si estamos usando Supabase y RealtimeBridge está disponible.
+        """
+        try:
+            # Comprobar si estamos usando Supabase y si RealtimeBridge está disponible
+            if self.config_manager.get('datasource') != 'supabase':
+                return
+                
+            if not hasattr(self.parent, 'realtime_bridge') or self.parent.realtime_bridge is None:
+                message_bus.publish(
+                    content="Realtime bridge not available, skipping connected users tab",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "data_display_manager"}
+                )
+                return
+                
+            message_bus.publish(
+                content="Adding connected users tab",
+                level=MessageLevel.INFO,
+                metadata={"source": "data_display_manager"}
+            )
+            
+            # Importar el panel de usuarios conectados
+            from .connected_users_panel import ConnectedUsersPanel
+            
+            # Crear el panel y añadirlo como pestaña al notebook
+            notebook = self.parent.notebook
+            connected_users_panel = ConnectedUsersPanel(notebook)
+            notebook.AddPage(connected_users_panel, "Usuarios conectados")
+            
+            message_bus.publish(
+                content="Connected users tab added successfully",
+                level=MessageLevel.INFO,
+                metadata={"source": "data_display_manager"}
+            )
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error adding connected users tab: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "data_display_manager"}
+            )
+            message_bus.publish(
+                content=traceback.format_exc(),
+                level=MessageLevel.DEBUG
+            )
 
     def _get_required_tab_configs(self):
         """Get the list of tab configurations - centralized for maintainability"""
