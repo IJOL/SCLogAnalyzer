@@ -601,7 +601,6 @@ class LogAnalyzerFrame(wx.Frame):
             # Only show table status if we have metadata access
             if check_results['get_metadata_function']:
                 status_list.append(f"• config table: {'✓ Present' if check_results['config_table'] else '✗ Missing'}")
-                status_list.append(f"• active_users table: {'✓ Present' if check_results['active_users_table'] else '✗ Missing'}")
             else:
                 status_list.append("(Cannot check tables without get_metadata function)")
             

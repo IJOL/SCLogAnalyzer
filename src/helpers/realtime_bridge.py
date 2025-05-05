@@ -40,7 +40,7 @@ class RealtimeBridge:
             self._init_broadcast_channel()
             self.is_connected = True
             
-            # Iniciar el heartbeat para mantener actualizado el estado en la base de datos
+            # Iniciar el heartbeat para mantener actualizado el estado en el sistema de presencia
             self._start_heartbeat()
             
             message_bus.publish(
@@ -167,9 +167,6 @@ class RealtimeBridge:
                 # Actualizar nuestro estado en el canal de presencia
                 self.channels['presence'].track(presence_data)
                 
-                # También actualizar nuestro registro en la base de datos
-                self._update_user_in_db(presence_data)
-                
                 message_bus.publish(
                     content=f"Updated presence status with shard: {shard}, version: {version}",
                     level=MessageLevel.DEBUG,
@@ -182,50 +179,6 @@ class RealtimeBridge:
                     level=MessageLevel.ERROR,
                     metadata={"source": "realtime_bridge"}
                 )
-            
-    def _update_user_in_db(self, presence_data):
-        """Actualiza o crea el registro del usuario en la base de datos"""
-        try:
-            # Intentar actualizar primero por username (único identificador)
-            result = self.supabase.table('active_users').update({
-                'shard': presence_data['shard'],
-                'version': presence_data['version'],
-                'status': presence_data['status'],
-                'last_seen': presence_data['last_active'],
-                'user_mode': presence_data.get('metadata', {}).get('mode'),
-                'metadata': presence_data['metadata']
-            }).eq('username', self.username).execute()
-            
-            # Si no hay filas afectadas, insertar un nuevo registro
-            if not result.data or len(result.data) == 0:
-                self.supabase.table('active_users').insert({
-                    'username': self.username,
-                    'shard': presence_data['shard'],
-                    'version': presence_data['version'],
-                    'status': presence_data['status'],
-                    'last_seen': presence_data['last_active'],
-                    'user_mode': presence_data.get('metadata', {}).get('mode'),
-                    'metadata': presence_data['metadata']
-                }).execute()
-                
-                message_bus.publish(
-                    content="Created new active user record in database",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "realtime_bridge"}
-                )
-            else:
-                message_bus.publish(
-                    content="Updated existing active user record in database",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "realtime_bridge"}
-                )
-                
-        except Exception as e:
-            message_bus.publish(
-                content=f"Error updating user in database: {e}",
-                level=MessageLevel.ERROR,
-                metadata={"source": "realtime_bridge"}
-            )
             
     def _handle_presence_subscription(self, status, channel):
         """Maneja el estado de suscripción al canal de presencia"""
@@ -241,9 +194,6 @@ class RealtimeBridge:
             
             try:
                 channel.track(initial_presence)
-                
-                # También añadir a la base de datos
-                self._update_user_in_db(initial_presence)
                 
                 message_bus.publish(
                     content="Connected to Presence channel",
@@ -413,7 +363,7 @@ class RealtimeBridge:
             )
             
     def _start_heartbeat(self):
-        """Inicia el heartbeat para mantener actualizada la información de usuario activo"""
+        """Inicia el heartbeat para mantener actualizada la información de presencia"""
         if self.heartbeat_active:
             return
             
@@ -443,8 +393,8 @@ class RealtimeBridge:
         """Worker thread para enviar actualizaciones periódicas de estado"""
         while self.heartbeat_active:
             try:
-                # Solo actualizar si tenemos información de shard
-                if self.shard:
+                # Solo actualizar si tenemos información de shard e información de presencia
+                if self.shard and 'presence' in self.channels and self.channels['presence']:
                     presence_data = {
                         'shard': self.shard,
                         'version': self.version,
@@ -453,11 +403,11 @@ class RealtimeBridge:
                         'metadata': {}
                     }
                     
-                    # Actualizar en la base de datos
-                    self._update_user_in_db(presence_data)
+                    # Actualizar estado de presencia
+                    self.channels['presence'].track(presence_data)
                     
                     message_bus.publish(
-                        content="Heartbeat update sent",
+                        content="Heartbeat presence update sent",
                         level=MessageLevel.DEBUG,
                         metadata={"source": "realtime_bridge"}
                     )
