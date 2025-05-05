@@ -410,11 +410,7 @@ class RealtimeBridge:
             
             # Usar el canal broadcast común en lugar de canales por shard
             if 'broadcast' in self.channels:
-                self.channels['broadcast'].send({
-                    'type': 'broadcast',
-                    'event': 'realtime-event',
-                    'payload': broadcast_data
-                })
+                self.channels['broadcast'].send_broadcast('realtime-event', broadcast_data)
                 
                 message_bus.publish(
                     content=f"Broadcasted realtime event to all users (from shard {self.shard})",
