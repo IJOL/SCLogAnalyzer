@@ -3,7 +3,10 @@ import json
 import re
 import time
 from supabase import create_client, Client
-from typing import Optional
+# Import async client support
+from supabase.lib.client_options import ClientOptions
+import httpx
+from typing import Optional, Tuple, Dict, Any, Union
 
 # Load environment variables from config.json instead of .env
 from .config_utils import get_config_manager
@@ -59,6 +62,10 @@ class SupabaseManager:
         self.is_initialized = False
         self.connection_attempted = False  # Track if connection has been attempted
         self.metadata_cache = None  # Cache for metadata results
+        
+        # Async client attributes
+        self.async_supabase = None
+        self.async_is_initialized = False
         
         # Subscribe to schema change events to invalidate cache when needed
         if message_bus:
@@ -177,11 +184,73 @@ class SupabaseManager:
             log_message(f"Error connecting to Supabase: {e}", "ERROR")
             self.is_initialized = False
             return False
+    
+    def connect_async(self, config_manager=None, force=False):
+        """
+        Connect to Supabase using the async client.
+        
+        Args:
+            config_manager (ConfigManager, optional): If provided, use this config manager
+                instance instead of getting a new one from get_config_manager().
+            force (bool, optional): If True, force reconnection even if already connected.
+        
+        Returns:
+            object: The async Supabase client object if successful, None otherwise.
+        """
+        # If we're already connected and not forcing reconnection, return the existing client
+        if self.async_is_initialized and not force:
+            return self.async_supabase
+            
+        try:
+            # Make sure we have a valid URL and key
+            if not self.is_connected():
+                if not self.connect(config_manager, force):
+                    return None
+            
+            # Import required libraries for async client
+            from supabase import AsyncClient
+            from supabase import create_client as create_async_client
+            
+            # Create async client
+            options = ClientOptions(
+                schema="public",
+                realtime_multiplexed=True  # Enable realtime features
+            )
+            
+            self.async_supabase = create_async_client(
+                self.supabase_url, 
+                self.supabase_key, 
+                options=options
+            )
+            
+            self.async_is_initialized = True
+            
+            # Report success through message bus
+            log_message("Connected to Supabase async client successfully.", "INFO")
+            
+            return self.async_supabase
+            
+        except Exception as e:
+            log_message(f"Error connecting to Supabase async client: {e}", "ERROR")
+            self.async_is_initialized = False
+            return None
+    
+    def get_async_client(self):
+        """
+        Get the async Supabase client, initializing it if needed.
+        
+        Returns:
+            object: The async Supabase client
+        """
+        if not self.async_is_initialized:
+            return self.connect_async()
+        return self.async_supabase
             
     def reconnect(self):
         """Force a reconnection to Supabase even if already connected."""
         self.is_initialized = False
         self.connection_attempted = False
+        self.async_is_initialized = False
         return self.connect()
             
     def is_connected(self):

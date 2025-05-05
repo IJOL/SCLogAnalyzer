@@ -15,7 +15,11 @@ class RealtimeBridge:
     permitir la comunicación entre diferentes instancias de SCLogAnalyzer.
     """
     def __init__(self, supabase_client, config_manager):
-        self.supabase = supabase_client
+        # We'll use the async client instead of the passed sync client
+        self.sync_supabase = supabase_client  # Keep reference to sync client
+        # Get the async client
+        self.supabase = supabase_manager.get_async_client()
+        
         self.config_manager = config_manager
         self.username = config_manager.get('username', 'Unknown')
         self.shard = None
@@ -34,6 +38,17 @@ class RealtimeBridge:
     def connect(self):
         """Inicializa la conexión con Supabase Realtime"""
         try:
+            # Ensure we have the async client
+            if not self.supabase:
+                self.supabase = supabase_manager.get_async_client()
+                if not self.supabase:
+                    message_bus.publish(
+                        content="Failed to get async Supabase client, cannot connect Realtime Bridge",
+                        level=MessageLevel.ERROR,
+                        metadata={"source": "realtime_bridge"}
+                    )
+                    return False
+                
             # Conectarse al canal de usuarios activos
             self._init_presence_channel()
             # Conectarse al canal de broadcast general
