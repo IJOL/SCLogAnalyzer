@@ -38,7 +38,7 @@ from helpers.updater import UPDATER_EXECUTABLE, LEGACY_UPDATER
 class LogAnalyzerFrame(wx.Frame):
     """Main application frame for SC Log Analyzer."""
     
-    def __init__(self):
+    def __init__(self, debug_mode=False):
         """Initialize the main application frame."""
         super().__init__(None, title="SC Log Analyzer", size=(800, 600))
         message_bus.on("datasource_changed", self.handle_datasource_change)
@@ -54,7 +54,8 @@ class LogAnalyzerFrame(wx.Frame):
         self.shard = "Unknown"
         self.version = "Unknown"
         self.mode = "None"
-        self.debug_mode = False  # Flag to track if debug mode is active
+        # Set debug mode from parameter
+        self.debug_mode = debug_mode
         
         # Define a consistent name for log message subscription
         self.log_subscription_name = "gui_main"
@@ -109,7 +110,7 @@ class LogAnalyzerFrame(wx.Frame):
             self._append_log_message_from_bus,
             replay_history=True,  # Enable message history replay
             max_replay_messages=100,  # Replay up to 100 most recent messages
-            min_replay_level=MessageLevel.INFO  # Only replay INFO level and above
+            min_replay_level=MessageLevel.DEBUG if self.debug_mode else MessageLevel.INFO  # Include DEBUG messages if in debug mode
         )
         
         # Subscribe to events using MessageBus
@@ -1063,13 +1064,15 @@ def main():
     else:
         updater.cleanup_updater_script()
     
-    # Initialize debug mode based on script detection
-    if is_script:
-        # If running as script, log startup information with debug enabled
-        print("Running as script - debug mode enabled")
+    # Initialize debug mode based on script detection and command line arguments
+    debug_mode = is_script or '--debug' in sys.argv or '-d' in sys.argv
+    
+    if debug_mode:
+        # If debug mode enabled, log startup information
+        print("Debug mode enabled")
         # Configure message bus with debug as default minimum level
         message_bus.publish(
-            content="Application started in script mode with DEBUG level enabled",
+            content="Application started with DEBUG level enabled",
             level=MessageLevel.DEBUG
         )
     
@@ -1085,13 +1088,8 @@ def main():
         )
         return
     
-    frame = LogAnalyzerFrame()
-    
-    # Set debug mode if running as script but don't update visibility yet
-    # The frame initialization will handle the update_debug_ui_visibility call
-    if is_script:
-        frame.debug_mode = True
-        frame.update_debug_ui_visibility()
+    # Create frame with debug_mode parameter
+    frame = LogAnalyzerFrame(debug_mode=debug_mode)
     
     frame.Show()
     frame.async_init_tabs()  # Initialize tabs asynchronously
