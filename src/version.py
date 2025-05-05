@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 8
-RELEASE = 99
+RELEASE = 0
 MATURITY = "checkmate"  # "alpha", "beta", or "final"
-PATCH = "003cdfc"
+PATCH = "44c0b3f"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -15,21 +15,15 @@ def get_version():
 
 # Recent commit messages
 COMMIT_MESSAGES = [
-    "003cdfc: Refactor tab creation methods to include complete tab configuration information and improve dynamic tab handling",
-    "867d2b3: Fix indentation for wx.CallAfter in LogAnalyzerFrame to ensure proper update checks",
-    "fb9f144: Add view existence check for Supabase tabs and skip dynamic view creation in non-debug mode",
-    "8edadc6: Add dynamic tab support for user weapons and zones in configuration and enhance SupabaseDataProvider with column existence check",
-    "268461b: Ensure dynamic views exist for Supabase when tabs configuration changes",
-    "a98f8a7: Add dynamic tabs configuration grid to ConfigDialog",
-    "9a0ec97: Add dynamic tab support and view management in SupabaseDataProvider and DataDisplayManager",
-    "db290db: Implementar get_metadata con sistema de cachÃ©",
-    "b98a84b: Remove delayed update check from startup in LogAnalyzerFrame",
-    "4e0707a: Add checks for table existence before querying and creating Resumen view in SupabaseDataProvider",
-    "4180fe0: Emit message bus event for datasource change instead of using handle_datasource_change method",
-    "5adc12a: Refactor datasource change handling and integrate Supabase onboarding process",
-    "0ab87a1: Enhance Supabase onboarding with retry logic for list_tables function availability and add force reconnection option in SupabaseManager",
-    "210f696: Enhance Supabase onboarding by detecting datasource and key changes in configuration",
-    "33b79a0: Add pyperclip for clipboard operations in Supabase onboarding",
-    "db1e623: Implement Supabase onboarding process for datasource switch and add related message bus notifications",
-    "e61d748: Remove unused generate_hash function from supbase_functions.sql",
+    "44c0b3f: Update version.py to reflect new MINOR and RELEASE numbers",
+    "da93f5b: Update maturity level in version.py from \"wikelo\" to \"checkmate\"",
+    "6c0f90c: Refactor ConnectedUsersPanel and RealtimeBridge to use 'username' instead of 'user_id' and enhance logging with shard information",
+    "d01f97f: Enhance RealtimeBridge and SupabaseManager for async client support and improved error handling",
+    "cc26ebb: Enhance LogAnalyzerFrame to support debug mode initialization and adjust message logging level accordingly",
+    "7d525c3: Refactor RealtimeBridge to use async Supabase client and add error handling for connection failures",
+    "bc4a477: Remove active_users table checks and related logic from Supabase onboarding and RealtimeBridge",
+    "9100e5b: Add Check DB button and database component verification in Supabase onboarding",
+    "d6a518d: Add realtime users feature and connection bridge",
+    "e99b427: Refactor configuration handling in ConfigDialog and LogAnalyzerFrame to improve change detection and event processing",
+    "4e6bda6: Update regex pattern for player death to include additional conditions for killer identification",
 ]
