@@ -507,8 +507,8 @@ class RealtimeBridge:
                         'metadata': {}
                     }
                     
-                    # Actualizar estado de presencia
-                    self.channels['presence'].track(presence_data)
+                    # Actualizar estado de presencia - usar run_async para coroutines
+                    run_async(self.channels['presence'].track(presence_data))
                     
                     message_bus.publish(
                         content="Heartbeat presence update sent",
