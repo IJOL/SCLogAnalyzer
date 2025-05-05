@@ -180,6 +180,7 @@ class RealtimeBridge:
                 if status == 'SUBSCRIBED':
                     # Registramos nuestra presencia inicial
                     initial_presence = {
+                        'username': self.username,
                         'shard': self.shard,
                         'version': self.version,
                         'status': 'online',
@@ -193,7 +194,7 @@ class RealtimeBridge:
                         
                         message_bus.publish(
                             content="Connected to Presence channel",
-                            level=MessageLevel.INFO,
+                            level=MessageLevel.DEBUG,  # Cambiado a DEBUG
                             metadata={"source": "realtime_bridge"}
                         )
                     except Exception as e:
@@ -208,10 +209,10 @@ class RealtimeBridge:
                 callback=lambda: self._handle_presence_sync(presence_channel)
             )
             presence_channel.on_presence_join(
-                callback=lambda key, current, new: self._handle_presence_join({'newPresences': new})
+                callback=lambda key, current, new: self._handle_presence_join(key, current, new)
             )
             presence_channel.on_presence_leave(
-                callback=lambda key, current, left: self._handle_presence_leave({'leftPresences': left})
+                callback=lambda key, current, left: self._handle_presence_leave(key, current, left)
             )
             
             # Suscribirse al canal - usar run_async para manejar la coroutine
@@ -242,7 +243,7 @@ class RealtimeBridge:
                 if status == 'SUBSCRIBED':
                     message_bus.publish(
                         content="Connected to Broadcast channel",
-                        level=MessageLevel.INFO,
+                        level=MessageLevel.DEBUG,  # Cambiado a DEBUG
                         metadata={"source": "realtime_bridge"}
                     )
             
@@ -274,10 +275,18 @@ class RealtimeBridge:
         """Maneja actualizaciones de shard y versión para sincronizarlas con Realtime"""
         self.shard = shard
         self.version = version
-        
-        # Si ya estamos conectados a un canal de presencia, actualizar nuestro estado
         if 'presence' in self.channels and self.channels['presence']:
+            state = self.channels['presence'].presence.state
+            if username in state:
+                if len(state[username]) \
+                    and state[username][0].get('metadata', {}).get('mode') == mode \
+                    and state[username][0].get('shard') == shard:
+                    return
+            
+        # Si ya estamos conectados a un canal de presencia, actualizar nuestro estado
+        if 'presence' in self.channels and self.channels['presence'] and username != 'Unknown':
             presence_data = {
+                'username': username,
                 'shard': shard,
                 'version': version,
                 'status': 'online',
@@ -302,33 +311,7 @@ class RealtimeBridge:
                     metadata={"source": "realtime_bridge"}
                 )
             
-    def _handle_presence_subscription(self, status, channel):
-        """Maneja el estado de suscripción al canal de presencia"""
-        if status == 'SUBSCRIBED':
-            # Registramos nuestra presencia inicial
-            initial_presence = {
-                'shard': self.shard,
-                'version': self.version,
-                'status': 'online',
-                'last_active': datetime.now().isoformat(),
-                'metadata': {}
-            }
-            
-            try:
-                channel.track(initial_presence)
-                
-                message_bus.publish(
-                    content="Connected to Presence channel",
-                    level=MessageLevel.INFO,
-                    metadata={"source": "realtime_bridge"}
-                )
-            except Exception as e:
-                message_bus.publish(
-                    content=f"Error tracking initial presence: {e}",
-                    level=MessageLevel.ERROR,
-                    metadata={"source": "realtime_bridge"}
-                )
-                
+               
     def _handle_presence_sync(self, channel):
         """Maneja la sincronización de estados de presencia"""
         try:
@@ -336,10 +319,10 @@ class RealtimeBridge:
             
             # Emitir evento con la lista actualizada de usuarios en línea
             users_online = []
-            for user_id, presences in presence_state.items():
+            for username, presences in presence_state.items():
                 for presence in presences:
                     users_online.append({
-                        'user_id': user_id,
+                        'username': username,
                         'shard': presence.get('shard'),
                         'version': presence.get('version'),
                         'status': presence.get('status'),
@@ -363,16 +346,16 @@ class RealtimeBridge:
                 metadata={"source": "realtime_bridge"}
             )
         
-    def _handle_presence_join(self, payload):
+    def _handle_presence_join(self, key, current, new):
         """Maneja cuando un nuevo usuario se une al canal de presencia"""
         try:
-            new_presences = payload.get('newPresences', [])
+
             
-            for presence in new_presences:
-                user_id = presence.get('key')
+            for presence in new:
+                username = presence.get('username')
                 message_bus.publish(
-                    content=f"User '{user_id}' is now online",
-                    level=MessageLevel.INFO,
+                    content=f"User '{username}' is now online",
+                    level=MessageLevel.INFO,  # Mantener esto en INFO para visibilidad de usuario
                     metadata={"source": "realtime_bridge", "event": "user_joined"}
                 )
             
@@ -387,15 +370,14 @@ class RealtimeBridge:
                 metadata={"source": "realtime_bridge"}
             )
             
-    def _handle_presence_leave(self, payload):
+    def _handle_presence_leave(self, key, current, left):
         """Maneja cuando un usuario deja el canal de presencia"""
         try:
-            left_presences = payload.get('leftPresences', [])
-            
-            for presence in left_presences:
-                user_id = presence.get('key')
+           
+            for presence in left:
+                username = presence.get('username')
                 message_bus.publish(
-                    content=f"User '{user_id}' went offline",
+                    content=f"User '{username}' went offline",
                     level=MessageLevel.INFO,
                     metadata={"source": "realtime_bridge", "event": "user_left"}
                 )
@@ -412,36 +394,39 @@ class RealtimeBridge:
             )
             
     def _handle_realtime_event(self, event_data):
-        """Maneja el evento de realtime_event para transmitirlo a otros usuarios"""
+        """Maneja el evento de realtime_event para transmitirlo a todos los usuarios"""
         if not self.shard:  # No transmitimos si no sabemos nuestro shard
             return
             
         try:
-            # Crear un canal específico para este shard si no existe
-            shard_channel_name = f"shard:{self.shard}"
-            if shard_channel_name not in self.channels:
-                shard_channel = self.supabase.channel(shard_channel_name)
-                shard_channel.subscribe()
-                self.channels[shard_channel_name] = shard_channel
-                
-            # Transmitir el evento en tiempo real a otros usuarios en el mismo shard
+            # Transmitir el evento en tiempo real a todos los usuarios
+            # Incluimos el shard en los datos para posible filtrado en el cliente
             broadcast_data = {
-                'user_id': self.username,
+                'username': self.username,
                 'timestamp': datetime.now().isoformat(),
+                'shard': self.shard,  # Incluir shard en los datos
                 'event_data': event_data
             }
             
-            self.channels[shard_channel_name].send({
-                'type': 'broadcast',
-                'event': 'realtime-event',
-                'payload': broadcast_data
-            })
-            
-            message_bus.publish(
-                content=f"Broadcasted realtime event to users in shard {self.shard}",
-                level=MessageLevel.DEBUG,
-                metadata={"source": "realtime_bridge"}
-            )
+            # Usar el canal broadcast común en lugar de canales por shard
+            if 'broadcast' in self.channels:
+                self.channels['broadcast'].send({
+                    'type': 'broadcast',
+                    'event': 'realtime-event',
+                    'payload': broadcast_data
+                })
+                
+                message_bus.publish(
+                    content=f"Broadcasted realtime event to all users (from shard {self.shard})",
+                    level=MessageLevel.DEBUG,  # Cambiado a DEBUG
+                    metadata={"source": "realtime_bridge"}
+                )
+            else:
+                message_bus.publish(
+                    content="Broadcast channel not initialized, cannot send realtime event",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": "realtime_bridge"}
+                )
             
         except Exception as e:
             message_bus.publish(
@@ -455,32 +440,32 @@ class RealtimeBridge:
         try:
             # Extraer datos del mensaje
             broadcast_data = payload.get('payload', {})
-            user_id = broadcast_data.get('user_id')
+            username = broadcast_data.get('username')
             event_data = broadcast_data.get('event_data', {})
             
             # Ignorar los mensajes propios
-            if user_id == self.username:
+            if username == self.username:
                 return
                 
             # Emitir el mensaje a través del MessageBus local
             message_bus.publish(
-                content=f"Realtime event received from {user_id}: {event_data.get('content', '')}",
-                level=MessageLevel.INFO,
+                content=f"Realtime event received from {username}: {event_data.get('content', '')}",
+                level=MessageLevel.DEBUG,  # Cambiado a DEBUG
                 pattern_name="realtime_event_remote",
                 metadata={
                     "source": "realtime_bridge",
-                    "remote_user": user_id,
+                    "remote_user": username,
                     "event_data": event_data
                 }
             )
             
             # También emitir un evento específico que pueda ser capturado por la UI
-            message_bus.emit("remote_realtime_event", user_id, event_data)
+            message_bus.emit("remote_realtime_event", username, event_data)
             
         except Exception as e:
             message_bus.publish(
                 content=f"Error handling realtime event broadcast: {e}",
-                level=MessageLevel.ERROR,
+                level=MessageLevel.ERROR,  # Mantener errores en ERROR
                 metadata={"source": "realtime_bridge"}
             )
             
@@ -518,6 +503,7 @@ class RealtimeBridge:
                 # Solo actualizar si tenemos información de shard e información de presencia
                 if self.shard and 'presence' in self.channels and self.channels['presence']:
                     presence_data = {
+                        'username': self.username,
                         'shard': self.shard,
                         'version': self.version,
                         'status': 'online',

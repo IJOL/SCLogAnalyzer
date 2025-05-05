@@ -19,7 +19,7 @@ class ConnectedUsersPanel(wx.Panel):
         
         # Suscribirse a eventos relevantes del MessageBus
         message_bus.on("users_online_updated", self.update_users_list)
-        message_bus.on("remote_stalled_log", self.add_remote_log)
+        message_bus.on("remote_realtime_event", self.add_remote_log)
         
         # Lista de usuarios actualmente conectados
         self.users_online = []
@@ -60,6 +60,7 @@ class ConnectedUsersPanel(wx.Panel):
         self.shared_logs.InsertColumn(1, "Usuario", width=100)
         self.shared_logs.InsertColumn(2, "Tipo", width=100)
         self.shared_logs.InsertColumn(3, "Contenido", width=300)
+        self.shared_logs.InsertColumn(4, "Shard", width=100)
         main_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
         
         # Botones de control
@@ -90,7 +91,7 @@ class ConnectedUsersPanel(wx.Panel):
         
         # Agregar usuarios a la lista
         for i, user in enumerate(self.users_online):
-            user_id = user.get('user_id', 'Unknown')
+            username = user.get('username', 'Unknown')
             shard = user.get('shard', 'Unknown')
             version = user.get('version', 'Unknown')
             status = user.get('status', 'Unknown')
@@ -104,21 +105,22 @@ class ConnectedUsersPanel(wx.Panel):
                 last_active_str = last_active
             
             # Insertar en la lista
-            index = self.users_list.InsertItem(i, user_id)
+            index = self.users_list.InsertItem(i, username)
             self.users_list.SetItem(index, 1, str(shard))
             self.users_list.SetItem(index, 2, str(version))
             self.users_list.SetItem(index, 3, str(status))
             self.users_list.SetItem(index, 4, str(last_active_str))
             
-    def add_remote_log(self, user_id, log_data):
+    def add_remote_log(self, username, log_data):
         """Agrega un log remoto a la lista de logs compartidos"""
-        wx.CallAfter(self._add_ui_remote_log, user_id, log_data)
+        wx.CallAfter(self._add_ui_remote_log, username, log_data)
         
-    def _add_ui_remote_log(self, user_id, log_data):
+    def _add_ui_remote_log(self, username, log_data):
         """Actualiza la UI con un nuevo log remoto"""
         # Obtener datos del log
         timestamp = log_data.get('timestamp', datetime.now().isoformat())
         content = log_data.get('content', '')
+        shard = log_data.get('shard', 'Unknown')
         log_type = log_data.get('type', 'stalled')
         
         # Convertir timestamp ISO a formato más legible
@@ -130,9 +132,10 @@ class ConnectedUsersPanel(wx.Panel):
         
         # Insertar en la lista de logs compartidos
         index = self.shared_logs.InsertItem(0, timestamp_str)  # Insertar al principio
-        self.shared_logs.SetItem(index, 1, user_id)
+        self.shared_logs.SetItem(index, 1, username)
         self.shared_logs.SetItem(index, 2, log_type)
         self.shared_logs.SetItem(index, 3, content)
+        self.shared_logs.SetItem(index, 4, shard)
         
     def on_refresh(self, event):
         """Maneja el evento de clic en el botón refrescar"""
