@@ -170,3 +170,5 @@ nuitka-build/
 memory.json
 .vscode/mcp.json
 .vscode/settings.json
+src/version.py
+supbase.realtime.examples.py

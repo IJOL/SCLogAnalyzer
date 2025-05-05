@@ -1,8 +1,8 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 7
-RELEASE = 0
+MINOR = 8
+RELEASE = 99
 MATURITY = "checkmate"  # "alpha", "beta", or "final"
 PATCH = "003cdfc"
 
