@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 8
-RELEASE = 2
+RELEASE = 3
 MATURITY = "checkmate"  # "alpha", "beta", or "final"
-PATCH = "1450824"
+PATCH = "bc8a4f2"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -15,5 +15,5 @@ def get_version():
 
 # Recent commit messages
 COMMIT_MESSAGES = [
-    "1450824: Refactor RealtimeBridge to simplify broadcast channel usage by replacing manual send with send_broadcast method",
+    "bc8a4f2: Use run_async to handle presence state updates in RealtimeBridge",
 ]
