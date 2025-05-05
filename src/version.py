@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 8
-RELEASE = 0
+RELEASE = 1
 MATURITY = "checkmate"  # "alpha", "beta", or "final"
-PATCH = "44c0b3f"
+PATCH = "0fa6f44"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
