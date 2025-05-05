@@ -4,10 +4,23 @@ import json
 from datetime import datetime
 import threading
 import time
+import traceback  # Añadido para rastrear mejor los errores
+import asyncio  # Añadido para manejar coroutines
 
 # Import Supabase manager
 from .supabase_manager import supabase_manager
 from .message_bus import message_bus, MessageLevel
+
+def run_async(coroutine):
+    """Helper function to run a coroutine synchronously in the event loop"""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        # If no event loop is available in current thread, create a new one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(coroutine)
 
 class RealtimeBridge:
     """
@@ -17,11 +30,11 @@ class RealtimeBridge:
     def __init__(self, supabase_client, config_manager):
         # We'll use the async client instead of the passed sync client
         self.sync_supabase = supabase_client  # Keep reference to sync client
-        # Get the async client
-        self.supabase = supabase_manager.get_async_client()
+        # Get the async client - inicialmente None, lo obtendremos en connect()
+        self.supabase = None
         
         self.config_manager = config_manager
-        self.username = config_manager.get('username', 'Unknown')
+        self.username = config_manager.get('username', None)  # Default to None instead of 'Unknown'
         self.shard = None
         self.version = None
         self.channels = {}
@@ -34,21 +47,64 @@ class RealtimeBridge:
         # Suscribirse a los eventos del MessageBus local que nos interesa compartir
         message_bus.on("shard_version_update", self._handle_shard_version_update)
         message_bus.on("realtime_event", self._handle_realtime_event)
+        message_bus.on("username_change", self.set_username)  # Subscribe to existing username_change events
+        
+    def set_username(self, username, old_username=None):
+        """Sets or updates the username and connects if needed"""
+        if self.username == username:
+            return  # No change needed
+            
+        self.username = username
+        
+        message_bus.publish(
+            content=f"Username updated to: {username}",
+            level=MessageLevel.DEBUG,
+            metadata={"source": "realtime_bridge"}
+        )
+        
+        # If we already have a connection but username changed, reconnect
+        if self.is_connected:
+            message_bus.publish(
+                content="Username changed, reconnecting Realtime Bridge...",
+                level=MessageLevel.INFO,
+                metadata={"source": "realtime_bridge"}
+            )
+            self.disconnect()
+            self.connect()
+        # If we don't have a connection yet but now have a username, connect
+        elif not self.is_connected and username:
+            self.connect()
         
     def connect(self):
         """Inicializa la conexión con Supabase Realtime"""
+        # Check if we have a valid username first
+        if not self.username:
+            message_bus.publish(
+                content="Cannot connect Realtime Bridge: username not set",
+                level=MessageLevel.WARNING,
+                metadata={"source": "realtime_bridge"}
+            )
+            return False
+            
         try:
-            # Ensure we have the async client
+            # Obtener el cliente asíncrono explícitamente
+            self.supabase = run_async(supabase_manager.get_async_client())
+            # Verificar si obtuvimos un cliente válido
             if not self.supabase:
-                self.supabase = supabase_manager.get_async_client()
-                if not self.supabase:
-                    message_bus.publish(
-                        content="Failed to get async Supabase client, cannot connect Realtime Bridge",
-                        level=MessageLevel.ERROR,
-                        metadata={"source": "realtime_bridge"}
-                    )
-                    return False
+                message_bus.publish(
+                    content="Failed to get async Supabase client, cannot connect Realtime Bridge",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "realtime_bridge"}
+                )
+                return False
                 
+            # Registrar la inicialización del cliente
+            message_bus.publish(
+                content="Successfully obtained async Supabase client",
+                level=MessageLevel.DEBUG,
+                metadata={"source": "realtime_bridge"}
+            )
+            
             # Conectarse al canal de usuarios activos
             self._init_presence_channel()
             # Conectarse al canal de broadcast general
@@ -68,6 +124,11 @@ class RealtimeBridge:
         except Exception as e:
             message_bus.publish(
                 content=f"Error connecting Realtime Bridge: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "realtime_bridge"}
+            )
+            message_bus.publish(
+                content=f"Traceback: {traceback.format_exc()}",
                 level=MessageLevel.ERROR,
                 metadata={"source": "realtime_bridge"}
             )
@@ -114,13 +175,47 @@ class RealtimeBridge:
                 }
             })
             
-            # Configurar manejadores de eventos de presencia
-            presence_channel.on('presence', {'event': 'sync'}, lambda payload: self._handle_presence_sync(presence_channel))
-            presence_channel.on('presence', {'event': 'join'}, lambda payload: self._handle_presence_join(payload))
-            presence_channel.on('presence', {'event': 'leave'}, lambda payload: self._handle_presence_leave(payload))
+            # Define the subscription status callback
+            def on_subscribe(status, err=None):
+                if status == 'SUBSCRIBED':
+                    # Registramos nuestra presencia inicial
+                    initial_presence = {
+                        'shard': self.shard,
+                        'version': self.version,
+                        'status': 'online',
+                        'last_active': datetime.now().isoformat(),
+                        'metadata': {}
+                    }
+                    
+                    try:
+                        # Don't use run_async here - this is already in an async context
+                        asyncio.create_task(presence_channel.track(initial_presence))
+                        
+                        message_bus.publish(
+                            content="Connected to Presence channel",
+                            level=MessageLevel.INFO,
+                            metadata={"source": "realtime_bridge"}
+                        )
+                    except Exception as e:
+                        message_bus.publish(
+                            content=f"Error tracking initial presence: {e}",
+                            level=MessageLevel.ERROR,
+                            metadata={"source": "realtime_bridge"}
+                        )
             
-            # Suscribirse al canal
-            presence_channel.subscribe(lambda status: self._handle_presence_subscription(status, presence_channel))
+            # Configurar manejadores de eventos de presencia usando los métodos específicos
+            presence_channel.on_presence_sync(
+                callback=lambda: self._handle_presence_sync(presence_channel)
+            )
+            presence_channel.on_presence_join(
+                callback=lambda key, current, new: self._handle_presence_join({'newPresences': new})
+            )
+            presence_channel.on_presence_leave(
+                callback=lambda key, current, left: self._handle_presence_leave({'leftPresences': left})
+            )
+            
+            # Suscribirse al canal - usar run_async para manejar la coroutine
+            run_async(presence_channel.subscribe(on_subscribe))
             
             self.channels['presence'] = presence_channel
             
@@ -142,11 +237,23 @@ class RealtimeBridge:
         try:
             broadcast_channel = self.supabase.channel('broadcast')
             
-            # Configurar manejadores de eventos de broadcast
-            broadcast_channel.on('broadcast', {'event': 'realtime-event'}, lambda payload: self._handle_realtime_event_broadcast(payload))
+            # Define the subscription status callback
+            def on_subscribe(status, err=None):
+                if status == 'SUBSCRIBED':
+                    message_bus.publish(
+                        content="Connected to Broadcast channel",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "realtime_bridge"}
+                    )
             
-            # Suscribirse al canal
-            broadcast_channel.subscribe()
+            # Configurar manejadores de eventos de broadcast usando el método específico
+            broadcast_channel.on_broadcast(
+                event="realtime-event",
+                callback=self._handle_realtime_event_broadcast
+            )
+            
+            # Suscribirse al canal - usar run_async para manejar la coroutine
+            run_async(broadcast_channel.subscribe(on_subscribe))
             
             self.channels['broadcast'] = broadcast_channel
             
@@ -180,7 +287,7 @@ class RealtimeBridge:
             
             try:
                 # Actualizar nuestro estado en el canal de presencia
-                self.channels['presence'].track(presence_data)
+                run_async(self.channels['presence'].track(presence_data))
                 
                 message_bus.publish(
                     content=f"Updated presence status with shard: {shard}, version: {version}",
@@ -225,7 +332,7 @@ class RealtimeBridge:
     def _handle_presence_sync(self, channel):
         """Maneja la sincronización de estados de presencia"""
         try:
-            presence_state = channel.presenceState()
+            presence_state = channel.presence.state
             
             # Emitir evento con la lista actualizada de usuarios en línea
             users_online = []

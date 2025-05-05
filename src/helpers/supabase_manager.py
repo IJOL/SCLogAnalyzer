@@ -5,6 +5,9 @@ import time
 from supabase import create_client, Client
 # Import async client support
 from supabase.lib.client_options import ClientOptions
+from supabase import AsyncClientOptions
+from supabase import create_async_client
+
 import httpx
 from typing import Optional, Tuple, Dict, Any, Union
 
@@ -199,22 +202,21 @@ class SupabaseManager:
         """
         # If we're already connected and not forcing reconnection, return the existing client
         if self.async_is_initialized and not force:
+            log_message("Using existing async Supabase client (already initialized)", "DEBUG")
             return self.async_supabase
             
+        log_message("Initializing async Supabase client", "INFO")
+        
         try:
             # Make sure we have a valid URL and key
             if not self.is_connected():
                 if not self.connect(config_manager, force):
                     return None
             
-            # Import required libraries for async client
-            from supabase import AsyncClient
-            from supabase import create_client as create_async_client
             
-            # Create async client
-            options = ClientOptions(
-                schema="public",
-                realtime_multiplexed=True  # Enable realtime features
+            # Create async client - without using realtime_multiplexed which is not supported
+            options = AsyncClientOptions(
+                schema="public"
             )
             
             self.async_supabase = create_async_client(
@@ -223,15 +225,19 @@ class SupabaseManager:
                 options=options
             )
             
-            self.async_is_initialized = True
-            
-            # Report success through message bus
-            log_message("Connected to Supabase async client successfully.", "INFO")
+            if self.async_supabase:
+                log_message("Async Supabase client created successfully", "INFO")
+                self.async_is_initialized = True
+            else:
+                log_message("Async Supabase client creation returned None", "ERROR")
+                self.async_is_initialized = False
             
             return self.async_supabase
             
         except Exception as e:
             log_message(f"Error connecting to Supabase async client: {e}", "ERROR")
+            import traceback
+            log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
             self.async_is_initialized = False
             return None
     
