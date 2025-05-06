@@ -501,7 +501,6 @@ def main():
     
     if args.all:
         args.increment = True
-        args.build = True
         args.push = True
     
     # Step 1: Increment version if requested
