@@ -3,14 +3,9 @@
 :: Check for push parameter
 SET PUSH_CHANGES=0
 IF "%1"=="p" SET PUSH_CHANGES=1
-echo Getting commit short hash for patch identifier...
-FOR /F "tokens=* USEBACKQ" %%C IN (`git rev-parse --short HEAD`) DO (
-  SET commit_hash=%%C
-)
-echo Current commit hash: %commit_hash%
 
 echo Incrementing version...
-python src\increment_version.py %commit_hash% %1
+python src\increment_version.py %1
 echo.
 FOR /F "tokens=* USEBACKQ" %%F IN (`python -c "from src.version import get_version; print(get_version())"`) DO (
   SET version=%%F
