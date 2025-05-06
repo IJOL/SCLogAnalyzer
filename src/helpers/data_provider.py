@@ -454,8 +454,17 @@ class SupabaseDataProvider(DataProvider):
         # Normalize the view name
         normalized_view_name = self._normalize_view_name(view_name)
         
+        # Check if the view already exists
+        if self.view_exists(view_name):
+            message_bus.publish(
+                content=f"View {normalized_view_name} already exists, skipping recreation",
+                level=MessageLevel.DEBUG,
+                metadata={"source": self.SOURCE}
+            )
+            return True
+        
         message_bus.publish(
-            content=f"Creating or updating view: {normalized_view_name}",
+            content=f"Creating view: {normalized_view_name}",
             level=MessageLevel.INFO,
             metadata={"source": self.SOURCE}
         )
@@ -468,14 +477,14 @@ class SupabaseDataProvider(DataProvider):
         
         if success:
             message_bus.publish(
-                content=f"Successfully created or updated view: {normalized_view_name}",
+                content=f"Successfully created view: {normalized_view_name}",
                 level=MessageLevel.INFO,
                 metadata={"source": self.SOURCE}
             )
             return True
         else:
             message_bus.publish(
-                content=f"Failed to create or update view '{normalized_view_name}': {result}",
+                content=f"Failed to create view '{normalized_view_name}': {result}",
                 level=MessageLevel.ERROR,
                 metadata={"source": self.SOURCE}
             )

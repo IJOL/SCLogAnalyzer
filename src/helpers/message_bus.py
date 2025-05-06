@@ -481,7 +481,7 @@ class MessageBus:
             # Normal mode - just use event name at INFO level
             self.publish(
                 content=f"Event: {event_name}",
-                level=MessageLevel.INFO,
+                level=MessageLevel.DEBUG,
                 metadata=metadata
             )
 
