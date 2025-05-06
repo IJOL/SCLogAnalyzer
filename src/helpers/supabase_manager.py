@@ -213,6 +213,22 @@ class SupabaseManager:
                 if not self.connect(config_manager, force):
                     return None
             
+            # Attempt anonymous authentication before establishing async connection
+            if config_manager is None:
+                from .config_utils import get_config_manager
+                config_manager = get_config_manager()
+                
+            username = config_manager.get('username', 'Unknown')
+            try:
+                # Try to authenticate anonymously
+                log_message(f"Authenticating anonymously with username: {username} before async connection", "INFO")
+                self.auth_response = self.supabase.auth.sign_in_anonymously(
+                    {"options": {"data": {"username": username}}}
+                )
+                log_message(f"Anonymous authentication successful for user: {username}", "INFO")
+            except Exception as auth_error:
+                log_message(f"Warning: Anonymous authentication failed: {auth_error}. Will continue with async connection.", "WARNING")
+                # Continue with async connection even if auth fails
             
             # Create async client - without using realtime_multiplexed which is not supported
             options = AsyncClientOptions(
@@ -759,6 +775,50 @@ class SupabaseManager:
         """
         self.metadata_cache = None
         log_message("Metadata cache invalidated due to schema change", "DEBUG")
+
+    def sign_in_anonymously(self):
+        """
+        Sign in to Supabase anonymously with the current username.
+        This method uses the username from config_manager to associate with the anonymous account.
+        
+        Returns:
+            tuple: (success, user_data) where success is a boolean and 
+                   user_data contains session information or error details
+        """
+        if not self.is_connected():
+            log_message("Supabase is not connected. Cannot sign in anonymously.", "ERROR")
+            return False, "Not connected to Supabase"
+            
+        try:
+            # Get the current username from config
+            from .config_utils import get_config_manager
+            config_manager = get_config_manager()
+            username = config_manager.get('username', 'Unknown')
+            
+            # Perform anonymous sign-in
+            response = self.supabase.auth.sign_in_anonymously(
+                {"options": {"data": {"username": username}}}
+            )
+            
+            # Extract user info
+            user_info = {
+                "id": response.user.id,
+                "username": username
+            }
+            
+            log_message(f"Anonymous sign-in successful for user: {username}", "INFO")
+            
+            # Emit username_change event to notify subscribers
+            if message_bus:
+                message_bus.emit("username_change", username, username)
+                
+            return True, user_info
+            
+        except Exception as e:
+            log_message(f"Error during anonymous sign-in: {e}", "ERROR")
+            import traceback
+            log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
+            return False, str(e)
 
 # Create a singleton instance
 supabase_manager = SupabaseManager()
