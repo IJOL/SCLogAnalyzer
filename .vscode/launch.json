@@ -1,7 +1,7 @@
 {
     "configurations": [
         {
-            "name": "Python Debugger: Build Project",
+            "name": "Build Project",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/build.py",
@@ -9,7 +9,7 @@
             "args": "${command:pickArgs}"
         },
         {
-            "name": "Python Debugger: Current File",
+            "name": "Current File",
             "type": "debugpy",
             "request": "launch",
             "justMyCode": false,
@@ -19,17 +19,9 @@
         {
             "type": "debugpy",
             "request": "launch",
-            "name": "Launch gui",
+            "name": "SCLogAnalyzer",
             "justMyCode": false,
             "program": "${workspaceFolder}/src/gui.py",
-            "console": "integratedTerminal",
-            "args": []
-        },
-        {
-            "type": "debugpy",
-            "request": "launch",
-            "name": "Launch log_analyzer",
-            "program": "${workspaceFolder}/src/log_analyzer.py",
             "console": "integratedTerminal",
             "args": []
         }

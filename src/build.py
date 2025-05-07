@@ -258,15 +258,10 @@ def increment_version(increment=None):
         else:
             print("Warning: Unable to get current commit hash, PATCH version not updated")
         
-        # Get the last tag
-        last_tag = get_last_tag()
-        if last_tag:
-            print(f"Getting commits since tag: {last_tag}")
-        else:
-            print("No tags found, getting recent commits")
-            
-        # Get and update commit messages since the last tag
-        commits = get_recent_commits(last_tag)
+        # Get and update commit messages starting from the first tag of the current major.minor version
+        # Calling without parameters triggers automatic tag detection based on current version
+        print("Getting commits from the first tag of the current major.minor version")
+        commits = get_recent_commits()
         if commits:
             content = update_commit_messages(content, commits)
             
