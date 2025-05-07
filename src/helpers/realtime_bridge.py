@@ -88,7 +88,7 @@ class RealtimeBridge:
             
         try:
             # Obtener el cliente asíncrono explícitamente
-            self.supabase = run_async(supabase_manager.get_async_client())
+            self.supabase = supabase_manager.get_async_client(self.username)
             # Verificar si obtuvimos un cliente válido
             if not self.supabase:
                 message_bus.publish(
