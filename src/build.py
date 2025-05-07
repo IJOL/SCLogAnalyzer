@@ -57,16 +57,16 @@ def get_last_tag():
 
 def get_recent_commits(since_tag=None):
     """
-    Get all commit messages since the specified tag or from the beginning of current major.minor version
+    Get all commit messages since the specified tag or from the tag immediately before the first one in the current series
     Returns a list of tuples containing (commit_hash, commit_message)
     """
     try:
-        current_version = None
         if since_tag:
             # Use the provided tag
             start_tag = since_tag
         else:
             # Try to determine the current major.minor version from version.py
+            current_version = None
             try:
                 with open(VERSION_FILE, 'r', encoding='utf-8') as f:
                     content = f.read()
@@ -80,37 +80,53 @@ def get_recent_commits(since_tag=None):
                         print(f"Current version detected as {current_version}.x")
             except Exception as e:
                 print(f"Error reading version.py: {e}")
-            
-            # Find the first tag with the current major.minor version
+                
+            # Get all tags in chronological order (oldest to newest)
             try:
-                # Get all tags
                 result = subprocess.run(
-                    ['git', 'tag', '-l'],
+                    ['git', 'tag', '--sort=creatordate'],
                     capture_output=True, text=True, check=True
                 )
-                all_tags = result.stdout.strip().split('\n')
+                all_tags_unfiltered = result.stdout.strip().split('\n')
                 
-                # Filter tags matching current version pattern
-                if current_version:
+                # Filter out tags with -docker or -cli, and prioritize SCLogAnalyzer tags
+                all_tags = [tag for tag in all_tags_unfiltered 
+                           if tag and "-docker" not in tag and "-cli" not in tag]
+                
+                # Log how many tags were filtered
+                print(f"Found {len(all_tags_unfiltered)} total tags, {len(all_tags)} after filtering")
+                
+                start_tag = None
+                
+                if current_version and all_tags:
+                    # Find the first tag in the current version series
                     version_pattern = re.compile(rf'^{re.escape(current_version)}\.(\d+)')
-                    matching_tags = [tag for tag in all_tags if version_pattern.match(tag)]
+                    current_series_tags = [tag for tag in all_tags if version_pattern.match(tag)]
                     
-                    if matching_tags:
-                        # Sort tags by version number
-                        matching_tags.sort(key=lambda t: int(version_pattern.match(t).group(1)))
-                        start_tag = matching_tags[0]  # First tag of current major.minor
-                        print(f"Found starting tag for current version: {start_tag}")
+                    if current_series_tags:
+                        first_tag_in_series = current_series_tags[0]
+                        print(f"First tag in current series: {first_tag_in_series}")
+                        
+                        # Find the tag immediately before the first tag in the current series
+                        try:
+                            first_tag_index = all_tags.index(first_tag_in_series)
+                            if first_tag_index > 0:
+                                start_tag = all_tags[first_tag_index - 1]
+                                print(f"Using previous tag: {start_tag}")
+                            else:
+                                print("First tag in current series is the oldest tag")
+                                start_tag = first_tag_in_series
+                        except ValueError:
+                            print("Could not find first tag in array (should never happen)")
+                            start_tag = get_last_tag()
                     else:
-                        # If no matching tags found, fall back to last tag
+                        print(f"No tags found for current version {current_version}.x")
                         start_tag = get_last_tag()
-                        print(f"No tags found for current version, using last tag: {start_tag}")
                 else:
-                    # If version couldn't be determined, use last tag
+                    print("Could not determine version or no tags found")
                     start_tag = get_last_tag()
-                    print(f"Could not determine current version, using last tag: {start_tag}")
             except subprocess.SubprocessError as e:
                 print(f"Error getting tags: {e}")
-                # Fallback to last tag
                 start_tag = get_last_tag()
                 
         # If we have a starting tag, get commits since that tag, otherwise fall back to last 5 commits
