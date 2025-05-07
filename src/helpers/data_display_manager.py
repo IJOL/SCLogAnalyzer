@@ -628,27 +628,26 @@ class DataDisplayManager:
                     from .data_provider import get_data_provider
                     
                     data_provider = get_data_provider(self.config_manager)
-                    if hasattr(data_provider, 'ensure_dynamic_views'):
-                        # Use our centralized method to ensure all dynamic views exist
-                        message_bus.publish(
-                            content="Ensuring dynamic tab views exist in Supabase using centralized method...",
-                            level=MessageLevel.INFO
-                        )
-                        
-                        # Filter out tab names that conflict with hardcoded tabs
-                        valid_tab_configs = {}
-                        for tab_name, query in config_tabs.items():
-                            if any(tab["title"] == tab_name for tab in hardcoded_tabs):
-                                message_bus.publish(
-                                    content=f"Skipping dynamic tab '{tab_name}' as it conflicts with a hardcoded tab name",
-                                    level=MessageLevel.WARNING
-                                )
-                            else:
-                                valid_tab_configs[tab_name] = query
-                        
-                        # Create all views in a single operation
-                        if valid_tab_configs:
-                            data_provider.ensure_dynamic_views(valid_tab_configs)
+                    # Use our centralized method to ensure all dynamic views exist
+                    message_bus.publish(
+                        content="Ensuring dynamic tab views exist in Supabase using centralized method...",
+                        level=MessageLevel.DEBUG
+                    )
+                    
+                    # Filter out tab names that conflict with hardcoded tabs
+                    valid_tab_configs = {}
+                    for tab_name, query in config_tabs.items():
+                        if any(tab["title"] == tab_name for tab in hardcoded_tabs):
+                            message_bus.publish(
+                                content=f"Skipping dynamic tab '{tab_name}' as it conflicts with a hardcoded tab name",
+                                level=MessageLevel.WARNING
+                            )
+                        else:
+                            valid_tab_configs[tab_name] = query
+                    
+                    # Create all views in a single operation
+                    if valid_tab_configs:
+                        data_provider.ensure_dynamic_views(valid_tab_configs)
                 
                 # Create a tab config for each entry in the tabs section
                 for tab_name, query in config_tabs.items():
