@@ -1,6 +1,14 @@
 {
     "configurations": [
         {
+            "name": "Python Debugger: Build Project",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/build.py",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}"
+        },
+        {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
