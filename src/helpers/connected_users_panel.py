@@ -119,9 +119,9 @@ class ConnectedUsersPanel(wx.Panel):
         """Actualiza la UI con un nuevo log remoto"""
         # Obtener datos del log
         timestamp = log_data.get('timestamp', datetime.now().isoformat())
-        content = log_data.get('content', '')
+        content = log_data.get('metadata', {}).get('content','')
         shard = log_data.get('shard', 'Unknown')
-        log_type = log_data.get('type', 'stalled')
+        log_type = log_data.get('metadata', {}).get('type', 'Unknown')
         
         # Convertir timestamp ISO a formato más legible
         try:
@@ -135,7 +135,7 @@ class ConnectedUsersPanel(wx.Panel):
         self.shared_logs.SetItem(index, 1, username)
         self.shared_logs.SetItem(index, 2, log_type)
         self.shared_logs.SetItem(index, 3, content)
-        self.shared_logs.SetItem(index, 4, shard)
+        self.shared_logs.SetItem(index, 4, shard or 'Unknown')
         
     def on_refresh(self, event):
         """Maneja el evento de clic en el botón refrescar"""
