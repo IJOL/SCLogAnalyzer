@@ -177,7 +177,7 @@ class SupabaseManager:
             if message_bus:
                 message_bus.publish(
                     content="Connected to Supabase successfully.",
-                    level=MessageLevel.INFO
+                    level=MessageLevel.DEBUG
                 )
             else:
                 print("Connected to Supabase successfully.")
@@ -188,7 +188,7 @@ class SupabaseManager:
             self.is_initialized = False
             return False
     
-    def connect_async(self, config_manager=None, force=False):
+    def connect_async(self, config_manager=None, force=False, username=None):
         """
         Connect to Supabase using the async client.
         
@@ -212,13 +212,8 @@ class SupabaseManager:
             if not self.is_connected():
                 if not self.connect(config_manager, force):
                     return None
-            
-            # Attempt anonymous authentication before establishing async connection
-            if config_manager is None:
-                from .config_utils import get_config_manager
-                config_manager = get_config_manager()
-                
-            username = config_manager.get('username', 'Unknown')
+            if not username:
+                return None
             try:
                 # Try to authenticate anonymously
                 log_message(f"Authenticating anonymously with username: {username} before async connection", "INFO")
@@ -234,12 +229,13 @@ class SupabaseManager:
             options = AsyncClientOptions(
                 schema="public"
             )
-            
-            self.async_supabase = create_async_client(
+            from .realtime_bridge import run_async
+
+            self.async_supabase = run_async(create_async_client(
                 self.supabase_url, 
                 self.supabase_key, 
                 options=options
-            )
+            ))
             
             if self.async_supabase:
                 log_message("Async Supabase client created successfully", "INFO")
@@ -257,7 +253,7 @@ class SupabaseManager:
             self.async_is_initialized = False
             return None
     
-    def get_async_client(self):
+    def get_async_client(self,username=None):
         """
         Get the async Supabase client, initializing it if needed.
         
@@ -265,7 +261,7 @@ class SupabaseManager:
             object: The async Supabase client
         """
         if not self.async_is_initialized:
-            return self.connect_async()
+            return self.connect_async(username=username)
         return self.async_supabase
             
     def reconnect(self):
@@ -775,50 +771,6 @@ class SupabaseManager:
         """
         self.metadata_cache = None
         log_message("Metadata cache invalidated due to schema change", "DEBUG")
-
-    def sign_in_anonymously(self):
-        """
-        Sign in to Supabase anonymously with the current username.
-        This method uses the username from config_manager to associate with the anonymous account.
-        
-        Returns:
-            tuple: (success, user_data) where success is a boolean and 
-                   user_data contains session information or error details
-        """
-        if not self.is_connected():
-            log_message("Supabase is not connected. Cannot sign in anonymously.", "ERROR")
-            return False, "Not connected to Supabase"
-            
-        try:
-            # Get the current username from config
-            from .config_utils import get_config_manager
-            config_manager = get_config_manager()
-            username = config_manager.get('username', 'Unknown')
-            
-            # Perform anonymous sign-in
-            response = self.supabase.auth.sign_in_anonymously(
-                {"options": {"data": {"username": username}}}
-            )
-            
-            # Extract user info
-            user_info = {
-                "id": response.user.id,
-                "username": username
-            }
-            
-            log_message(f"Anonymous sign-in successful for user: {username}", "INFO")
-            
-            # Emit username_change event to notify subscribers
-            if message_bus:
-                message_bus.emit("username_change", username, username)
-                
-            return True, user_info
-            
-        except Exception as e:
-            log_message(f"Error during anonymous sign-in: {e}", "ERROR")
-            import traceback
-            log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
-            return False, str(e)
 
 # Create a singleton instance
 supabase_manager = SupabaseManager()
