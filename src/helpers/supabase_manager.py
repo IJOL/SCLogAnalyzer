@@ -2,6 +2,7 @@ import os
 import json
 import re
 import time
+import asyncio
 from supabase import create_client, Client
 # Import async client support
 from supabase.lib.client_options import ClientOptions
@@ -196,6 +197,7 @@ class SupabaseManager:
             config_manager (ConfigManager, optional): If provided, use this config manager
                 instance instead of getting a new one from get_config_manager().
             force (bool, optional): If True, force reconnection even if already connected.
+            username (str, optional): Username to use for anonymous auth
         
         Returns:
             object: The async Supabase client object if successful, None otherwise.
@@ -214,12 +216,14 @@ class SupabaseManager:
                     return None
             if not username:
                 return None
+                
             try:
                 # Try to authenticate anonymously
                 log_message(f"Authenticating anonymously with username: {username} before async connection", "INFO")
-                self.auth_response = self.supabase.auth.sign_in_anonymously(
+                jwt = self.supabase.auth.sign_in_anonymously(
                     {"options": {"data": {"username": username}}}
                 )
+                self.auth_token = jwt.session.access_token 
                 log_message(f"Anonymous authentication successful for user: {username}", "INFO")
             except Exception as auth_error:
                 log_message(f"Warning: Anonymous authentication failed: {auth_error}. Will continue with async connection.", "WARNING")
@@ -229,13 +233,21 @@ class SupabaseManager:
             options = AsyncClientOptions(
                 schema="public"
             )
-            from .realtime_bridge import run_async
-
-            self.async_supabase = run_async(create_async_client(
+            
+            # Importación tardía para evitar dependencia circular
+            from .realtime_bridge import run_coroutine
+            
+            # Usar la función run_coroutine que aprovecha el singleton de RealtimeBridge
+            # sin necesidad de crear nuevas instancias o bucles de eventos redundantes
+            self.async_supabase = run_coroutine(create_async_client(
                 self.supabase_url, 
                 self.supabase_key, 
                 options=options
             ))
+            
+            # Conectar el cliente y establecer el token de autenticación
+            run_coroutine(self.async_supabase.realtime.connect())
+            run_coroutine(self.async_supabase.realtime.set_auth(self.auth_token))
             
             if self.async_supabase:
                 log_message("Async Supabase client created successfully", "INFO")
@@ -253,7 +265,7 @@ class SupabaseManager:
             self.async_is_initialized = False
             return None
     
-    def get_async_client(self,username=None):
+    def get_async_client(self, username=None):
         """
         Get the async Supabase client, initializing it if needed.
         

@@ -11,16 +11,36 @@ import asyncio  # Añadido para manejar coroutines
 from .supabase_manager import supabase_manager
 from .message_bus import message_bus, MessageLevel
 
-def run_async(coroutine):
-    """Helper function to run a coroutine synchronously in the event loop"""
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        # If no event loop is available in current thread, create a new one
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+# Variable global para almacenar el singleton de RealtimeBridge
+_realtime_bridge_instance = None
+
+# Función auxiliar global para ejecutar coroutines desde otros módulos
+def run_coroutine(coroutine):
+    """
+    Ejecuta una coroutine utilizando el bucle de eventos del RealtimeBridge singleton.
+    Esta función debe usarse desde otros módulos que necesiten ejecutar código asíncrono.
     
-    return loop.run_until_complete(coroutine)
+    Args:
+        coroutine: La coroutine a ejecutar
+        
+    Returns:
+        El resultado de la coroutine
+    """
+    global _realtime_bridge_instance
+    
+    # Si no hay instancia, iniciamos un bucle de eventos temporal
+    if _realtime_bridge_instance is None or not _realtime_bridge_instance.event_loop_running:
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # If no event loop is available in current thread, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        return loop.run_until_complete(coroutine)
+    
+    # Si ya existe una instancia con un bucle de eventos, la usamos
+    return _realtime_bridge_instance._run_in_loop(coroutine)
 
 class RealtimeBridge:
     """
@@ -28,6 +48,11 @@ class RealtimeBridge:
     permitir la comunicación entre diferentes instancias de SCLogAnalyzer.
     """
     def __init__(self, supabase_client, config_manager):
+        global _realtime_bridge_instance
+        
+        # Registrar esta instancia como la instancia singleton global
+        _realtime_bridge_instance = self
+        
         # We'll use the async client instead of the passed sync client
         self.sync_supabase = supabase_client  # Keep reference to sync client
         # Get the async client - inicialmente None, lo obtendremos en connect()
@@ -41,8 +66,13 @@ class RealtimeBridge:
         self.is_connected = False
         self.heartbeat_active = False
         self.heartbeat_thread = None
-        # Usar el intervalo configurable o el valor por defecto de 120 segundos
-        self.heartbeat_interval = config_manager.get('active_users_update_interval', 120)  # Segundos
+        # Usar el intervalo configurable o el valor por defecto de 30 segundos (cambiado de 120)
+        self.heartbeat_interval = config_manager.get('active_users_update_interval', 30)  # Segundos
+        
+        # Nuevo: thread y loop dedicados para asyncio
+        self.event_loop = None
+        self.event_loop_thread = None
+        self.event_loop_running = False
         
         # Suscribirse a los eventos del MessageBus local que nos interesa compartir
         message_bus.on("shard_version_update", self._handle_shard_version_update)
@@ -87,6 +117,9 @@ class RealtimeBridge:
             return False
             
         try:
+            # Iniciar un bucle de eventos dedicado si no existe
+            self._start_event_loop()
+            
             # Obtener el cliente asíncrono explícitamente
             self.supabase = supabase_manager.get_async_client(self.username)
             # Verificar si obtuvimos un cliente válido
@@ -149,6 +182,9 @@ class RealtimeBridge:
             self.channels = {}
             self.is_connected = False
             
+            # Detener el bucle de eventos dedicado
+            self._stop_event_loop()
+            
             message_bus.publish(
                 content="Realtime Bridge disconnected",
                 level=MessageLevel.INFO,
@@ -163,11 +199,86 @@ class RealtimeBridge:
                 metadata={"source": "realtime_bridge"}
             )
             return False
+            
+    def _start_event_loop(self):
+        """Inicia un thread dedicado para ejecutar el bucle de eventos asyncio"""
+        if self.event_loop_running:
+            return  # Ya está en ejecución
+            
+        def run_event_loop_forever():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self.event_loop = loop
+            
+            message_bus.publish(
+                content="Dedicated asyncio event loop started",
+                level=MessageLevel.DEBUG,
+                metadata={"source": "realtime_bridge"}
+            )
+            
+            try:
+                # Ejecutar el bucle de eventos indefinidamente
+                loop.run_forever()
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Error in event loop thread: {e}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "realtime_bridge"}
+                )
+            finally:
+                loop.close()
+                self.event_loop = None
+                message_bus.publish(
+                    content="Dedicated asyncio event loop closed",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "realtime_bridge"}
+                )
+                
+        self.event_loop_running = True
+        self.event_loop_thread = threading.Thread(target=run_event_loop_forever, daemon=True)
+        self.event_loop_thread.start()
+        
+        # Un pequeño retraso para asegurarse de que el bucle esté listo
+        time.sleep(0.5)
+        
+    def _stop_event_loop(self):
+        """Detiene el bucle de eventos dedicado"""
+        if not self.event_loop_running:
+            return
+            
+        self.event_loop_running = False
+        
+        if self.event_loop:
+            # Programar la detención del bucle desde dentro del mismo bucle
+            if hasattr(self.event_loop, 'call_soon_threadsafe'):
+                self.event_loop.call_soon_threadsafe(self.event_loop.stop)
+            
+        if self.event_loop_thread and self.event_loop_thread.is_alive():
+            self.event_loop_thread.join(timeout=3)
+            
+        self.event_loop_thread = None
+            
+    def _run_in_loop(self, coroutine):
+        """Ejecuta una coroutine en el bucle de eventos dedicado"""
+        if not self.event_loop or not self.event_loop_running:
+            # Si no hay un bucle de eventos dedicado, usamos el método estándar
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # If no event loop is available in current thread, create a new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            return loop.run_until_complete(coroutine)
+            
+        # Crear un objeto Future para obtener el resultado
+        future = asyncio.run_coroutine_threadsafe(coroutine, self.event_loop)
+        return future.result(10)  # Timeout de 10 segundos
         
     def _init_presence_channel(self):
         """Inicializa el canal de presencia para rastrear usuarios activos"""
         try:
-            presence_channel = self.supabase.channel('online-users', {
+            presence_channel = self.supabase.realtime.channel('online-users', {
                 'config': {
                     'presence': {
                         'key': self.username,
@@ -215,8 +326,8 @@ class RealtimeBridge:
                 callback=lambda key, current, left: self._handle_presence_leave(key, current, left)
             )
             
-            # Suscribirse al canal - usar run_async para manejar la coroutine
-            run_async(presence_channel.subscribe(on_subscribe))
+            # Suscribirse al canal - usar _run_in_loop para manejar la coroutine
+            self._run_in_loop(presence_channel.subscribe(on_subscribe))
             
             self.channels['presence'] = presence_channel
             
@@ -225,7 +336,6 @@ class RealtimeBridge:
                 level=MessageLevel.DEBUG,
                 metadata={"source": "realtime_bridge"}
             )
-            
         except Exception as e:
             message_bus.publish(
                 content=f"Error initializing presence channel: {e}",
@@ -236,7 +346,7 @@ class RealtimeBridge:
     def _init_broadcast_channel(self):
         """Inicializa el canal de broadcast para mensajes generales"""
         try:
-            broadcast_channel = self.supabase.channel('broadcast')
+            broadcast_channel = self.supabase.channel('broadcast',{"config": {"broadcast": {"self": True}}})
             
             # Define the subscription status callback
             def on_subscribe(status, err=None):
@@ -253,11 +363,19 @@ class RealtimeBridge:
                 callback=self._handle_realtime_event_broadcast
             )
             
-            # Suscribirse al canal - usar run_async para manejar la coroutine
-            run_async(broadcast_channel.subscribe(on_subscribe))
+            # Suscribirse al canal - usar _run_in_loop para manejar la coroutine
+            self._run_in_loop(broadcast_channel.subscribe(on_subscribe))
             
             self.channels['broadcast'] = broadcast_channel
             
+            self._handle_realtime_event({
+                'username': self.username,
+                'timestamp': datetime.now().isoformat(),
+                'shard': self.shard,
+                'version': self.version,
+                'last_active': datetime.now().isoformat(),
+                'metadata': {'content': 'Connected to broadcast channel', 'type': 'info'}
+            })
             message_bus.publish(
                 content="Initialized broadcast channel",
                 level=MessageLevel.DEBUG,
@@ -296,7 +414,7 @@ class RealtimeBridge:
             
             try:
                 # Actualizar nuestro estado en el canal de presencia
-                run_async(self.channels['presence'].track(presence_data))
+                self._run_in_loop(self.channels['presence'].track(presence_data))
                 
                 message_bus.publish(
                     content=f"Updated presence status with shard: {shard}, version: {version}",
@@ -395,8 +513,6 @@ class RealtimeBridge:
             
     def _handle_realtime_event(self, event_data):
         """Maneja el evento de realtime_event para transmitirlo a todos los usuarios"""
-        if not self.shard:  # No transmitimos si no sabemos nuestro shard
-            return
             
         try:
             # Transmitir el evento en tiempo real a todos los usuarios
@@ -410,7 +526,7 @@ class RealtimeBridge:
             
             # Usar el canal broadcast común en lugar de canales por shard
             if 'broadcast' in self.channels:
-                self.channels['broadcast'].send_broadcast('realtime-event', broadcast_data)
+                self._run_in_loop(self.channels['broadcast'].send_broadcast('realtime-event', broadcast_data))
                 
                 message_bus.publish(
                     content=f"Broadcasted realtime event to all users (from shard {self.shard})",
@@ -436,13 +552,9 @@ class RealtimeBridge:
         try:
             # Extraer datos del mensaje
             broadcast_data = payload.get('payload', {})
-            username = broadcast_data.get('username')
-            event_data = broadcast_data.get('event_data', {})
-            
-            # Ignorar los mensajes propios
-            if username == self.username:
-                return
-                
+            username = broadcast_data.get('username','Unknown')
+            event_data = broadcast_data.get('event_data', payload)
+                            
             # Emitir el mensaje a través del MessageBus local
             message_bus.publish(
                 content=f"Realtime event received from {username}: {event_data.get('content', '')}",
@@ -497,7 +609,7 @@ class RealtimeBridge:
         while self.heartbeat_active:
             try:
                 # Solo actualizar si tenemos información de shard e información de presencia
-                if self.shard and 'presence' in self.channels and self.channels['presence']:
+                if 'presence' in self.channels and self.channels['presence'] and self.username!= 'Unknown':
                     presence_data = {
                         'username': self.username,
                         'shard': self.shard,
@@ -507,8 +619,8 @@ class RealtimeBridge:
                         'metadata': {}
                     }
                     
-                    # Actualizar estado de presencia - usar run_async para coroutines
-                    run_async(self.channels['presence'].track(presence_data))
+                    # Actualizar estado de presencia - usar _run_in_loop para coroutines
+                    self._run_in_loop(self.channels['presence'].track(presence_data))
                     
                     message_bus.publish(
                         content="Heartbeat presence update sent",
