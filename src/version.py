@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 8
-RELEASE = 5
+RELEASE = 6
 MATURITY = "checkmate"  # "alpha", "beta", or "final"
-PATCH = "4ebab35"
+PATCH = "d2f2325"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -55,4 +55,11 @@ COMMIT_MESSAGES = [
 
     # Version v0.8.5-9e97466-checkmate-docker
     "4ebab35: Refactor launch configurations in VSCode and update version increment logic to fetch commits from the first tag of the current major.minor version",
+    "9314c86: Refactor get_recent_commits: improve tag filtering logic and clarify version series handling",
+    "b71efac: Remove increment_version.py script to streamline version management process",
+    "a2f35dc: Update PATCH version to 4ebab35 and add recent commit messages for v0.8.5 series",
+    "5c2c732: Fix remote log handling: update log_data access to use metadata and ensure default values for content and log_type",
+    "fc130ca: Refactor dynamic view handling: improve logging level to DEBUG and streamline tab validation process",
+    "557cf4a: Refactor SupabaseDataProvider: streamline view creation logic and improve debug messaging",
+    "d2f2325: Refactor RealtimeBridge and SupabaseManager: implement dedicated asyncio event loop and streamline coroutine execution",
 ]
