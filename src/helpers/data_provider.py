@@ -407,9 +407,7 @@ class SupabaseDataProvider(DataProvider):
         for tab_name, query in tab_configs.items():
             try:
                 # For each view, call the low-level method without schema change events
-                if not self._create_view_without_schema_change(tab_name, query):
-                    success = False
-                else:
+                if self._create_view_without_schema_change(tab_name, query):
                     views_created = True
                     
             except Exception as e:
@@ -461,7 +459,7 @@ class SupabaseDataProvider(DataProvider):
                 level=MessageLevel.DEBUG,
                 metadata={"source": self.SOURCE}
             )
-            return True
+            return False
         
         message_bus.publish(
             content=f"Creating view: {normalized_view_name}",
@@ -502,10 +500,10 @@ class SupabaseDataProvider(DataProvider):
             bool: True if the view was created or updated successfully, False otherwise
         """
         # Use the internal method to create the view
-        success = self._create_view_without_schema_change(view_name, query)
+        created = self._create_view_without_schema_change(view_name, query)
         
         # Emit schema_change event if the view was created or updated successfully
-        if success and message_bus:
+        if created and message_bus:
             message_bus.emit("schema_change")
             message_bus.publish(
                 content="Emitted schema_change event to invalidate metadata cache",
@@ -513,7 +511,7 @@ class SupabaseDataProvider(DataProvider):
                 metadata={"source": self.SOURCE}
             )
         
-        return success
+        return created
     
     def _normalize_view_name(self, view_name: str) -> str:
         """
@@ -685,10 +683,10 @@ class SupabaseDataProvider(DataProvider):
             )
             
             # Create the view if it doesn't exist or update it
-            if not self.create_or_ensure_view_exists(table_name, query):
+            if self.create_or_ensure_view_exists(table_name, query):
                 message_bus.publish(
-                    content=f"Failed to create or verify view for tab '{table_name}'",
-                    level=MessageLevel.ERROR,
+                    content=f"Created view for tab '{table_name}'",
+                    level=MessageLevel.DEBUG,
                     metadata={"source": self.SOURCE}
                 )
                 return []
