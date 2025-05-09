@@ -1079,6 +1079,7 @@ def main():
     # Mutex-based single-instance check
     mutex = win32event.CreateMutex(None, False, MUTEX_NAME)
     if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+        sys.stdout = sys.__stdout__
         print("\nERROR: Another instance of SC Log Analyzer is already running.")
         print("Please close the existing instance before starting a new one.\n")
         wx.MessageBox(
