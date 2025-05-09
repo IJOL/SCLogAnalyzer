@@ -473,7 +473,7 @@ class RealtimeBridge:
                 username = presence.get('username')
                 message_bus.publish(
                     content=f"User '{username}' is now online",
-                    level=MessageLevel.INFO,  # Mantener esto en INFO para visibilidad de usuario
+                    level=MessageLevel.DEBUG,  # Mantener esto en INFO para visibilidad de usuario
                     metadata={"source": "realtime_bridge", "event": "user_joined"}
                 )
             
@@ -496,7 +496,7 @@ class RealtimeBridge:
                 username = presence.get('username')
                 message_bus.publish(
                     content=f"User '{username}' went offline",
-                    level=MessageLevel.INFO,
+                    level=MessageLevel.DEBUG,
                     metadata={"source": "realtime_bridge", "event": "user_left"}
                 )
             
