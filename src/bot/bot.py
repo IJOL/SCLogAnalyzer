@@ -401,7 +401,11 @@ class StatusBoardBot(commands.Cog):
         # Build the table header
         header_parts = []
         for col, short in column_names.items():
-            header_parts.append(f"{short:<{column_widths[col]}}")
+            if col == "Jugador":
+                header_parts.append(f"{short:<{column_widths[col]}}")
+            else:
+                # Align numeric column headers to the right
+                header_parts.append(f"{short:>{column_widths[col]}}")
         
         header = " | ".join(header_parts)
         separator = "-" * (sum(column_widths.values()) + len(column_names) * 3 - 1)
@@ -414,9 +418,54 @@ class StatusBoardBot(commands.Cog):
             row_parts = []
             for col in column_names:
                 value = str(row.get(col, ''))[:column_widths[col]]
-                row_parts.append(f"{value:<{column_widths[col]}}")
+                if col == "Jugador":
+                    # Align player names to the left
+                    row_parts.append(f"{value:<{column_widths[col]}}")
+                else:
+                    # Align numeric values to the right
+                    row_parts.append(f"{value:>{column_widths[col]}}")
             
             message += f"{' | '.join(row_parts)}\n"
+
+        # Calculate total kills and deaths
+        total_kills = 0
+        total_deaths = 0
+        for row in sorted_data:
+            try:
+                kills = float(row.get(kills_key, 0))
+                total_kills += kills
+            except (ValueError, TypeError):
+                pass
+                
+            try:
+                deaths = float(row.get(deaths_key, 0))
+                total_deaths += deaths
+            except (ValueError, TypeError):
+                pass
+
+        # Add a separator line
+        message += f"{separator}\n"
+        
+        # Add the totals row with proper alignment
+        totals_row = []
+        for col in column_names.keys():
+            if col == "Jugador":
+                totals_row.append(f"{'TOTAL':<{column_widths[col]}}")
+            elif col == kills_key:
+                total_kills_str = str(int(total_kills) if total_kills.is_integer() else total_kills)
+                totals_row.append(f"{total_kills_str:>{column_widths[col]}}")
+            elif col == deaths_key:
+                total_deaths_str = str(int(total_deaths) if total_deaths.is_integer() else total_deaths)
+                totals_row.append(f"{total_deaths_str:>{column_widths[col]}}")
+            else:
+                totals_row.append(f"{'':<{column_widths[col]}}")
+        
+        message += f"{' | '.join(totals_row)}\n"
+
+        # Add the timestamp of last update after the totals
+        import datetime
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        message += f"\nLast updated: {current_time}"
     
         message += "```"
         
