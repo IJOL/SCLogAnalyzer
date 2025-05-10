@@ -307,10 +307,9 @@ class ConnectedUsersPanel(wx.Panel):
         # Intentar obtener la instancia de RealtimeBridge y forzar una sincronización
         try:
             main_frame = wx.GetTopLevelParent(self)
-            if hasattr(main_frame, 'realtime_bridge'):
-                realtime_bridge = main_frame.realtime_bridge
-                if hasattr(realtime_bridge, '_handle_presence_sync') and 'presence' in realtime_bridge.channels:
-                    realtime_bridge._handle_presence_sync(realtime_bridge.channels['presence'])
+            realtime_bridge = main_frame.realtime_bridge
+            if 'general' in realtime_bridge.channels:
+                realtime_bridge._handle_presence_sync(realtime_bridge.channels['general'])
         except Exception as e:
             message_bus.publish(
                 content=f"Error refreshing users list: {e}",
