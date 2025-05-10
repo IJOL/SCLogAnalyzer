@@ -207,7 +207,7 @@ class SupabaseManager:
             log_message("Using existing async Supabase client (already initialized)", "DEBUG")
             return self.async_supabase
             
-        log_message("Initializing async Supabase client", "INFO")
+        log_message("Initializing async Supabase client", "DEBUG")
         
         try:
             # Make sure we have a valid URL and key
@@ -224,7 +224,7 @@ class SupabaseManager:
                     {"options": {"data": {"username": username}}}
                 )
                 self.auth_token = jwt.session.access_token 
-                log_message(f"Anonymous authentication successful for user: {username}", "INFO")
+                log_message(f"Anonymous authentication successful for user: {username}", "DEBUG")
             except Exception as auth_error:
                 log_message(f"Warning: Anonymous authentication failed: {auth_error}. Will continue with async connection.", "WARNING")
                 # Continue with async connection even if auth fails
