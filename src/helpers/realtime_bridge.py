@@ -46,13 +46,13 @@ class RealtimeBridge:
     """
     Clase puente que conecta el MessageBus local con Supabase Realtime para
     permitir la comunicación entre diferentes instancias de SCLogAnalyzer.
+    Por defecto es singleton, pero puede instanciarse como clase normal para tests.
     """
-    def __init__(self, supabase_client, config_manager):
-        global _realtime_bridge_instance
-        
-        # Registrar esta instancia como la instancia singleton global
-        _realtime_bridge_instance = self
-        
+    def __init__(self, supabase_client, config_manager, use_singleton=True):
+        if use_singleton:
+            global _realtime_bridge_instance
+            _realtime_bridge_instance = self
+            
         # We'll use the async client instead of the passed sync client
         self.sync_supabase = supabase_client  # Keep reference to sync client
         # Get the async client - inicialmente None, lo obtendremos en connect()
@@ -73,6 +73,9 @@ class RealtimeBridge:
         self.event_loop = None
         self.event_loop_thread = None
         self.event_loop_running = False
+        
+        # Nuevo: diccionario para almacenar la última actividad de cada usuario
+        self.last_activity = {}  # username -> last ping timestamp
         
         # Suscribirse a los eventos del MessageBus local que nos interesa compartir
         message_bus.on("shard_version_update", self._handle_shard_version_update)
@@ -361,18 +364,19 @@ class RealtimeBridge:
                 )
 
     def _handle_presence_sync(self, channel):
-        """Maneja la sincronización de estados de presencia"""
+        """Maneja la sincronización de estados de presencia. Usa la hora de última actividad basada en pings si está disponible."""
         try:
             presence_state = channel.presence.state
             users_online = []
             for username, presences in presence_state.items():
                 for presence in presences:
+                    last_active = self.last_activity.get(username, presence.get('last_active'))
                     users_online.append({
                         'username': username,
                         'shard': presence.get('shard'),
                         'version': presence.get('version'),
                         'status': presence.get('status'),
-                        'last_active': presence.get('last_active'),
+                        'last_active': last_active,
                         'metadata': presence.get('metadata', {})
                     })
             message_bus.emit("users_online_updated", users_online)
@@ -482,6 +486,15 @@ class RealtimeBridge:
                 }
             )
             
+            
+            # Filtrar y procesar pings
+            if event_data.get('type') == 'ping':
+                username = event_data.get('username')
+                timestamp = event_data.get('timestamp')
+                if username and timestamp:
+                    self.last_activity[username] = timestamp
+                return  # No visualizar ni emitir evento para pings
+
             # También emitir un evento específico que pueda ser capturado por la UI
             message_bus.emit("remote_realtime_event", username, event_data)
             
@@ -498,7 +511,7 @@ class RealtimeBridge:
             return
             
         self.heartbeat_active = True
-        self.heartbeat_thread = threading.Thread(target=self._heartbeat_worker, daemon=True)
+        self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         self.heartbeat_thread.start()
         
         message_bus.publish(
@@ -519,8 +532,8 @@ class RealtimeBridge:
             metadata={"source": "realtime_bridge"}
         )
         
-    def _heartbeat_worker(self):
-        """Worker thread para enviar actualizaciones periódicas de estado"""
+    def _heartbeat_loop(self):
+        """Bucle de heartbeat: además de la lógica de presencia, emite un ping broadcast con timestamp actual."""
         while self.heartbeat_active:
             try:
                 # Solo actualizar si tenemos información de shard e información de presencia
@@ -540,6 +553,15 @@ class RealtimeBridge:
                         level=MessageLevel.DEBUG,
                         metadata={"source": "realtime_bridge"}
                     )
+                
+                # Emitir ping broadcast
+                ping_msg = {
+                    'type': 'ping',
+                    'username': self.username,
+                    'timestamp': datetime.now().isoformat(),
+                }
+                self._handle_realtime_event(ping_msg)
+                
             except Exception as e:
                 message_bus.publish(
                     content=f"Error in heartbeat worker: {e}",
@@ -552,3 +574,9 @@ class RealtimeBridge:
                 if not self.heartbeat_active:
                     break
                 time.sleep(1)
+
+    def get_last_activity(self, username=None):
+        """Devuelve la última hora de actividad de un usuario o de todos."""
+        if username:
+            return self.last_activity.get(username)
+        return dict(self.last_activity)
