@@ -1,9 +1,9 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 8
-RELEASE = 6
-MATURITY = "checkmate"  # "alpha", "beta", or "final"
+MINOR = 9
+RELEASE = 99
+MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
 PATCH = "d2f2325"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
