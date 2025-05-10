@@ -223,7 +223,6 @@ class SupabaseManager:
                 jwt = self.supabase.auth.sign_in_anonymously(
                     {"options": {"data": {"username": username}}}
                 )
-                self.auth_token = jwt.session.access_token 
                 log_message(f"Anonymous authentication successful for user: {username}", "DEBUG")
             except Exception as auth_error:
                 log_message(f"Warning: Anonymous authentication failed: {auth_error}. Will continue with async connection.", "WARNING")
@@ -245,9 +244,8 @@ class SupabaseManager:
                 options=options
             ))
             
-            # Conectar el cliente y establecer el token de autenticación
+            # Conectar el cliente (ya no se llama set_auth manualmente)
             run_coroutine(self.async_supabase.realtime.connect())
-            run_coroutine(self.async_supabase.realtime.set_auth(self.auth_token))
             
             if self.async_supabase:
                 log_message("Async Supabase client created successfully", "INFO")
