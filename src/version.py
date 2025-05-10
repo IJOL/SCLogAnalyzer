@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 99
+RELEASE = 0
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "d2f2325"
+PATCH = "4480e51"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -15,51 +15,17 @@ def get_version():
 
 # Recent commit messages
 COMMIT_MESSAGES = [
-    # Commits for v0.8.x series
-    "4e6bda6: Update regex pattern for player death to include additional conditions for killer identification",
-    "e99b427: Refactor configuration handling in ConfigDialog and LogAnalyzerFrame to improve change detection and event processing",
-    "d6a518d: Add realtime users feature and connection bridge",
-    "9100e5b: Add Check DB button and database component verification in Supabase onboarding",
-    "bc4a477: Remove active_users table checks and related logic from Supabase onboarding and RealtimeBridge",
-    "7d525c3: Refactor RealtimeBridge to use async Supabase client and add error handling for connection failures",
-    "cc26ebb: Enhance LogAnalyzerFrame to support debug mode initialization and adjust message logging level accordingly",
-    "d01f97f: Enhance RealtimeBridge and SupabaseManager for async client support and improved error handling",
-    "6c0f90c: Refactor ConnectedUsersPanel and RealtimeBridge to use 'username' instead of 'user_id' and enhance logging with shard information",
-    "da93f5b: Update maturity level in version.py from \"wikelo\" to \"checkmate\"",
-    "44c0b3f: Update version.py to reflect new MINOR and RELEASE numbers",
-
-    # Version v0.8.0-44c0b3f-checkmate-docker
-    "0fa6f44: Increment version to v0.8.0-44c0b3f-checkmate",
-
-    # Version v0.8.1-0fa6f44-checkmate-docker
-    "385ec00: Increment version to v0.8.1-0fa6f44-checkmate",
-    "1450824: Refactor RealtimeBridge to simplify broadcast channel usage by replacing manual send with send_broadcast method",
-
-    # Version v0.8.2-1450824-checkmate-docker
-    "1b1ebe5: Increment version to v0.8.2-1450824-checkmate",
-    "bc8a4f2: Use run_async to handle presence state updates in RealtimeBridge",
-
-    # Version v0.8.3-bc8a4f2-checkmate-docker
-    "d2a299d: Increment version to v0.8.3-bc8a4f2-checkmate",
-    "e1d0ab3: Enhance SupabaseDataProvider view creation logic and adjust message levels in MessageBus",
-    "157edc5: Add anonymous authentication support in SupabaseManager",
-    "30cde10: Refactor build process: consolidate increment_version.py and build.bat into a single build.py script",
-    "e582e2d: Remove redundant build argument in main function of build.py",
-    "99fe424: Update async client retrieval in RealtimeBridge to use username for better context",
-    "3f5ec0d: Refactor SupabaseManager: enhance async connection handling and remove unused anonymous sign-in method",
-    "42482b1: Increment version to v0.8.4-3f5ec0d-checkmate",
-
-    # Version v0.8.4-3f5ec0d-checkmate-docker
-    "9e97466: Add launch configuration for building project in VSCode",
-    "83b41d7: Increment version to v0.8.5-9e97466-checkmate",
-
-    # Version v0.8.5-9e97466-checkmate-docker
-    "4ebab35: Refactor launch configurations in VSCode and update version increment logic to fetch commits from the first tag of the current major.minor version",
-    "9314c86: Refactor get_recent_commits: improve tag filtering logic and clarify version series handling",
-    "b71efac: Remove increment_version.py script to streamline version management process",
-    "a2f35dc: Update PATCH version to 4ebab35 and add recent commit messages for v0.8.5 series",
-    "5c2c732: Fix remote log handling: update log_data access to use metadata and ensure default values for content and log_type",
-    "fc130ca: Refactor dynamic view handling: improve logging level to DEBUG and streamline tab validation process",
-    "557cf4a: Refactor SupabaseDataProvider: streamline view creation logic and improve debug messaging",
-    "d2f2325: Refactor RealtimeBridge and SupabaseManager: implement dedicated asyncio event loop and streamline coroutine execution",
+    # Commits for v0.9.x series
+    "339eff6: Enhance leaderboard display: align numeric columns, add totals for kills and deaths, and include last update timestamp",
+    "364b342: Add filters for current mode and shard in ConnectedUsersPanel; update log entry handling to include mode",
+    "b9aa870: Fix mutex check output: restore stdout before error message for clarity",
+    "f7fccd5: Add stdout redirection control: implement environment variable check and enable/disable functions",
+    "1b8f86e: Change log level to DEBUG for async Supabase client initialization and authentication success messages",
+    "d2caab2: Add test CLI for SCLogAnalyzer with simulated users and RealtimeBridge integration",
+    "a388adc: Remove manual authentication token setting in SupabaseManager during async connection",
+    "5f205ab: Fix presence synchronization in ConnectedUsersPanel to use 'general' channel",
+    "053690b: Refactor RealtimeBridge to use a single 'general' channel for presence and broadcast communication",
+    "d88a5ca: Bump version to v0.9.99-d2f2325-pyam-exhang",
+    "5708151: Refactor test CLI to support multiprocessing for simulated users and enhance RealtimeBridge integration",
+    "4480e51: Enhance RealtimeBridge to track user activity and improve presence synchronization with ping broadcasts",
 ]
