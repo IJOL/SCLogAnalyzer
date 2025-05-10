@@ -5,6 +5,7 @@ from enum import Enum, auto
 from typing import Dict, List, Callable, Optional, Any
 import sys
 import logging
+import os
 
 # Configure logger for components that don't use message bus
 default_logger = logging.getLogger("default")
@@ -12,6 +13,11 @@ default_handler = logging.StreamHandler(sys.stdout)
 default_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s: %(message)s'))
 default_logger.addHandler(default_handler)
 default_logger.setLevel(logging.INFO)
+
+# Permite controlar la redirección de stdout a message_bus para scripts de test.
+# Si la variable de entorno SCLOG_DISABLE_STDOUT_REDIRECT está a '1', no se redirige stdout.
+DISABLE_STDOUT_REDIRECT = os.environ.get('SCLOG_DISABLE_STDOUT_REDIRECT', '0') == '1'
+_original_stdout = sys.stdout
 
 class RedirectText:
     """Class to redirect stdout to the message bus."""
@@ -136,7 +142,8 @@ class MessageBus:
         self.filters = {}  # Filters for conditional message processing
         self.debug_mode = False  # Debug mode flag for peeking at messages
         self.redirect_stdout = sys.stdout  # Store original stdout
-        sys.stdout = RedirectText()  # Redirect stdout to the message bus
+        if not DISABLE_STDOUT_REDIRECT:
+            sys.stdout = RedirectText()
 
     def set_debug_mode(self, enabled: bool) -> None:
         """
@@ -634,3 +641,15 @@ def log_message(content, level="INFO", pattern_name=None, metadata=None):
         # Add pattern name to message if provided
         full_message = f"[{pattern_name}] {content}" if pattern_name else content
         default_logger.log(log_level, full_message)
+
+# Funciones públicas para alternar la redirección en tiempo de ejecución
+
+def enable_stdout_redirect():
+    """Redirige sys.stdout al message_bus (solo si no está desactivado globalmente)."""
+    if not DISABLE_STDOUT_REDIRECT:
+        sys.stdout = RedirectText()
+
+def disable_stdout_redirect():
+    """Restaura sys.stdout al valor original (directo a consola)."""
+    global _original_stdout
+    sys.stdout = _original_stdout
