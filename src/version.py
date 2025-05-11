@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 2
+RELEASE = 3
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "dca18a4"
+PATCH = "fca6a9e"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -36,4 +36,15 @@ COMMIT_MESSAGES = [
     # Version v0.9.1-54d7108-pyam-exhang-docker
     "5e8265c: Increment version to v0.9.1-54d7108-pyam-exhang",
     "dca18a4: Enhance RealtimeBridge and ConnectedUsersPanel to improve ping handling and reconnection logic",
+
+    # Version v0.9.2-dca18a4-pyam-exhang-docker
+    "06f1f25: Increment version to v0.9.2-dca18a4-pyam-exhang",
+    "9f8582d: Add check for uncommitted .py changes before build process",
+    "bd43e10: Add project structure and guidelines documentation for SCLogAnalyzer",
+    "b3695da: Enhance connection status handling in DynamicLabels and add auto-reconnection logic in RealtimeBridge",
+    "4cba6d2: Add connection status icons and update DynamicLabels for improved UI feedback",
+    "de807f9: Add utility script for resizing PNG images for status icons",
+    "45a3642: Refactor icon loading in DynamicLabels to use pre-scaled images and remove unnecessary scaling function",
+    "e510a0b: Add reconnection lock to RealtimeBridge to prevent concurrent reconnect attempts",
+    "fca6a9e: Enhance DPI awareness in GUI and apply font scaling in TabCreator for better UI consistency",
 ]
