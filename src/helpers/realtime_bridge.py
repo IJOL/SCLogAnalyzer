@@ -621,6 +621,28 @@ class RealtimeBridge:
                             metadata={"source": "realtime_bridge"}
                         )
                         self._ping_missing_event_emitted = True
+                        # --- Auto reconnection logic ---
+                        auto_reconnection = self.config_manager.get('auto_reconnection', True)
+                        if auto_reconnection:
+                            message_bus.publish(
+                                content="Auto-reconnection enabled: attempting to reconnect...",
+                                level=MessageLevel.INFO,
+                                metadata={"source": "realtime_bridge"}
+                            )
+                            result = self.reconnect()
+                            if result:
+                                message_bus.emit("realtime_reconnected")
+                                message_bus.publish(
+                                    content="RealtimeBridge: reconnection successful (event emitted)",
+                                    level=MessageLevel.INFO,
+                                    metadata={"source": "realtime_bridge"}
+                                )
+                            else:
+                                message_bus.publish(
+                                    content="RealtimeBridge: reconnection failed",
+                                    level=MessageLevel.ERROR,
+                                    metadata={"source": "realtime_bridge"}
+                                )
                 else:
                     self._ping_missing_event_emitted = False
             except Exception:

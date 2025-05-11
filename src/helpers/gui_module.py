@@ -210,7 +210,6 @@ class ConfigDialog(wx.Frame):
         return self.colors_grid
 
     def add_general_tab(self, notebook, title, config_data):
-        """Helper method to add the general configuration tab."""
         panel = wx.Panel(notebook)
         sizer = wx.BoxSizer(wx.VERTICAL)
         
@@ -255,7 +254,8 @@ class ConfigDialog(wx.Frame):
             if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
                 label = wx.StaticText(panel, label=key)
                 control = wx.CheckBox(panel) if isinstance(value, bool) else wx.TextCtrl(panel, value=str(value))
-                control.SetValue(value) if isinstance(value, bool) else None
+                if isinstance(value, bool):
+                    control.SetValue(value)
                 self.general_controls[key] = control
                 row_sizer = wx.BoxSizer(wx.HORIZONTAL)
                 row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
@@ -281,7 +281,6 @@ class ConfigDialog(wx.Frame):
         """Save configuration using the ConfigManager."""
         # Store original config before making changes
         old_config = self.config_manager.get_all().copy()
-        
         # Save general config values 
         for key, control in self.general_controls.items():
             value = control.GetStringSelection() if isinstance(control, wx.Choice) else control.GetValue()

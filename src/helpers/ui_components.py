@@ -288,6 +288,8 @@ class DynamicLabels:
         self.shard_label = None
         self.version_label = None
         self.mode_label = None
+        self.connection_icon = None  # wx.StaticBitmap for connection status
+        self._connected = True  # Internal state
         
     def create_labels(self, panel, sizer):
         """
@@ -322,12 +324,43 @@ class DynamicLabels:
         label_sizer.Add(self.shard_label, 1, wx.ALL | wx.EXPAND, 5)
         label_sizer.Add(self.version_label, 1, wx.ALL | wx.EXPAND, 5)
         label_sizer.Add(self.mode_label, 1, wx.ALL | wx.EXPAND, 5)
-        
-        # Add label sizer to the provided sizer
+        # Añadir un stretch spacer para empujar el icono a la derecha
+        label_sizer.AddStretchSpacer()
+        # Crear el icono de estado de conexión (verde por defecto)
+        bmp = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_BUTTON, (16, 16))
+        self.connection_icon = wx.StaticBitmap(panel, bitmap=bmp)
+        self.connection_icon.SetToolTip("Estado de conexión: conectado")
+        label_sizer.Add(self.connection_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        # Añadir el sizer de etiquetas al sizer principal
         sizer.Add(label_sizer, 0, wx.EXPAND)
+        # Suscribirse a eventos de conexión/desconexión
+        message_bus.subscribe("broadcast_ping_missing", self._on_ping_missing)
+        message_bus.subscribe("realtime_reconnected", self._on_reconnected)
         
         return label_sizer
     
+    def set_connection_status(self, connected: bool):
+        """
+        Cambia el icono de estado de conexión (verde: conectado, rojo: desconectado).
+        """
+        if self.connection_icon:
+            if connected:
+                bmp = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_BUTTON, (16, 16))
+                self.connection_icon.SetToolTip("Estado de conexión: conectado")
+            else:
+                bmp = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_BUTTON, (16, 16))
+                self.connection_icon.SetToolTip("Estado de conexión: desconectado (ping missing)")
+            self.connection_icon.SetBitmap(bmp)
+            self._connected = connected
+
+    def _on_ping_missing(self, *args, **kwargs):
+        """Callback para evento de ping perdido: pone el icono en rojo."""
+        self.set_connection_status(False)
+
+    def _on_reconnected(self, *args, **kwargs):
+        """Callback para evento de reconexión: pone el icono en verde."""
+        self.set_connection_status(True)
+
     def update_labels(self, username="Unknown", shard="Unknown", version="Unknown", mode="None"):
         """
         Update the dynamic labels with new values.
