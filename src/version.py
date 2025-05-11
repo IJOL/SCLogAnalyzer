@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 1
+RELEASE = 2
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "54d7108"
+PATCH = "dca18a4"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -32,4 +32,8 @@ COMMIT_MESSAGES = [
     # Version v0.9.0-4480e51-pyam-exhang-docker
     "1126fde: Increment version to v0.9.0-4480e51-pyam-exhang",
     "54d7108: Fix RealtimeBridge event data logging to use 'event_data' key and set log level to DEBUG",
+
+    # Version v0.9.1-54d7108-pyam-exhang-docker
+    "5e8265c: Increment version to v0.9.1-54d7108-pyam-exhang",
+    "dca18a4: Enhance RealtimeBridge and ConnectedUsersPanel to improve ping handling and reconnection logic",
 ]
