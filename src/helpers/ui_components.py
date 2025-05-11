@@ -4,6 +4,7 @@ import wx.grid
 import json
 import threading
 import time
+import os
 from typing import Dict, Any, Callable, Tuple, List, Optional, Union
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
@@ -328,23 +329,14 @@ class DynamicLabels:
         # --- Custom icon loading (PNG) ---
         # Iconos descargados de https://icons8.com/icon/124377/green-circle y https://icons8.com/icon/124376/red-circle
         # Licencia: uso libre con atribución (icons8)
-        import os
         green_icon_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'icon_connection_green.png')
         red_icon_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'icon_connection_red.png')
         self._icon_paths = {
             True: green_icon_path,
             False: red_icon_path
         }
-        # Escalar el icono a 1/4 del tamaño original (por ejemplo, si es 32x32, mostrarlo como 8x8)
-        def _scale_bitmap(path, scale=0.25):
-            bmp = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
-            img = bmp.ConvertToImage()
-            w, h = img.GetWidth(), img.GetHeight()
-            new_w, new_h = max(8, int(w * scale)), max(8, int(h * scale))
-            img = img.Scale(new_w, new_h, wx.IMAGE_QUALITY_HIGH)
-            return wx.Bitmap(img)
-        self._scale_bitmap = _scale_bitmap
-        bmp = self._scale_bitmap(green_icon_path)
+        # Cargar el icono ya escalado (por ejemplo, 8x8 px) sin escalar en runtime
+        bmp = wx.Bitmap(green_icon_path, wx.BITMAP_TYPE_PNG)
         self.connection_icon = wx.StaticBitmap(panel, bitmap=bmp)
         self.connection_icon.SetToolTip("Estado de conexión: conectado")
         label_sizer.Add(self.connection_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
@@ -358,9 +350,8 @@ class DynamicLabels:
         Cambia el icono de estado de conexión (verde: conectado, rojo: desconectado).
         """
         if self.connection_icon:
-            import os
             icon_path = self._icon_paths[connected]
-            bmp = self._scale_bitmap(icon_path)
+            bmp = wx.Bitmap(icon_path, wx.BITMAP_TYPE_PNG)
             if connected:
                 self.connection_icon.SetToolTip("Estado de conexión: conectado")
             else:
