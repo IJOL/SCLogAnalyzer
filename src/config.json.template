@@ -7,6 +7,7 @@
     "supabase_key": "",
     "realtime": ["actor_stall", "player_death", "vehicle_destruction"],
     "active_users_update_interval": 120,
+    "auto_reconnection": true,
     "tabs": {
         "Weapons Analysis": "SELECT weapon, COUNT(*) as kills, COUNT(DISTINCT killer) as unique_killers FROM sc_default WHERE damage_type != 'Crash' GROUP BY weapon ORDER BY kills DESC",
         "Killer Stats": "SELECT killer, COUNT(*) as kills FROM sc_default WHERE killer != victim GROUP BY killer ORDER BY kills DESC",

@@ -324,31 +324,46 @@ class DynamicLabels:
         label_sizer.Add(self.shard_label, 1, wx.ALL | wx.EXPAND, 5)
         label_sizer.Add(self.version_label, 1, wx.ALL | wx.EXPAND, 5)
         label_sizer.Add(self.mode_label, 1, wx.ALL | wx.EXPAND, 5)
-        # Añadir un stretch spacer para empujar el icono a la derecha
         label_sizer.AddStretchSpacer()
-        # Crear el icono de estado de conexión (verde por defecto)
-        bmp = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_BUTTON, (16, 16))
+        # --- Custom icon loading (PNG) ---
+        # Iconos descargados de https://icons8.com/icon/124377/green-circle y https://icons8.com/icon/124376/red-circle
+        # Licencia: uso libre con atribución (icons8)
+        import os
+        green_icon_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'icon_connection_green.png')
+        red_icon_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'icon_connection_red.png')
+        self._icon_paths = {
+            True: green_icon_path,
+            False: red_icon_path
+        }
+        # Escalar el icono a 1/4 del tamaño original (por ejemplo, si es 32x32, mostrarlo como 8x8)
+        def _scale_bitmap(path, scale=0.25):
+            bmp = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
+            img = bmp.ConvertToImage()
+            w, h = img.GetWidth(), img.GetHeight()
+            new_w, new_h = max(8, int(w * scale)), max(8, int(h * scale))
+            img = img.Scale(new_w, new_h, wx.IMAGE_QUALITY_HIGH)
+            return wx.Bitmap(img)
+        self._scale_bitmap = _scale_bitmap
+        bmp = self._scale_bitmap(green_icon_path)
         self.connection_icon = wx.StaticBitmap(panel, bitmap=bmp)
         self.connection_icon.SetToolTip("Estado de conexión: conectado")
         label_sizer.Add(self.connection_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        # Añadir el sizer de etiquetas al sizer principal
         sizer.Add(label_sizer, 0, wx.EXPAND)
-        # Suscribirse a eventos de conexión/desconexión
-        message_bus.subscribe("broadcast_ping_missing", self._on_ping_missing)
-        message_bus.subscribe("realtime_reconnected", self._on_reconnected)
-        
+        message_bus.on("broadcast_ping_missing", self._on_ping_missing)
+        message_bus.on("realtime_reconnected", self._on_reconnected)
         return label_sizer
-    
+
     def set_connection_status(self, connected: bool):
         """
         Cambia el icono de estado de conexión (verde: conectado, rojo: desconectado).
         """
         if self.connection_icon:
+            import os
+            icon_path = self._icon_paths[connected]
+            bmp = self._scale_bitmap(icon_path)
             if connected:
-                bmp = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_BUTTON, (16, 16))
                 self.connection_icon.SetToolTip("Estado de conexión: conectado")
             else:
-                bmp = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_BUTTON, (16, 16))
                 self.connection_icon.SetToolTip("Estado de conexión: desconectado (ping missing)")
             self.connection_icon.SetBitmap(bmp)
             self._connected = connected
