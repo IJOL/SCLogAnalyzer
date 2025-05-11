@@ -172,3 +172,5 @@ memory.json
 .vscode/settings.json
 src/version.py
 supbase.realtime.examples.py
+.vscode/launch.json
+test.json
