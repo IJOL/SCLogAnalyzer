@@ -22,6 +22,22 @@ DIST_DIR = ROOT_DIR / "dist"
 CONFIG_TEMPLATE = SRC_DIR / "config.json.template"
 
 
+def abort_if_uncommitted_py_changes():
+    """
+    Abort the process if there are uncommitted changes in any .py files
+    """
+    try:
+        result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, check=True)
+        lines = result.stdout.strip().split('\n')
+        py_changes = [line for line in lines if line and line[-3:] == '.py']
+        if py_changes:
+            print("ERROR: Hay archivos .py con cambios sin commitear. Por favor, commitea o descarta los cambios antes de continuar.")
+            sys.exit(1)
+    except Exception as e:
+        print(f"ERROR al comprobar cambios sin commitear: {e}")
+        sys.exit(1)
+
+
 def get_current_commit_hash():
     """
     Get the short hash of the current commit
@@ -566,4 +582,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # Check for uncommitted .py changes before anything else
+    abort_if_uncommitted_py_changes()
+    
     sys.exit(main())
