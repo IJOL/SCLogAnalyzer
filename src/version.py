@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 0
+RELEASE = 1
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "4480e51"
+PATCH = "54d7108"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -28,4 +28,8 @@ COMMIT_MESSAGES = [
     "d88a5ca: Bump version to v0.9.99-d2f2325-pyam-exhang",
     "5708151: Refactor test CLI to support multiprocessing for simulated users and enhance RealtimeBridge integration",
     "4480e51: Enhance RealtimeBridge to track user activity and improve presence synchronization with ping broadcasts",
+
+    # Version v0.9.0-4480e51-pyam-exhang-docker
+    "1126fde: Increment version to v0.9.0-4480e51-pyam-exhang",
+    "54d7108: Fix RealtimeBridge event data logging to use 'event_data' key and set log level to DEBUG",
 ]
