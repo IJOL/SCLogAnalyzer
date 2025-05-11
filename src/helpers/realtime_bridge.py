@@ -476,7 +476,7 @@ class RealtimeBridge:
                             
             # Emitir el mensaje a través del MessageBus local
             message_bus.publish(
-                content=f"Realtime event received from {username}: {event_data.get('content', '')}",
+                content=f"Realtime event received from {username}: {event_data.get('event_data', '')}",
                 level=MessageLevel.DEBUG,  # Cambiado a DEBUG
                 pattern_name="realtime_event_remote",
                 metadata={
