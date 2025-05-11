@@ -1,4 +1,14 @@
 #!/usr/bin/env python
+import ctypes
+# --- Hacer que el proceso sea DPI-aware (Windows)
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)  # 1 = system DPI aware
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 import wx
 import sys
 import os

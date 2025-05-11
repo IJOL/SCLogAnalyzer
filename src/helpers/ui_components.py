@@ -45,19 +45,27 @@ class TabCreator:
         # Create a vertical sizer for the tab
         tab_sizer = wx.BoxSizer(wx.VERTICAL)
 
+        # Obtener DPI y calcular escala para fuentes
+        dpi = wx.ScreenDC().GetPPI()
+        scale = dpi[0] / 96  # 96 = DPI estándar
+        base_font_size = 10
+        font = wx.Font(int(base_font_size * scale), wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
+
         # Create a flat button with only a refresh icon
         refresh_button = wx.BitmapButton(
             new_tab,
-            bitmap=wx.ArtProvider.GetBitmap(wx.ART_REDO, wx.ART_BUTTON, (16, 16)),
+            bitmap=wx.ArtProvider.GetBitmap(wx.ART_REDO, wx.ART_BUTTON, (int(16*scale), int(16*scale))),
             style=wx.BORDER_NONE
         )
         refresh_button.SetToolTip("Refresh")
+        refresh_button.SetFont(font)
         tab_sizer.Add(refresh_button, 0, wx.ALL | wx.ALIGN_LEFT, 5)
 
         # Add a grid to display the JSON data
         grid = wx.grid.Grid(new_tab)
-        grid.CreateGrid(0, 0)  # Start with an empty grid
-        
+        grid.CreateGrid(0, 0)
+        grid.SetFont(font)
+
         # Store tab_info directly on the grid
         if tab_info:
             grid.tab_info = tab_info
@@ -79,6 +87,11 @@ class TabCreator:
 
         # Store the tab reference in the dictionary
         self.tab_references[tab_title] = (grid, refresh_button)
+
+        # Aplicar fuente escalada a todos los hijos del panel
+        for child in new_tab.GetChildren():
+            if hasattr(child, 'SetFont'):
+                child.SetFont(font)
 
         return grid, refresh_button  # Return the grid for further updates
 
