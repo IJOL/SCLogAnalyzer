@@ -76,6 +76,11 @@ class RealtimeBridge:
         
         # Nuevo: diccionario para almacenar la última actividad de cada usuario
         self.last_activity = {}  # username -> last ping timestamp
+        # New: track last ping from any user
+        self._last_any_ping = datetime.utcnow()
+        self._ping_missing_check_active = False
+        self._ping_missing_thread = None
+        self._ping_missing_event_emitted = False
         
         # Suscribirse a los eventos del MessageBus local que nos interesa compartir
         message_bus.on("shard_version_update", self._handle_shard_version_update)
@@ -135,6 +140,7 @@ class RealtimeBridge:
             self._init_general_channel()
             self.is_connected = True
             self._start_heartbeat()
+            self._start_ping_missing_check()  # Start ping absence checker
             message_bus.publish(
                 content="Realtime Bridge connected successfully (general channel)",
                 level=MessageLevel.INFO,
@@ -160,6 +166,7 @@ class RealtimeBridge:
         try:
             # Detener el heartbeat
             self._stop_heartbeat()
+            self._stop_ping_missing_check()  # Stop ping absence checker
             
             # Desconectar todos los canales
             for channel_name, channel in self.channels.items():
@@ -493,6 +500,12 @@ class RealtimeBridge:
                 timestamp = event_data.get('timestamp')
                 if username and timestamp:
                     self.last_activity[username] = timestamp
+                # Update last any ping timestamp
+                try:
+                    self._last_any_ping = datetime.utcnow()
+                    self._ping_missing_event_emitted = False  # Reset flag on any ping
+                except Exception:
+                    pass
                 return  # No visualizar ni emitir evento para pings
 
             # También emitir un evento específico que pueda ser capturado por la UI
@@ -580,3 +593,73 @@ class RealtimeBridge:
         if username:
             return self.last_activity.get(username)
         return dict(self.last_activity)
+
+    def _start_ping_missing_check(self):
+        if self._ping_missing_check_active:
+            return
+        self._ping_missing_check_active = True
+        self._ping_missing_thread = threading.Thread(target=self._ping_missing_loop, daemon=True)
+        self._ping_missing_thread.start()
+
+    def _stop_ping_missing_check(self):
+        self._ping_missing_check_active = False
+        if self._ping_missing_thread and self._ping_missing_thread.is_alive():
+            self._ping_missing_thread.join(timeout=3)
+        self._ping_missing_thread = None
+
+    def _ping_missing_loop(self):
+        while self._ping_missing_check_active:
+            try:
+                now = datetime.utcnow()
+                delta = (now - self._last_any_ping).total_seconds()
+                if delta > 120:
+                    if not self._ping_missing_event_emitted:
+                        message_bus.emit("broadcast_ping_missing")
+                        message_bus.publish(
+                            content="No ping received from any user in over 120 seconds (broadcast_ping_missing emitted)",
+                            level=MessageLevel.WARNING,
+                            metadata={"source": "realtime_bridge"}
+                        )
+                        self._ping_missing_event_emitted = True
+                else:
+                    self._ping_missing_event_emitted = False
+            except Exception:
+                pass
+            time.sleep(5)
+
+    def reconnect(self):
+        """
+        Low-level reconnect: closes and reopens the async Supabase client and resubscribes the general channel.
+        Does not touch high-level state, event loop, or threading logic.
+        """
+        try:
+            message_bus.publish(
+                content="RealtimeBridge: reconnect requested",
+                level=MessageLevel.INFO,
+                metadata={"source": "realtime_bridge"}
+            )
+            # Close async client if exists
+            if self.supabase:
+                try:
+                    run_coroutine(self.supabase.realtime.close())
+                    self.is_connected = False
+                    message_bus.publish(
+                        content="RealtimeBridge: async client closed",
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "realtime_bridge"}
+                    )
+                except Exception as e:
+                    message_bus.publish(
+                        content=f"RealtimeBridge: Error closing async client: {e}",
+                        level=MessageLevel.ERROR,
+                        metadata={"source": "realtime_bridge"}
+                    )
+                self.connect()
+            return True
+        except Exception as e:
+            message_bus.publish(
+                content=f"RealtimeBridge: Error during low-level reconnect: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "realtime_bridge"}
+            )
+            return False

@@ -5,6 +5,8 @@ import time
 
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
+# Eliminar import incorrecto de get_async_client y usar el singleton supabase_manager
+from .supabase_manager import supabase_manager
 
 class ConnectedUsersPanel(wx.Panel):
     """Panel para mostrar los usuarios conectados y sus logs compartidos"""
@@ -28,6 +30,8 @@ class ConnectedUsersPanel(wx.Panel):
         message_bus.on("users_online_updated", self.update_users_list)
         message_bus.on("remote_realtime_event", self.add_remote_log)
         message_bus.on("shard_version_update", self.on_shard_version_update)
+        # El control de pings ahora depende solo de broadcast_ping_missing
+        message_bus.on("broadcast_ping_missing", self._on_broadcast_ping_missing)
         
         # Lista de usuarios actualmente conectados
         self.users_online = []
@@ -147,17 +151,40 @@ class ConnectedUsersPanel(wx.Panel):
         self.clear_logs_btn = wx.Button(self, label="Limpiar logs")
         self.clear_logs_btn.Bind(wx.EVT_BUTTON, self.on_clear_logs)
         button_sizer.Add(self.clear_logs_btn, 0, wx.ALL, 5)
-        
+
+        # Botón Reconectar (siempre visible en debug)
+        self.reconnect_btn = wx.Button(self, label="Reconectar")
+        self.reconnect_btn.Bind(wx.EVT_BUTTON, self.on_reconnect)
+        # Mostrar siempre en debug al inicializar
+        if self._is_debug_mode():
+            self.reconnect_btn.Show()
+        else:
+            self.reconnect_btn.Hide()
+        button_sizer.Add(self.reconnect_btn, 0, wx.ALL, 5)
+
         main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
-        
+
+        # Estado de pings y temporizadores
+        self._last_own_ping = datetime.utcnow()
+        self._ping_timeout_sec = 30  # configurable
+        self._ping_timer = wx.Timer(self)
+        self._ping_timer.Start(5000)  # comprobar cada 5s
+        self._alert_blink_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._on_alert_blink, self._alert_blink_timer)
+        self._alert_blink_state = False
+        self._alert_label = wx.StaticText(self, label="")
+        main_sizer.Add(self._alert_label, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+
         # Establecer el sizer principal
         self.SetSizer(main_sizer)
         
     def update_users_list(self, users_online):
-        """Actualiza la lista de usuarios conectados"""
+        """
+        Actualiza la lista de usuarios conectados. El control de pings ya no depende de presencia ni de broadcast_ping_received.
+        """
         self.users_online = users_online
         wx.CallAfter(self._update_ui_users_list)
-        
+    
     def _update_ui_users_list(self):
         """Actualiza la UI con la lista de usuarios conectados"""
         # Limpiar lista actual
@@ -189,11 +216,13 @@ class ConnectedUsersPanel(wx.Panel):
         """
         Maneja las actualizaciones de shard y versión.
         Actualiza los valores actuales y las etiquetas de los filtros.
+        Además, si el username recibido es válido, lo almacena como el username actual.
         """
         self.current_shard = shard if shard else "Unknown"
-        if mode is not None:
-            self.current_mode = mode
-        
+        self.current_mode = mode if mode is not None else self.current_mode
+        # Actualizar username si es válido
+        if username and username != "Unknown":
+            self._my_username = username
         # Actualizar etiquetas
         wx.CallAfter(self._update_filter_labels)
     
@@ -320,3 +349,119 @@ class ConnectedUsersPanel(wx.Panel):
     def on_clear_logs(self, event):
         """Maneja el evento de clic en el botón limpiar logs"""
         self.shared_logs.DeleteAllItems()
+
+    def _show_reconnect_and_alert(self):
+        # Mostrar botón solo si debug o fallo de pings
+        if self._is_debug_mode():
+            self.reconnect_btn.Show()
+        else:
+            self.reconnect_btn.Show()
+        self._alert_label.SetLabel("¡Sin pings propios! Reconectar.")
+        self._alert_blink_timer.Start(500)
+        self.Layout()
+
+    def _hide_reconnect_and_alert(self):
+        # En debug, el botón siempre visible; fuera de debug, ocultar
+        if self._is_debug_mode():
+            self.reconnect_btn.Show()
+        else:
+            self.reconnect_btn.Hide()
+        self._alert_label.SetLabel("")
+        self._alert_blink_timer.Stop()
+        self.Layout()
+
+    def _on_alert_blink(self, event):
+        # Parpadeo rojo
+        self._alert_blink_state = not self._alert_blink_state
+        if self._alert_blink_state:
+            self._alert_label.SetForegroundColour("red")
+        else:
+            self._alert_label.SetForegroundColour("black")
+        self._alert_label.Refresh()
+
+    def _is_debug_mode(self):
+        """
+        Devuelve True si estamos en modo debug.
+        Patrón correcto del proyecto:
+        1. Intenta leer self.parent.debug_mode (LogAnalyzerFrame), que se activa por flag CLI o combinación secreta en GUI.
+        2. Si no existe, consulta el estado global del message_bus (message_bus.is_debug_mode()).
+        3. Nunca usar config_manager ni __main__ para debug.
+        """
+        debug_flag = False
+        # 1. Intentar parent.debug_mode
+        if hasattr(self.parent, 'debug_mode'):
+            debug_flag = getattr(self.parent, 'debug_mode', False)
+        else:
+            # 2. Fallback: message_bus global
+            from .message_bus import message_bus
+            debug_flag = message_bus.is_debug_mode()
+        return debug_flag
+
+    def on_reconnect(self, event=None):
+        """
+        Handler para el botón de reconexión. Fuerza la reconexión del cliente realtime usando supabase_manager.get_async_client().
+        Muestra mensajes de éxito o error usando message_bus.publish.
+        """
+        try:
+            from .realtime_bridge import _realtime_bridge_instance
+            if _realtime_bridge_instance:
+                # Llamar al método de reconexión
+                result = _realtime_bridge_instance.reconnect()
+                if result:
+                    message_bus.publish(
+                        content="Reconnect requested from ConnectedUsersPanel: success",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "connected_users_panel"}
+                    )
+                else:
+                    message_bus.publish(
+                        content="Reconnect requested from ConnectedUsersPanel: failed",
+                        level=MessageLevel.ERROR,
+                        metadata={"source": "connected_users_panel"}
+                    )
+            else:
+                message_bus.publish(
+                    content="RealtimeBridge singleton not available for reconnect",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "connected_users_panel"}
+                )
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error al reconectar: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "connected_users_panel"}
+            )
+    
+    def on_reconnect_button(self, event=None):
+        """
+        Handler for the reconnect button or programmatic reconnect request.
+        Calls the singleton RealtimeBridge's reconnect() method, which is sync-safe and handles all async logic internally.
+        """
+        from .realtime_bridge import _realtime_bridge_instance
+        if _realtime_bridge_instance:
+            result = _realtime_bridge_instance.reconnect()
+            if result:
+                message_bus.publish(
+                    content="Reconnect requested from ConnectedUsersPanel: success",
+                    level=MessageLevel.INFO,
+                    metadata={"source": "connected_users_panel"}
+                )
+            else:
+                message_bus.publish(
+                    content="Reconnect requested from ConnectedUsersPanel: failed",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "connected_users_panel"}
+                )
+        else:
+            message_bus.publish(
+                content="RealtimeBridge singleton not available for reconnect",
+                level=MessageLevel.ERROR,
+                metadata={"source": "connected_users_panel"}
+            )
+
+    def _on_broadcast_ping_missing(self, *args, **kwargs):
+        """
+        Handler para evento de pings broadcast ausentes. Activa la alerta y el botón de reconexión solo si no estamos en debug.
+        """
+        if not self._is_debug_mode():
+            self._show_reconnect_and_alert()
