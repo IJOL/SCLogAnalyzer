@@ -87,6 +87,10 @@ class RealtimeBridge:
         message_bus.on("realtime_event", self._handle_realtime_event)
         message_bus.on("username_change", self.set_username)  # Subscribe to existing username_change events
         
+        # Nuevo: Lock de reconexión y estado
+        self._reconnect_lock = threading.Lock()
+        self._reconnect_in_progress = False  # (opcional, para logging)
+        
     def set_username(self, username, old_username=None):
         """Sets or updates the username and connects if needed"""
         if self.username == username:
@@ -652,8 +656,17 @@ class RealtimeBridge:
     def reconnect(self):
         """
         Low-level reconnect: closes and reopens the async Supabase client and resubscribes the general channel.
-        Does not touch high-level state, event loop, or threading logic.
+        Protegido contra concurrencia: solo una reconexión puede ejecutarse a la vez.
+        Si ya hay una reconexión en curso, la petición se ignora y se emite un aviso por MessageBus.
         """
+        if not self._reconnect_lock.acquire(blocking=False):
+            message_bus.publish(
+                content="RealtimeBridge: reconnection already in progress, ignoring request",
+                level=MessageLevel.WARNING,
+                metadata={"source": "realtime_bridge"}
+            )
+            return False
+        self._reconnect_in_progress = True
         try:
             message_bus.publish(
                 content="RealtimeBridge: reconnect requested",
@@ -685,3 +698,6 @@ class RealtimeBridge:
                 metadata={"source": "realtime_bridge"}
             )
             return False
+        finally:
+            self._reconnect_in_progress = False
+            self._reconnect_lock.release()
