@@ -43,10 +43,9 @@ def run_coroutine(coroutine):
     return _realtime_bridge_instance._run_in_loop(coroutine)
 
 class RealtimeBridge:
-    """
-    Clase puente que conecta el MessageBus local con Supabase Realtime para
-    permitir la comunicación entre diferentes instancias de SCLogAnalyzer.
-    Por defecto es singleton, pero puede instanciarse como clase normal para tests.
+    """Puente de comunicación en tiempo real para SCLogAnalyzer.
+    El filtro de mensajes 'stalled' es controlado por la UI pero reside como propiedad en el backend (esta clase).
+    La UI debe modificar el atributo 'filter_stalled_if_online' en la instancia singleton para activar/desactivar el filtro en tiempo real.
     """
     def __init__(self, supabase_client, config_manager, use_singleton=True):
         if use_singleton:
@@ -90,6 +89,9 @@ class RealtimeBridge:
         # Nuevo: Lock de reconexión y estado
         self._reconnect_lock = threading.Lock()
         self._reconnect_in_progress = False  # (opcional, para logging)
+        
+        # Nuevo: filtro de mensajes 'stalled' controlado por la UI
+        self.filter_stalled_if_online = True  # Controlado por la UI, usado solo aquí
         
     def set_username(self, username, old_username=None):
         """Sets or updates the username and connects if needed"""
@@ -478,13 +480,29 @@ class RealtimeBridge:
             )
 
     def _handle_realtime_event_broadcast(self, payload):
-        """Maneja los mensajes broadcast de eventos en tiempo real recibidos de otros usuarios"""
+        """Maneja los mensajes broadcast de eventos en tiempo real recibidos de otros usuarios.
+        Aplica el filtro de 'stalled' si está activado en el singleton (controlado por la UI, almacenado en self).
+        """
         try:
             # Extraer datos del mensaje
             broadcast_data = payload.get('payload', {})
             username = broadcast_data.get('username','Unknown')
             event_data = broadcast_data.get('event_data', payload)
-                            
+
+            # --- FILTRO DE 'STALLED' CONTROLADO POR ATRIBUTO BACKEND ---
+            if self.filter_stalled_if_online and event_data.get('type') == 'actor_stall':
+                # Obtener lista de usuarios online actual
+                users_online = []
+                try:
+                    if 'general' in self.channels:
+                        state = self.channels['general'].presence.state
+                        users_online = list(state.keys())
+                except Exception:
+                    pass
+                player = event_data.get('content','').split(':')[0]  # Obtener el nombre del jugador del mensaje
+                if player and player in users_online:
+                    return  # SUPRIMIR el mensaje
+
             # Emitir el mensaje a través del MessageBus local
             message_bus.publish(
                 content=f"Realtime event received from {username}: {event_data.get('event_data', '')}",
@@ -496,8 +514,7 @@ class RealtimeBridge:
                     "event_data": event_data
                 }
             )
-            
-            
+
             # Filtrar y procesar pings
             if event_data.get('type') == 'ping':
                 username = event_data.get('username')
@@ -514,7 +531,7 @@ class RealtimeBridge:
 
             # También emitir un evento específico que pueda ser capturado por la UI
             message_bus.emit("remote_realtime_event", username, event_data)
-            
+
         except Exception as e:
             message_bus.publish(
                 content=f"Error handling realtime event broadcast: {e}",

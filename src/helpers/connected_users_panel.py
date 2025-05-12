@@ -30,7 +30,6 @@ class ConnectedUsersPanel(wx.Panel):
         message_bus.on("users_online_updated", self.update_users_list)
         message_bus.on("remote_realtime_event", self.add_remote_log)
         message_bus.on("shard_version_update", self.on_shard_version_update)
-        # El control de pings ahora depende solo de broadcast_ping_missing
         message_bus.on("broadcast_ping_missing", self._on_broadcast_ping_missing)
         
         # Lista de usuarios actualmente conectados
@@ -127,6 +126,16 @@ class ConnectedUsersPanel(wx.Panel):
         
         # Añadir contenedor de filtros de shard al sizer principal
         filter_sizer.Add(shard_filter_sizer, 0, 0)
+        
+        # Añadir checkbox para filtrar mensajes 'stalled' solo si el jugador está online
+        from .realtime_bridge import _realtime_bridge_instance
+        stalled_filter_value = False
+        if _realtime_bridge_instance:
+            stalled_filter_value = getattr(_realtime_bridge_instance, 'filter_stalled_if_online', False)
+        self.stalled_filter_checkbox = wx.CheckBox(self, label="Ocultar mensajes 'stalled' si el jugador está online")
+        self.stalled_filter_checkbox.SetValue(stalled_filter_value)
+        self.stalled_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_stalled_filter_changed)
+        filter_sizer.Add(self.stalled_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
         
         # Añadir el panel de filtros al sizer principal
         main_sizer.Add(filter_sizer, 0, wx.ALL, 5)
@@ -465,3 +474,14 @@ class ConnectedUsersPanel(wx.Panel):
         """
         if not self._is_debug_mode():
             self._show_reconnect_and_alert()
+    
+    def on_stalled_filter_changed(self, event):
+        """Handler para el checkbox de filtro 'stalled': actualiza el backend (RealtimeBridge)"""
+        from .realtime_bridge import _realtime_bridge_instance
+        if _realtime_bridge_instance:
+            _realtime_bridge_instance.filter_stalled_if_online = self.stalled_filter_checkbox.GetValue()
+            message_bus.publish(
+                content=f"Filtro 'stalled' actualizado en backend: {self.stalled_filter_checkbox.GetValue()}",
+                level=MessageLevel.DEBUG,
+                metadata={"source": "connected_users_panel", "filter": "stalled_online"}
+            )
