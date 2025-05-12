@@ -389,7 +389,7 @@ class RealtimeBridge:
                         'shard': presence.get('shard'),
                         'version': presence.get('version'),
                         'status': presence.get('status'),
-                        'last_active': last_active,
+                        'last_active': last_active.strftime('%Y-%m-%d %H:%M:%S') if last_active else None,
                         'metadata': presence.get('metadata', {})
                     })
             message_bus.emit("users_online_updated", users_online)
@@ -520,7 +520,7 @@ class RealtimeBridge:
                 username = event_data.get('username')
                 timestamp = event_data.get('timestamp')
                 if username and timestamp:
-                    self.last_activity[username] = timestamp
+                    self.last_activity[username] = datetime.now()
                 # Update last any ping timestamp
                 try:
                     self._last_any_ping = datetime.utcnow()
@@ -608,12 +608,6 @@ class RealtimeBridge:
                 if not self.heartbeat_active:
                     break
                 time.sleep(1)
-
-    def get_last_activity(self, username=None):
-        """Devuelve la última hora de actividad de un usuario o de todos."""
-        if username:
-            return self.last_activity.get(username)
-        return dict(self.last_activity)
 
     def _start_ping_missing_check(self):
         if self._ping_missing_check_active:

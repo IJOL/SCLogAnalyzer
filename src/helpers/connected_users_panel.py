@@ -55,8 +55,8 @@ class ConnectedUsersPanel(wx.Panel):
         # Lista de usuarios
         self.users_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.users_list.InsertColumn(0, "Usuario", width=100)
-        self.users_list.InsertColumn(1, "Shard", width=100)
-        self.users_list.InsertColumn(2, "Versión", width=100)
+        self.users_list.InsertColumn(1, "Shard", width=150)
+        self.users_list.InsertColumn(2, "Versión", width=150)
         self.users_list.InsertColumn(3, "Estado", width=100)
         self.users_list.InsertColumn(4, "Última actividad", width=150)
         main_sizer.Add(self.users_list, 1, wx.EXPAND | wx.ALL, 5)
