@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 4
+RELEASE = 5
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "90e97ef"
+PATCH = "ab074f6"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -50,4 +50,6 @@ COMMIT_MESSAGES = [
 
     # Version v0.9.3-fca6a9e-pyam-exhang-docker
     "90e97ef: Increment version to v0.9.3-fca6a9e-pyam-exhang",
+    "91c79f5: Increment version to v0.9.4-90e97ef-pyam-exhang",
+    "ab074f6: Add connection icons to PyInstaller build for enhanced visual feedback",
 ]
