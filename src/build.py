@@ -579,9 +579,12 @@ def main():
         if not commit_and_push_changes(version, args.push):
             print("Warning: Failed to commit/push changes")
         
-        # Create and push tag
-        if not create_and_push_tag(version, args.test, args.push):
-            print("Warning: Failed to create/push tag")
+        # Only create and push tag if --push is specified
+        if args.push:
+            if not create_and_push_tag(version, args.test, args.push):
+                print("Warning: Failed to create/push tag")
+        else:
+            print("Note: Tag is only created when --push is used. No tag will be created in this run.")
     
     # Step 2: Build executables if requested
     if args.build:
