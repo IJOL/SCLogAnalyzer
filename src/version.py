@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 3
+RELEASE = 4
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "fca6a9e"
+PATCH = "90e97ef"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -47,4 +47,7 @@ COMMIT_MESSAGES = [
     "45a3642: Refactor icon loading in DynamicLabels to use pre-scaled images and remove unnecessary scaling function",
     "e510a0b: Add reconnection lock to RealtimeBridge to prevent concurrent reconnect attempts",
     "fca6a9e: Enhance DPI awareness in GUI and apply font scaling in TabCreator for better UI consistency",
+
+    # Version v0.9.3-fca6a9e-pyam-exhang-docker
+    "90e97ef: Increment version to v0.9.3-fca6a9e-pyam-exhang",
 ]
