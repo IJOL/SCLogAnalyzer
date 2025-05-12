@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 5
+RELEASE = 6
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "ab074f6"
+PATCH = "df04d86"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -50,6 +50,15 @@ COMMIT_MESSAGES = [
 
     # Version v0.9.3-fca6a9e-pyam-exhang-docker
     "90e97ef: Increment version to v0.9.3-fca6a9e-pyam-exhang",
+
+    # Version v0.9.4-90e97ef-pyam-exhang-docker
     "91c79f5: Increment version to v0.9.4-90e97ef-pyam-exhang",
     "ab074f6: Add connection icons to PyInstaller build for enhanced visual feedback",
+
+    # Version v0.9.5-ab074f6-pyam-exhang-docker
+    "4f17c78: Increment version to v0.9.5-ab074f6-pyam-exhang",
+    "f9759f6: Add functions to retrieve latest tag and commit information for build process",
+    "25fc4b7: Update tag creation logic to only execute with --push flag",
+    "f86edcc: Add 'stalled' message filter checkbox to UI and backend integration",
+    "df04d86: Enhance UI: Adjust column widths for 'Shard' and 'VersiÃ³n' in Connected Users panel; format last active timestamp in RealtimeBridge",
 ]
