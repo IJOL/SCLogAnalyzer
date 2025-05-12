@@ -505,6 +505,37 @@ def create_zip_files():
         return False
 
 
+def get_latest_tag():
+    result = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], capture_output=True, text=True)
+    if result.returncode != 0:
+        print("No tags found. Proceeding with build.")
+        return None
+    return result.stdout.strip()
+
+
+def get_commit_hash(ref):
+    result = subprocess.run(["git", "rev-list", "-n", "1", ref], capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def get_head_commit():
+    result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+latest_tag = get_latest_tag()
+if latest_tag:
+    tag_commit = get_commit_hash(latest_tag)
+    head_commit = get_head_commit()
+    if tag_commit and head_commit and tag_commit == head_commit:
+        print(f"No new commits since last tag ({latest_tag}). Build stopped.")
+        sys.exit(0)
+
+
 def main():
     """
     Main function to run the build process
