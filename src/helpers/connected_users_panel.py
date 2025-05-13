@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 import wx
 from datetime import datetime
-import time
+import wx.lib.embeddedimage as embeddedimage
 
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
 # Eliminar import incorrecto de get_async_client y usar el singleton supabase_manager
 from .supabase_manager import supabase_manager
+
+# --- 1. Add checkbox images for filtering ---
+CHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_OTHER, (16, 16))
+UNCHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_OTHER, (16, 16))
 
 class ConnectedUsersPanel(wx.Panel):
     """Panel para mostrar los usuarios conectados y sus logs compartidos"""
@@ -22,6 +26,9 @@ class ConnectedUsersPanel(wx.Panel):
         self.filter_by_current_shard = False
         self.include_unknown_mode = True
         self.include_unknown_shard = True
+        
+        # Estado de los filtros de usuario (checkboxes)
+        self.user_filter_states = {}  # username -> bool
         
         # Inicializar componentes de la UI
         self._init_ui()
@@ -52,82 +59,61 @@ class ConnectedUsersPanel(wx.Panel):
         users_label = wx.StaticText(self, label="Usuarios online:")
         main_sizer.Add(users_label, 0, wx.ALL, 5)
         
-        # Lista de usuarios
+        # Restore users_list as wx.ListCtrl with checkbox images
         self.users_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
-        self.users_list.InsertColumn(0, "Usuario", width=100)
-        self.users_list.InsertColumn(1, "Shard", width=150)
-        self.users_list.InsertColumn(2, "Versión", width=150)
-        self.users_list.InsertColumn(3, "Estado", width=100)
-        self.users_list.InsertColumn(4, "Última actividad", width=150)
+        self.users_list.InsertColumn(0, "Filtrar", width=60)
+        self.users_list.InsertColumn(1, "Usuario", width=100)
+        self.users_list.InsertColumn(2, "Shard", width=150)
+        self.users_list.InsertColumn(3, "Versión", width=150)
+        self.users_list.InsertColumn(4, "Estado", width=100)
+        self.users_list.InsertColumn(5, "Última actividad", width=150)
+        self.users_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_user_filter_toggle)
         main_sizer.Add(self.users_list, 1, wx.EXPAND | wx.ALL, 5)
         
         # Área de logs compartidos
         logs_label = wx.StaticText(self, label="Logs compartidos:")
         main_sizer.Add(logs_label, 0, wx.ALL, 5)
-          # Panel de filtros para los logs
+
+        # Panel de filtros clásico: debajo de 'Logs compartidos', alineado y escalonado como antes
         filter_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        
-        # Primer fila: Filtros de modo
+
+        # Filtros de modo (columna izquierda)
         mode_filter_sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        # Contenedor para el filtro de modo y su etiqueta
         mode_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        
-        # Checkbox para filtrar por modo actual
-        self.mode_checkbox = wx.CheckBox(self, label="Filtrar por modo actual:")
-        self.mode_checkbox.Bind(wx.EVT_CHECKBOX, self.on_filter_changed)
-        mode_row_sizer.Add(self.mode_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        
-        # Etiqueta para mostrar el modo actual
+        self.mode_filter_checkbox = wx.CheckBox(self, label="Filtrar por modo actual:")
+        self.mode_filter_checkbox.SetValue(self.filter_by_current_mode)
+        self.mode_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_mode_filter_changed)
+        mode_row_sizer.Add(self.mode_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         self.mode_label = wx.StaticText(self, label=f"({self.current_mode})")
         mode_row_sizer.Add(self.mode_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        
-        # Añadir la primera fila al contenedor de modo
         mode_filter_sizer.Add(mode_row_sizer, 0, wx.BOTTOM, 2)
-        
-        # Fila para el checkbox de incluir desconocidos en el modo
         mode_unknown_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.unknown_mode_checkbox = wx.CheckBox(self, label="Incluir desconocidos")
-        self.unknown_mode_checkbox.SetValue(True)  # Por defecto activado
-        self.unknown_mode_checkbox.Bind(wx.EVT_CHECKBOX, self.on_filter_changed)
-        mode_unknown_sizer.Add(self.unknown_mode_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
-        
-        # Añadir la segunda fila al contenedor de modo
+        self.include_unknown_mode_checkbox = wx.CheckBox(self, label="Incluir desconocidos")
+        self.include_unknown_mode_checkbox.SetValue(self.include_unknown_mode)
+        self.include_unknown_mode_checkbox.Bind(wx.EVT_CHECKBOX, self.on_include_unknown_mode_changed)
+        mode_unknown_sizer.Add(self.include_unknown_mode_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
         mode_filter_sizer.Add(mode_unknown_sizer, 0, 0)
-        
-        # Añadir el contenedor de filtros de modo al sizer principal de filtros
         filter_sizer.Add(mode_filter_sizer, 0, wx.RIGHT, 15)
-        
-        # Filtros de shard (estructura similar)
+
+        # Filtros de shard (columna central)
         shard_filter_sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        # Primera fila para shard: checkbox y etiqueta
         shard_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.shard_checkbox = wx.CheckBox(self, label="Filtrar por shard actual:")
-        self.shard_checkbox.Bind(wx.EVT_CHECKBOX, self.on_filter_changed)
-        shard_row_sizer.Add(self.shard_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        
-        # Etiqueta para mostrar el shard actual
+        self.shard_filter_checkbox = wx.CheckBox(self, label="Filtrar por shard actual:")
+        self.shard_filter_checkbox.SetValue(self.filter_by_current_shard)
+        self.shard_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_shard_filter_changed)
+        shard_row_sizer.Add(self.shard_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         self.shard_label = wx.StaticText(self, label=f"({self.current_shard})")
         shard_row_sizer.Add(self.shard_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        
-        # Añadir primera fila al contenedor de shard
         shard_filter_sizer.Add(shard_row_sizer, 0, wx.BOTTOM, 2)
-        
-        # Segunda fila para shard: incluir desconocidos
         shard_unknown_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.unknown_shard_checkbox = wx.CheckBox(self, label="Incluir desconocidos")
-        self.unknown_shard_checkbox.SetValue(True)  # Por defecto activado
-        self.unknown_shard_checkbox.Bind(wx.EVT_CHECKBOX, self.on_filter_changed)
-        shard_unknown_sizer.Add(self.unknown_shard_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
-        
-        # Añadir segunda fila al contenedor de shard
+        self.include_unknown_shard_checkbox = wx.CheckBox(self, label="Incluir desconocidos")
+        self.include_unknown_shard_checkbox.SetValue(self.include_unknown_shard)
+        self.include_unknown_shard_checkbox.Bind(wx.EVT_CHECKBOX, self.on_include_unknown_shard_changed)
+        shard_unknown_sizer.Add(self.include_unknown_shard_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
         shard_filter_sizer.Add(shard_unknown_sizer, 0, 0)
-        
-        # Añadir contenedor de filtros de shard al sizer principal
         filter_sizer.Add(shard_filter_sizer, 0, 0)
-        
-        # Añadir checkbox para filtrar mensajes 'stalled' solo si el jugador está online
+
+        # Checkbox para filtrar mensajes 'stalled' solo si el jugador está online (columna derecha)
         from .realtime_bridge import _realtime_bridge_instance
         stalled_filter_value = False
         if _realtime_bridge_instance:
@@ -136,10 +122,9 @@ class ConnectedUsersPanel(wx.Panel):
         self.stalled_filter_checkbox.SetValue(stalled_filter_value)
         self.stalled_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_stalled_filter_changed)
         filter_sizer.Add(self.stalled_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
-        
-        # Añadir el panel de filtros al sizer principal
+
         main_sizer.Add(filter_sizer, 0, wx.ALL, 5)
-        
+
         # Lista de logs compartidos
         self.shared_logs = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.shared_logs.InsertColumn(0, "Hora", width=100)
@@ -147,7 +132,7 @@ class ConnectedUsersPanel(wx.Panel):
         self.shared_logs.InsertColumn(2, "Tipo", width=100)
         self.shared_logs.InsertColumn(3, "Contenido", width=300)
         self.shared_logs.InsertColumn(4, "Shard", width=100)
-        self.shared_logs.InsertColumn(5, "Modo", width=100)  # Nueva columna para modo
+        self.shared_logs.InsertColumn(5, "Modo", width=100)
         main_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
         
         # Botones de control
@@ -187,19 +172,9 @@ class ConnectedUsersPanel(wx.Panel):
         # Establecer el sizer principal
         self.SetSizer(main_sizer)
         
-    def update_users_list(self, users_online):
-        """
-        Actualiza la lista de usuarios conectados. El control de pings ya no depende de presencia ni de broadcast_ping_received.
-        """
-        self.users_online = users_online
-        wx.CallAfter(self._update_ui_users_list)
-    
     def _update_ui_users_list(self):
         """Actualiza la UI con la lista de usuarios conectados"""
-        # Limpiar lista actual
         self.users_list.DeleteAllItems()
-        
-        # Agregar usuarios a la lista
         for i, user in enumerate(self.users_online):
             username = user.get('username', 'Unknown')
             shard = user.get('shard', 'Unknown')
@@ -214,13 +189,38 @@ class ConnectedUsersPanel(wx.Panel):
             except:
                 last_active_str = last_active
             
-            # Insertar en la lista
-            index = self.users_list.InsertItem(i, username)
-            self.users_list.SetItem(index, 1, str(shard))
-            self.users_list.SetItem(index, 2, str(version))
-            self.users_list.SetItem(index, 3, str(status))
-            self.users_list.SetItem(index, 4, str(last_active_str))
-    
+            # Checkbox state
+            checked = self.user_filter_states.get(username, False)
+            img_idx = 0 if checked else 1
+            if i == 0:
+                self.img_list = wx.ImageList(16, 16)
+                self.img_list.Add(CHECKED_IMG)
+                self.img_list.Add(UNCHECKED_IMG)
+                self.users_list.AssignImageList(self.img_list, wx.IMAGE_LIST_SMALL)
+            index = self.users_list.InsertItem(i, "", img_idx)
+            self.users_list.SetItem(index, 1, username)
+            self.users_list.SetItem(index, 2, str(shard))
+            self.users_list.SetItem(index, 3, str(version))
+            self.users_list.SetItem(index, 4, str(status))
+            self.users_list.SetItem(index, 5, str(last_active_str))
+        self.users_list.Refresh()
+
+    def on_user_filter_toggle(self, event):
+        # Toggle checkbox state for the clicked user
+        index = event.GetIndex()
+        username = self.users_list.GetItemText(index, 1)
+        current = self.user_filter_states.get(username, False)
+        self.user_filter_states[username] = not current
+        self._update_ui_users_list()
+        self._update_backend_user_filter()
+
+    def update_users_list(self, users_online):
+        """
+        Actualiza la lista de usuarios conectados. El control de pings ya no depende de presencia ni de broadcast_ping_received.
+        """
+        self.users_online = users_online
+        wx.CallAfter(self._update_ui_users_list)
+
     def on_shard_version_update(self, shard, version, username, mode=None):
         """
         Maneja las actualizaciones de shard y versión.
@@ -235,12 +235,28 @@ class ConnectedUsersPanel(wx.Panel):
         # Actualizar etiquetas
         wx.CallAfter(self._update_filter_labels)
     
+    def on_mode_filter_changed(self, event):
+        self.filter_by_current_mode = self.mode_filter_checkbox.GetValue()
+        self._update_filter_labels()
+        
+    def on_include_unknown_mode_changed(self, event):
+        self.include_unknown_mode = self.include_unknown_mode_checkbox.GetValue()
+        self._update_filter_labels()
+        
+    def on_shard_filter_changed(self, event):
+        self.filter_by_current_shard = self.shard_filter_checkbox.GetValue()
+        self._update_filter_labels()
+        
+    def on_include_unknown_shard_changed(self, event):
+        self.include_unknown_shard = self.include_unknown_shard_checkbox.GetValue()
+        self._update_filter_labels()
+        
     def _update_filter_labels(self):
         """Actualiza las etiquetas de los filtros con los valores actuales"""
         self.mode_label.SetLabel(f"({self.current_mode})")
         self.shard_label.SetLabel(f"({self.current_shard})")
         self.Layout()  # Forzar actualización del layout
-            
+        
     def add_remote_log(self, username, log_data):
         """Agrega un log remoto a la lista de logs compartidos"""
         wx.CallAfter(self._add_ui_remote_log, username, log_data)
@@ -249,13 +265,12 @@ class ConnectedUsersPanel(wx.Panel):
         """Actualiza la UI con un nuevo log remoto"""
         # Obtener datos del log
         raw_data = log_data.get('raw_data', {})
+        timestamp = datetime.now()
         if 'metadata' in log_data:
-            timestamp = log_data['metadata'].get('timestamp', datetime.now().isoformat())
             content = log_data['metadata'].get('content', '')
             shard = log_data['metadata'].get('shard', 'Unknown')
             log_type = log_data['metadata'].get('type', 'Unknown')
         else:
-            timestamp = raw_data.get('timestamp', datetime.now().isoformat())
             content = log_data.get('content', '')
             log_type = log_data.get('type', 'Unknown')
             shard = raw_data.get('shard', 'Unknown')
@@ -263,16 +278,10 @@ class ConnectedUsersPanel(wx.Panel):
         # Extraer modo del raw_data si está disponible
         mode = raw_data.get('mode', 'Unknown')
         
-        # Convertir timestamp ISO a formato más legible
-        try:
-            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            timestamp_str = dt.strftime('%H:%M:%S')
-        except:
-            timestamp_str = timestamp
         
         # Crear entrada de log temporal (sin almacenarla)
         log_entry = {
-            'timestamp_str': timestamp_str,
+            'timestamp_str': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'username': username,
             'log_type': log_type,
             'content': content,
@@ -285,14 +294,13 @@ class ConnectedUsersPanel(wx.Panel):
             self._add_log_entry_to_ui(log_entry, 0)  # Insertar al principio
     
     def _add_log_entry_to_ui(self, log_entry, position):
-        """Añade una entrada de log a la UI en la posición especificada"""       
         index = self.shared_logs.InsertItem(position, log_entry['timestamp_str'])
         self.shared_logs.SetItem(index, 1, str(log_entry['username'] or 'Unknown'))
         self.shared_logs.SetItem(index, 2, str(log_entry['log_type'] or 'Unknown'))
         self.shared_logs.SetItem(index, 3, str(log_entry['content'] or ''))
         self.shared_logs.SetItem(index, 4, str(log_entry['shard'] or 'Unknown'))
         self.shared_logs.SetItem(index, 5, str(log_entry['mode'] or 'Unknown'))
-        
+
     def _passes_current_filters(self, log_entry):
         """Verifica si una entrada de log pasa los filtros actuales"""
         # Lista de valores considerados como "desconocidos"
@@ -325,14 +333,6 @@ class ConnectedUsersPanel(wx.Panel):
         # Si pasa ambos filtros
         return True
         
-    def on_filter_changed(self, event):
-        """Maneja el cambio en los checkboxes de filtro"""
-        # Actualizar estados de filtro
-        self.filter_by_current_mode = self.mode_checkbox.GetValue()
-        self.filter_by_current_shard = self.shard_checkbox.GetValue()
-        self.include_unknown_mode = self.unknown_mode_checkbox.GetValue()
-        self.include_unknown_shard = self.unknown_shard_checkbox.GetValue()
-    
     def on_refresh(self, event):
         """Maneja el evento de clic en el botón refrescar"""
         # Emitir un evento para solicitar actualización de usuarios
@@ -484,4 +484,16 @@ class ConnectedUsersPanel(wx.Panel):
                 content=f"Filtro 'stalled' actualizado en backend: {self.stalled_filter_checkbox.GetValue()}",
                 level=MessageLevel.DEBUG,
                 metadata={"source": "connected_users_panel", "filter": "stalled_online"}
+            )
+
+    def _update_backend_user_filter(self):
+        """Update backend with the list of checked users in the filter column."""
+        selected = [u for u, checked in self.user_filter_states.items() if checked]
+        from .realtime_bridge import _realtime_bridge_instance
+        if _realtime_bridge_instance:
+            _realtime_bridge_instance.filter_broadcast_usernames = set(selected)
+            message_bus.publish(
+                content=f"Filtro de usuarios online actualizado: {selected}",
+                level=MessageLevel.DEBUG,
+                metadata={"source": "connected_users_panel", "filter": "user_online"}
             )

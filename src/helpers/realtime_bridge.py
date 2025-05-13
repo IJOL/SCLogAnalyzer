@@ -66,7 +66,7 @@ class RealtimeBridge:
         self.heartbeat_active = False
         self.heartbeat_thread = None
         # Usar el intervalo configurable o el valor por defecto de 30 segundos (cambiado de 120)
-        self.heartbeat_interval = config_manager.get('active_users_update_interval', 30)  # Segundos
+        self.heartbeat_interval = int(config_manager.get('active_users_update_interval', 30))  # Segundos
         
         # Nuevo: thread y loop dedicados para asyncio
         self.event_loop = None
@@ -92,6 +92,7 @@ class RealtimeBridge:
         
         # Nuevo: filtro de mensajes 'stalled' controlado por la UI
         self.filter_stalled_if_online = True  # Controlado por la UI, usado solo aquí
+        self.filter_broadcast_usernames = set()  # Controlado por la UI, usado solo aquí
         
     def set_username(self, username, old_username=None):
         """Sets or updates the username and connects if needed"""
@@ -482,6 +483,7 @@ class RealtimeBridge:
     def _handle_realtime_event_broadcast(self, payload):
         """Maneja los mensajes broadcast de eventos en tiempo real recibidos de otros usuarios.
         Aplica el filtro de 'stalled' si está activado en el singleton (controlado por la UI, almacenado en self).
+        Aplica el filtro de usuarios online si filter_broadcast_usernames no está vacío (controlado por la UI).
         """
         try:
             # Extraer datos del mensaje
@@ -489,9 +491,18 @@ class RealtimeBridge:
             username = broadcast_data.get('username','Unknown')
             event_data = broadcast_data.get('event_data', payload)
 
+            # --- FILTRO DE USUARIO ONLINE ---
+            if self.filter_broadcast_usernames:
+                if username not in self.filter_broadcast_usernames:
+                    message_bus.publish(
+                        content=f"Mensaje broadcast filtrado por usuario online: {username}",
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "realtime_bridge", "filter": "user_online"}
+                    )
+                    return  # SUPRIMIR el mensaje
+
             # --- FILTRO DE 'STALLED' CONTROLADO POR ATRIBUTO BACKEND ---
             if self.filter_stalled_if_online and event_data.get('type') == 'actor_stall':
-                # Obtener lista de usuarios online actual
                 users_online = []
                 try:
                     if 'general' in self.channels:
@@ -499,14 +510,14 @@ class RealtimeBridge:
                         users_online = list(state.keys())
                 except Exception:
                     pass
-                player = event_data.get('content','').split(':')[0]  # Obtener el nombre del jugador del mensaje
+                player = event_data.get('content','').split(':')[0]
                 if player and player in users_online:
                     return  # SUPRIMIR el mensaje
 
             # Emitir el mensaje a través del MessageBus local
             message_bus.publish(
                 content=f"Realtime event received from {username}: {event_data.get('event_data', '')}",
-                level=MessageLevel.DEBUG,  # Cambiado a DEBUG
+                level=MessageLevel.DEBUG,
                 pattern_name="realtime_event_remote",
                 metadata={
                     "source": "realtime_bridge",
@@ -521,21 +532,19 @@ class RealtimeBridge:
                 timestamp = event_data.get('timestamp')
                 if username and timestamp:
                     self.last_activity[username] = datetime.now()
-                # Update last any ping timestamp
                 try:
                     self._last_any_ping = datetime.utcnow()
-                    self._ping_missing_event_emitted = False  # Reset flag on any ping
+                    self._ping_missing_event_emitted = False
                 except Exception:
                     pass
-                return  # No visualizar ni emitir evento para pings
+                return
 
-            # También emitir un evento específico que pueda ser capturado por la UI
             message_bus.emit("remote_realtime_event", username, event_data)
 
         except Exception as e:
             message_bus.publish(
                 content=f"Error handling realtime event broadcast: {e}",
-                level=MessageLevel.ERROR,  # Mantener errores en ERROR
+                level=MessageLevel.ERROR,
                 metadata={"source": "realtime_bridge"}
             )
 
