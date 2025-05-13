@@ -99,7 +99,17 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Create main panel and UI components
         self._create_ui_components()
-        
+        # --- CORRECCIÓN: Crear la etiqueta 'Privado' como hija del panel principal y añadirla al sizer de labels dinámicos ---
+        # El panel principal se llama 'panel' y el sizer de labels dinámicos es 'self.dynamic_labels.label_sizer'
+        font = wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+        self.privado_label = wx.StaticText(self.panel, label="Privado")
+        self.privado_label.SetFont(font)
+        self.privado_label.SetForegroundColour(wx.Colour(220, 0, 0))
+        self.privado_label.Hide()
+        # Añadir la etiqueta al sizer de labels dinámicos, a la derecha del icono de conexión
+        self.dynamic_labels.label_sizer.Add(self.privado_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+        self.panel.Layout()
+
         # Set flag for GUI mode in log_analyzer
         log_analyzer.main.in_gui = True
 
@@ -165,7 +175,8 @@ class LogAnalyzerFrame(wx.Frame):
     def _create_ui_components(self):
         """Create all UI components for the main application window."""
         # Create main panel
-        panel = wx.Panel(self)
+        self.panel = wx.Panel(self)
+        panel = self.panel
         
         # Bind keyboard events to panel as well
         panel.Bind(wx.EVT_KEY_DOWN, self.on_key_down)
@@ -174,7 +185,7 @@ class LogAnalyzerFrame(wx.Frame):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Add dynamic labels for username, shard, version, and mode
-        self.dynamic_labels.create_labels(panel, main_sizer)
+        self.dynamic_labels.label_sizer = self.dynamic_labels.create_labels(panel, main_sizer)
 
         # Create notebook for log output and Google Sheets data
         self.notebook = wx.Notebook(panel)
@@ -315,25 +326,24 @@ class LogAnalyzerFrame(wx.Frame):
                 level=MessageLevel.ERROR
             )
     
-    def on_shard_version_update(self, shard, version, username, mode=None):
+    def on_shard_version_update(self, shard, version, username, mode=None, private=None):
         """
-        Handle updates to the shard, version, username, and mode.
-
-        Args:
-            shard (str): The updated shard name.
-            version (str): The updated version.
-            username (str): The updated username.
-            mode (str): The current game mode.
+        Handle updates to the shard, version, username, and mode, and show 'Privado' label if private is True.
         """
         try:
-            # Update instance properties
             self.shard = shard
             self.version = version
             self.username = username
             if mode is not None:
                 self.mode = mode
-                
             self.update_dynamic_labels()  # Call update_dynamic_labels to refresh UI
+            # Mostrar/ocultar la etiqueta 'Privado' según private
+            if self.privado_label:
+                if private:
+                    self.privado_label.Show()
+                else:
+                    self.privado_label.Hide()
+                self.privado_label.GetParent().Layout()
         except Exception as e:
             message_bus.publish(
                 content=f"Error updating shard/version/username/mode: {e}",

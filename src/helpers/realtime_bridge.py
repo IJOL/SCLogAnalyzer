@@ -345,10 +345,11 @@ class RealtimeBridge:
                 metadata={"source": "realtime_bridge"}
             )
 
-    def _handle_shard_version_update(self, shard, version, username, mode=None):
-        """Maneja actualizaciones de shard y versión para sincronizarlas con Realtime"""
+    def _handle_shard_version_update(self, shard, version, username, mode=None, private=None):
+        """Maneja actualizaciones de shard y versión para sincronizarlas con Realtime, ahora con info de lobby privado."""
         self.shard = shard
         self.version = version
+        # Se puede usar el argumento 'private' para lógica futura si se requiere
         if 'general' in self.channels and self.channels['general']:
             state = self.channels['general'].presence.state
             if username in state:
@@ -362,11 +363,12 @@ class RealtimeBridge:
                 'shard': shard,
                 'version': version,
                 'status': 'online',
+                # 'private': private,  # Si se quiere propagar a presencia, descomentar
             }
             try:
                 self._run_in_loop(self.channels['general'].track(presence_data))
                 message_bus.publish(
-                    content=f"Updated presence status with shard: {shard}, version: {version}",
+                    content=f"Updated presence status with shard: {shard}, version: {version}, private: {private}",
                     level=MessageLevel.DEBUG,
                     metadata={"source": "realtime_bridge"}
                 )

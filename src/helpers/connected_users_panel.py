@@ -221,11 +221,9 @@ class ConnectedUsersPanel(wx.Panel):
         self.users_online = users_online
         wx.CallAfter(self._update_ui_users_list)
 
-    def on_shard_version_update(self, shard, version, username, mode=None):
+    def on_shard_version_update(self, shard, version, username, mode=None, private=None):
         """
-        Maneja las actualizaciones de shard y versión.
-        Actualiza los valores actuales y las etiquetas de los filtros.
-        Además, si el username recibido es válido, lo almacena como el username actual.
+        Maneja las actualizaciones de shard y versión, ahora con info de lobby privado (argumento extra).
         """
         self.current_shard = shard if shard else "Unknown"
         self.current_mode = mode if mode is not None else self.current_mode

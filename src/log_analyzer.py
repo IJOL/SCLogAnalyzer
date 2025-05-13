@@ -220,6 +220,10 @@ class LogFileHandler(FileSystemEventHandler):
         # Add server endpoint regex to detect PU/PTU version
         self.server_endpoint_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <ReuseChannel> Reusing channel for .* to endpoint dns:///(?P<server_version>[^\.]+)\..*? \(transport security: \d\)")
 
+        # --- BLOQUEO DE GRABACIÓN POR LOBBY PRIVADO EN MODOS EA_* ---
+        self.block_private_lobby_recording = False
+        self.lobby_type_regex = re.compile(r"\[EALobby\]\[CEALobby::NotifyServiceRequestResponse\] Notifying Service Response\. Response\[\d+\]\[.*?\] Network\[(?P<network>Custom|Online)\]\[\d+\] Mode\[(?P<mode>EA_\w+)\]\[\d+\]")
+
         # Process entire log if requested
         if self.process_all:
             self.process_entire_log()
@@ -448,6 +452,11 @@ class LogFileHandler(FileSystemEventHandler):
 
         # Add state data to the payload and proceed as normal for non-PTU versions
         data_with_state = self.add_state_data(data)
+
+        # --- BLOQUEO DE GRABACIÓN POR LOBBY PRIVADO EN MODOS EA_* ---
+        if getattr(self, 'block_private_lobby_recording', False):
+            return False
+
         self.data_queue.put((data_with_state, event_type))
         return True
 
@@ -697,6 +706,17 @@ class LogFileHandler(FileSystemEventHandler):
 
                 return True
 
+        # --- BLOQUEO DE GRABACIÓN POR LOBBY PRIVADO EN MODOS EA_* ---
+        lobby_match = self.lobby_type_regex.search(entry)
+        if lobby_match:
+            network = lobby_match.group('network')
+            mode = lobby_match.group('mode')
+            if mode.startswith('EA_'):
+                if network == 'Custom':
+                    self.block_private_lobby_recording = True
+                elif network == 'Online':
+                    self.block_private_lobby_recording = False
+
         # Check for mode start (Context Establisher Done)
         start_match = self.mode_start_regex.search(entry)
         if start_match:
@@ -719,6 +739,10 @@ class LogFileHandler(FileSystemEventHandler):
                 if self.in_ea_mode:
                     output_message(timestamp, f"EA mode detected: '{new_mode}'. Exit events will be ignored until next mode change.", level="debug")
 
+                # Si el nuevo modo es SC_*, desactivar siempre el bloqueo de grabación
+                if new_mode and new_mode.startswith('SC_'):
+                    self.block_private_lobby_recording = False
+                
                 # Emit the event to notify subscribers about mode change
                 message_bus.emit("mode_change", new_mode, old_mode)
 
