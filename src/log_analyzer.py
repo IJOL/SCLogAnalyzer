@@ -222,8 +222,12 @@ class LogFileHandler(FileSystemEventHandler):
 
         # --- BLOQUEO DE GRABACIÓN POR LOBBY PRIVADO EN MODOS EA_* ---
         self.block_private_lobby_recording = False
-        self.lobby_type_regex = re.compile(r"\[EALobby\]\[CEALobby::NotifyServiceRequestResponse\] Notifying Service Response\. Response\[\d+\]\[.*?\] Network\[(?P<network>Custom|Online)\]\[\d+\] Mode\[(?P<mode>EA_\w+)\]\[\d+\]")
-
+        self.lobby_type_regex = re.compile(
+            r"<(?P<timestamp>.*?)> \[Notice\] <\[EALobby\] NotifyServiceRequestResponse> "
+            r"\[EALobby\]\[CEALobby::NotifyServiceRequestResponse\] Notifying Service Response\. "
+            r"Response\[\d+\]\[.*?\] Network\[(?P<network>\w+)\]\[\d+\] "
+            r"Mode\[GameMode\.(?P<mode>EA_\w+)\]\[\d+\] Map\[(?P<map>[\w_]+)\]\[\d+\]"
+        )
         # Process entire log if requested
         if self.process_all:
             self.process_entire_log()
@@ -756,7 +760,8 @@ class LogFileHandler(FileSystemEventHandler):
                     self.current_shard, 
                     self.current_version, 
                     self.username, 
-                    self.current_mode
+                    self.current_mode,
+                    self.block_private_lobby_recording
                 )
 
                 # Output message
@@ -793,7 +798,8 @@ class LogFileHandler(FileSystemEventHandler):
                     self.current_shard, 
                     self.current_version, 
                     self.username, 
-                    self.current_mode
+                    self.current_mode,
+                    self.block_private_lobby_recording
                 )
 
                 # Output message

@@ -99,15 +99,6 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Create main panel and UI components
         self._create_ui_components()
-        # --- CORRECCIÓN: Crear la etiqueta 'Privado' como hija del panel principal y añadirla al sizer de labels dinámicos ---
-        # El panel principal se llama 'panel' y el sizer de labels dinámicos es 'self.dynamic_labels.label_sizer'
-        font = wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
-        self.privado_label = wx.StaticText(self.panel, label="Privado")
-        self.privado_label.SetFont(font)
-        self.privado_label.SetForegroundColour(wx.Colour(220, 0, 0))
-        self.privado_label.Hide()
-        # Añadir la etiqueta al sizer de labels dinámicos, a la derecha del icono de conexión
-        self.dynamic_labels.label_sizer.Add(self.privado_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
         self.panel.Layout()
 
         # Set flag for GUI mode in log_analyzer
@@ -318,8 +309,8 @@ class LogAnalyzerFrame(wx.Frame):
             shard = self.shard if self.shard != "Unknown" and self.monitoring_service.event_handler else getattr(self.monitoring_service.event_handler, "current_shard", "Unknown")
             version = self.version if self.version != "Unknown" and self.monitoring_service.event_handler else getattr(self.monitoring_service.event_handler, "current_version", "Unknown")
             mode = self.mode if self.mode != "None" and self.monitoring_service.event_handler else getattr(self.monitoring_service.event_handler, "current_mode", "None")
-
-            self.dynamic_labels.update_labels(username, shard, version, mode)
+            private = self.private if self.private is not None else getattr(self.monitoring_service.event_handler, "block_private_lobby_recording", False)
+            self.dynamic_labels.update_labels(username, shard, version, mode,private)
         except Exception as e:
             message_bus.publish(
                 content=f"Error updating labels: {e}",
@@ -334,16 +325,11 @@ class LogAnalyzerFrame(wx.Frame):
             self.shard = shard
             self.version = version
             self.username = username
+            self.private = private
             if mode is not None:
                 self.mode = mode
             self.update_dynamic_labels()  # Call update_dynamic_labels to refresh UI
             # Mostrar/ocultar la etiqueta 'Privado' según private
-            if self.privado_label:
-                if private:
-                    self.privado_label.Show()
-                else:
-                    self.privado_label.Hide()
-                self.privado_label.GetParent().Layout()
         except Exception as e:
             message_bus.publish(
                 content=f"Error updating shard/version/username/mode: {e}",

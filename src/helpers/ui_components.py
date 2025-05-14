@@ -317,7 +317,7 @@ class DynamicLabels:
             wx.BoxSizer: The sizer containing the labels
         """
         # Create bold font for labels
-        bold_font = wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+        bold_font = wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
         
         # Create the labels
         self.username_label = wx.StaticText(panel, label="Username: Loading...")
@@ -331,13 +331,25 @@ class DynamicLabels:
         
         self.mode_label = wx.StaticText(panel, label="Mode: Loading...")
         self.mode_label.SetFont(bold_font)
+
+        self.private_label = wx.StaticText(panel, label="Private")
+        self.private_label.SetFont(bold_font)
+        self.private_label.Hide()  # Hide by default
+        # Set the label colors  
+        self.private_label.SetForegroundColour(wx.Colour(0, 255, 0))  # Green
+
         
         # Create and populate the label sizer
         label_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        label_sizer.Add(self.username_label, 1, wx.ALL | wx.EXPAND, 5)
-        label_sizer.Add(self.shard_label, 1, wx.ALL | wx.EXPAND, 5)
+        label_sizer.Add(self.username_label, 1, wx.ALL | wx.LEFT, 5)
+        label_sizer.AddStretchSpacer()
+        label_sizer.Add(self.shard_label, 1, wx.ALL | wx.LEFT, 5)
+        label_sizer.AddStretchSpacer()
         label_sizer.Add(self.version_label, 1, wx.ALL | wx.EXPAND, 5)
-        label_sizer.Add(self.mode_label, 1, wx.ALL | wx.EXPAND, 5)
+        label_sizer.AddStretchSpacer()
+        label_sizer.Add(self.mode_label, 1, wx.ALL | wx.RIGHT, 5)
+        label_sizer.AddStretchSpacer()
+        label_sizer.Add(self.private_label, 1, wx.ALL | wx.RIGHT, 5)
         label_sizer.AddStretchSpacer()
         # --- Custom icon loading (PNG) ---
         # Iconos descargados de https://icons8.com/icon/124377/green-circle y https://icons8.com/icon/124376/red-circle
@@ -380,7 +392,7 @@ class DynamicLabels:
         """Callback para evento de reconexión: pone el icono en verde."""
         self.set_connection_status(True)
 
-    def update_labels(self, username="Unknown", shard="Unknown", version="Unknown", mode="None"):
+    def update_labels(self, username="Unknown", shard="Unknown", version="Unknown", mode="None", private=False):
         """
         Update the dynamic labels with new values.
         
@@ -391,16 +403,21 @@ class DynamicLabels:
             mode (str): The game mode to display
         """
         if self.username_label:
-            self.username_label.SetLabel(f"Username: {username}")
+            self.username_label.SetLabel(f"{username}")
         
         if self.shard_label:
-            self.shard_label.SetLabel(f"Shard: {shard}")
+            self.shard_label.SetLabel(f"{shard}")
             
         if self.version_label:
-            self.version_label.SetLabel(f"Version: {version}")
+            self.version_label.SetLabel(f"{version}")
             
         if self.mode_label:
             self.mode_label.SetLabel(f"Mode: {mode or 'None'}")
+        if self.private_label:
+            if private:
+                self.private_label.Show()
+            else:
+                self.private_label.Hide()
 
 
 class FormPanel:
