@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 6
+RELEASE = 7
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "df04d86"
+PATCH = "4abec3d"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -61,4 +61,10 @@ COMMIT_MESSAGES = [
     "25fc4b7: Update tag creation logic to only execute with --push flag",
     "f86edcc: Add 'stalled' message filter checkbox to UI and backend integration",
     "df04d86: Enhance UI: Adjust column widths for 'Shard' and 'VersiÃ³n' in Connected Users panel; format last active timestamp in RealtimeBridge",
+
+    # Version v0.9.6-df04d86-pyam-exhang-docker
+    "a3cc1a9: Increment version to v0.9.6-df04d86-pyam-exhang",
+    "1919fde: Enhance Connected Users Panel: Add user filter checkboxes with images and update filtering logic; modify RealtimeBridge to support user-based message filtering.",
+    "357cdfa: Enhance shard/version update handling: Add 'private' argument to support lobby visibility in ConnectedUsersPanel and RealtimeBridge; implement private lobby recording block in LogFileHandler.",
+    "4abec3d: Enhance private lobby handling: Add 'Private' label to UI and update dynamic labels; implement blocking for private lobby recording in LogFileHandler.",
 ]
