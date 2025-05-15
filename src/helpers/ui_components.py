@@ -366,7 +366,7 @@ class DynamicLabels:
         self.connection_icon.SetToolTip("Estado de conexión: conectado")
         label_sizer.Add(self.connection_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         sizer.Add(label_sizer, 0, wx.EXPAND)
-        message_bus.on("broadcast_ping_missing", self._on_ping_missing)
+        message_bus.on("broadcast_ping_missing", lambda *a, **k: wx.CallAfter(self._on_ping_missing))
         message_bus.on("realtime_reconnected", self._on_reconnected)
         return label_sizer
 

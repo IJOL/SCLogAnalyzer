@@ -37,7 +37,7 @@ class ConnectedUsersPanel(wx.Panel):
         message_bus.on("users_online_updated", self.update_users_list)
         message_bus.on("remote_realtime_event", self.add_remote_log)
         message_bus.on("shard_version_update", self.on_shard_version_update)
-        message_bus.on("broadcast_ping_missing", self._on_broadcast_ping_missing)
+        message_bus.on("broadcast_ping_missing", lambda *a, **k: wx.CallAfter(self._on_broadcast_ping_missing))
         
         # Lista de usuarios actualmente conectados
         self.users_online = []

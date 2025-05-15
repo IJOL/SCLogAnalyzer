@@ -162,7 +162,28 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Initially hide debug elements
         self.update_debug_ui_visibility()
-    
+
+        # --- Suscripción para broadcast_ping_missing: siempre delega a hilo principal con wx.CallAfter ---
+        message_bus.on("broadcast_ping_missing", lambda *a, **k: wx.CallAfter(self.handle_broadcast_ping_missing))
+
+    def handle_broadcast_ping_missing(self):
+        """
+        Handle the event when no ping is received from any user in over 120 seconds.
+        This method is always called in the main thread.
+        You can safely start wx.Timer or update UI here.
+        """
+        # Example: show a warning in the status bar and optionally start a timer or dialog
+        self.SetStatusText("Warning: No pings received in 120s. Realtime reconnecting...")
+        # Aquí puedes iniciar un wx.Timer o mostrar un diálogo si es necesario
+        # Por ejemplo:
+        # if not hasattr(self, '_ping_warning_timer'):
+        #     self._ping_warning_timer = wx.Timer(self)
+        #     self.Bind(wx.EVT_TIMER, self.on_ping_warning_timer, self._ping_warning_timer)
+        # self._ping_warning_timer.Start(10000, oneShot=True)
+        # También puedes mostrar un wx.MessageBox si lo deseas
+        # wx.MessageBox("Realtime connection lost. Attempting to reconnect...", "Realtime Warning", wx.OK | wx.ICON_WARNING)
+
+        
     def _create_ui_components(self):
         """Create all UI components for the main application window."""
         # Create main panel
