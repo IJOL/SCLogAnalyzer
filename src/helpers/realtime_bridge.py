@@ -85,6 +85,8 @@ class RealtimeBridge:
         message_bus.on("shard_version_update", self._handle_shard_version_update)
         message_bus.on("realtime_event", self._handle_realtime_event)
         message_bus.on("username_change", self.set_username)  # Subscribe to existing username_change events
+        # Subscribe to force_realtime_reconnect event for log truncation/reset
+        message_bus.on("force_realtime_reconnect", self._handle_force_reconnect)
         
         # Nuevo: Lock de reconexión y estado
         self._reconnect_lock = threading.Lock()
@@ -169,23 +171,47 @@ class RealtimeBridge:
             return False
 
     def disconnect(self):
-        """Desconecta de Supabase Realtime"""
+        """Desconecta de Supabase Realtime y limpia todos los recursos async y threads."""
         try:
             # Detener el heartbeat
             self._stop_heartbeat()
             self._stop_ping_missing_check()  # Stop ping absence checker
-            
-            # Desconectar todos los canales
-            for channel_name, channel in self.channels.items():
-                if hasattr(channel, 'unsubscribe'):
-                    channel.unsubscribe()
-            
+
+            # Desconectar todos los canales primero
+            for channel in self.channels.values():
+                self._run_in_loop(channel.unsubscribe())
             self.channels = {}
-            self.is_connected = False
-            
+
+            # Ahora cerrar cliente async si existe y el event loop está abierto
+            if self.supabase:
+                try:
+                    loop = self.event_loop
+                    if loop and loop.is_running() and not loop.is_closed():
+                        self._run_in_loop(self.supabase.realtime.close())
+                        message_bus.publish(
+                            content="RealtimeBridge: async client closed",
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": "realtime_bridge"}
+                        )
+                    else:
+                        message_bus.publish(
+                            content="RealtimeBridge: Event loop is closed or not running, skipping async client close",
+                            level=MessageLevel.WARNING,
+                            metadata={"source": "realtime_bridge"}
+                        )
+                except Exception as e:
+                    message_bus.publish(
+                        content=f"RealtimeBridge: Error closing async client: {e}",
+                        level=MessageLevel.ERROR,
+                        metadata={"source": "realtime_bridge"}
+                    )
+                self.supabase = None
+
             # Detener el bucle de eventos dedicado
             self._stop_event_loop()
-            
+
+            self.is_connected = False
+
             message_bus.publish(
                 content="Realtime Bridge disconnected",
                 level=MessageLevel.INFO,
@@ -675,9 +701,30 @@ class RealtimeBridge:
                 pass
             time.sleep(5)
 
+    def _handle_force_reconnect(self, *args, **kwargs):
+        """Handle force_realtime_reconnect event: always reconnect (incondicional, no configurable)."""
+        message_bus.publish(
+            content="Received force_realtime_reconnect event. Forcing unconditional reconnect (mandatory, not configurable).",
+            level=MessageLevel.INFO,
+            metadata={"source": "realtime_bridge"}
+        )
+        result = self.reconnect()
+        if result:
+            message_bus.publish(
+                content="RealtimeBridge: Reconnected successfully after log reset/truncation.",
+                level=MessageLevel.INFO,
+                metadata={"source": "realtime_bridge"}
+            )
+        else:
+            message_bus.publish(
+                content="RealtimeBridge: Reconnect failed after log reset/truncation.",
+                level=MessageLevel.ERROR,
+                metadata={"source": "realtime_bridge"}
+            )
+
     def reconnect(self):
         """
-        Low-level reconnect: closes and reopens the async Supabase client and resubscribes the general channel.
+        Low-level reconnect: closes and reopens the async Supabase client y resuscribe el canal general.
         Protegido contra concurrencia: solo una reconexión puede ejecutarse a la vez.
         Si ya hay una reconexión en curso, la petición se ignora y se emite un aviso por MessageBus.
         """
@@ -695,23 +742,15 @@ class RealtimeBridge:
                 level=MessageLevel.INFO,
                 metadata={"source": "realtime_bridge"}
             )
-            # Close async client if exists
-            if self.supabase:
-                try:
-                    run_coroutine(self.supabase.realtime.close())
-                    self.is_connected = False
-                    message_bus.publish(
-                        content="RealtimeBridge: async client closed",
-                        level=MessageLevel.DEBUG,
-                        metadata={"source": "realtime_bridge"}
-                    )
-                except Exception as e:
-                    message_bus.publish(
-                        content=f"RealtimeBridge: Error closing async client: {e}",
-                        level=MessageLevel.ERROR,
-                        metadata={"source": "realtime_bridge"}
-                    )
-                self.connect()
+            # Siempre llamar a disconnect para limpieza total
+            self.disconnect()
+            # Ya no se cierra el cliente async aquí, eso ocurre en disconnect
+            self.connect()
+            message_bus.publish(
+                content="RealtimeBridge: reconnect completed (disconnect + connect)",
+                level=MessageLevel.INFO,
+                metadata={"source": "realtime_bridge"}
+            )
             return True
         except Exception as e:
             message_bus.publish(
