@@ -735,6 +735,9 @@ class LogFileHandler(FileSystemEventHandler):
             if new_mode != self.current_mode:
                 old_mode = self.current_mode
                 self.current_mode = new_mode
+                # Si el nuevo modo es SC_Frontend, limpiar el shard
+                if new_mode != "SC_Default":
+                    self.current_shard = None
                 
                 # Check if we're entering an EA_ mode
                 self.in_ea_mode = new_mode is not None and new_mode.startswith("EA_")
