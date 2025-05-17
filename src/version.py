@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 7
+RELEASE = 8
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "4abec3d"
+PATCH = "d69176d"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -67,4 +67,10 @@ COMMIT_MESSAGES = [
     "1919fde: Enhance Connected Users Panel: Add user filter checkboxes with images and update filtering logic; modify RealtimeBridge to support user-based message filtering.",
     "357cdfa: Enhance shard/version update handling: Add 'private' argument to support lobby visibility in ConnectedUsersPanel and RealtimeBridge; implement private lobby recording block in LogFileHandler.",
     "4abec3d: Enhance private lobby handling: Add 'Private' label to UI and update dynamic labels; implement blocking for private lobby recording in LogFileHandler.",
+
+    # Version v0.9.7-4abec3d-pyam-exhang-docker
+    "27fac49: Increment version to v0.9.7-4abec3d-pyam-exhang",
+    "1654e6a: Delegate broadcast_ping_missing handling to the main thread using wx.CallAfter for UI safety",
+    "9f9a728: Emit force_realtime_reconnect event after state reset in LogFileHandler for improved reconnection handling",
+    "d69176d: Update instructions: centralize plan storage in planes.instructions.md and enhance markdown response requirements for plan changes",
 ]
