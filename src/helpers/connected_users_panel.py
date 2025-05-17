@@ -66,7 +66,8 @@ class ConnectedUsersPanel(wx.Panel):
         self.users_list.InsertColumn(2, "Shard", width=150)
         self.users_list.InsertColumn(3, "Versión", width=150)
         self.users_list.InsertColumn(4, "Estado", width=100)
-        self.users_list.InsertColumn(5, "Última actividad", width=150)
+        self.users_list.InsertColumn(5, "Modo", width=100)
+        self.users_list.InsertColumn(6, "Última actividad", width=150)
         self.users_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_user_filter_toggle)
         main_sizer.Add(self.users_list, 1, wx.EXPAND | wx.ALL, 5)
         
@@ -180,6 +181,7 @@ class ConnectedUsersPanel(wx.Panel):
             shard = user.get('shard', 'Unknown')
             version = user.get('version', 'Unknown')
             status = user.get('status', 'Unknown')
+            mode = user.get('mode', 'Unknown') or 'Unknown'  # fallback seguro
             last_active = user.get('last_active', 'Unknown')
             
             # Convertir timestamp ISO a formato más legible
@@ -202,7 +204,8 @@ class ConnectedUsersPanel(wx.Panel):
             self.users_list.SetItem(index, 2, str(shard))
             self.users_list.SetItem(index, 3, str(version))
             self.users_list.SetItem(index, 4, str(status))
-            self.users_list.SetItem(index, 5, str(last_active_str))
+            self.users_list.SetItem(index, 5, str(mode))
+            self.users_list.SetItem(index, 6, str(last_active_str))
         self.users_list.Refresh()
 
     def on_user_filter_toggle(self, event):

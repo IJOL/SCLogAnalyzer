@@ -302,6 +302,16 @@ class RealtimeBridge:
         future = asyncio.run_coroutine_threadsafe(coroutine, self.event_loop)
         return future.result(10)  # Timeout de 10 segundos
         
+    def _build_presence_dict(self, username=None, shard=None, version=None, status=None, mode=None):
+        """Builds the presence dictionary for track() calls."""
+        return {
+            'username': username if username is not None else self.username,
+            'shard': shard if shard is not None else self.shard,
+            'version': version if version is not None else self.version,
+            'status': status if status is not None else 'online',
+            'mode': mode if mode is not None else getattr(self, 'current_mode', None)
+        }
+
     def _init_general_channel(self):
         """Inicializa el canal 'general' para presencia y broadcast"""
         try:
@@ -313,12 +323,7 @@ class RealtimeBridge:
             })
             def on_subscribe(status, err=None):
                 if status == 'SUBSCRIBED':
-                    initial_presence = {
-                        'username': self.username,
-                        'shard': self.shard,
-                        'version': self.version,
-                        'status': 'online',
-                    }
+                    initial_presence = self._build_presence_dict()
                     try:
                         asyncio.create_task(general_channel.track(initial_presence))
                         message_bus.publish(
@@ -375,6 +380,7 @@ class RealtimeBridge:
         """Maneja actualizaciones de shard y versión para sincronizarlas con Realtime, ahora con info de lobby privado."""
         self.shard = shard
         self.version = version
+        self.current_mode = mode  # Mantener actualizado el modo
         # Se puede usar el argumento 'private' para lógica futura si se requiere
         if 'general' in self.channels and self.channels['general']:
             state = self.channels['general'].presence.state
@@ -384,17 +390,11 @@ class RealtimeBridge:
                     and state[username][0].get('shard') == shard:
                     return
         if 'general' in self.channels and self.channels['general'] and username != 'Unknown':
-            presence_data = {
-                'username': username,
-                'shard': shard,
-                'version': version,
-                'status': 'online',
-                # 'private': private,  # Si se quiere propagar a presencia, descomentar
-            }
+            presence_data = self._build_presence_dict(username=username, shard=shard, version=version, mode=mode)
             try:
                 self._run_in_loop(self.channels['general'].track(presence_data))
                 message_bus.publish(
-                    content=f"Updated presence status with shard: {shard}, version: {version}, private: {private}",
+                    content=f"Updated presence status with shard: {shard}, version: {version}, mode: {mode}, private: {private}",
                     level=MessageLevel.DEBUG,
                     metadata={"source": "realtime_bridge"}
                 )
@@ -418,6 +418,7 @@ class RealtimeBridge:
                         'shard': presence.get('shard'),
                         'version': presence.get('version'),
                         'status': presence.get('status'),
+                        'mode': presence.get('mode'),
                         'last_active': last_active.strftime('%Y-%m-%d %H:%M:%S') if last_active else None,
                         'metadata': presence.get('metadata', {})
                     })
@@ -609,16 +610,8 @@ class RealtimeBridge:
             try:
                 # Solo actualizar si tenemos información de shard e información de presencia
                 if 'general' in self.channels and self.channels['general'] and self.username != 'Unknown':
-                    presence_data = {
-                        'username': self.username,
-                        'shard': self.shard,
-                        'version': self.version,
-                        'status': 'online',
-                    }
-                    
-                    # Actualizar estado de presencia - usar _run_in_loop para coroutines
+                    presence_data = self._build_presence_dict()
                     self._run_in_loop(self.channels['general'].track(presence_data))
-                    
                     message_bus.publish(
                         content="Heartbeat presence update sent",
                         level=MessageLevel.DEBUG,
