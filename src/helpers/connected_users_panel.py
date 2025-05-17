@@ -129,11 +129,12 @@ class ConnectedUsersPanel(wx.Panel):
         # Lista de logs compartidos
         self.shared_logs = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.shared_logs.InsertColumn(0, "Hora", width=100)
-        self.shared_logs.InsertColumn(1, "Usuario", width=100)
-        self.shared_logs.InsertColumn(2, "Tipo", width=100)
-        self.shared_logs.InsertColumn(3, "Contenido", width=300)
-        self.shared_logs.InsertColumn(4, "Shard", width=100)
-        self.shared_logs.InsertColumn(5, "Modo", width=100)
+        self.shared_logs.InsertColumn(1, "Hora local", width=120)
+        self.shared_logs.InsertColumn(2, "Usuario", width=100)
+        self.shared_logs.InsertColumn(3, "Tipo", width=100)
+        self.shared_logs.InsertColumn(4, "Contenido", width=300)
+        self.shared_logs.InsertColumn(5, "Shard", width=100)
+        self.shared_logs.InsertColumn(6, "Modo", width=100)
         main_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
         
         # Botones de control
@@ -279,10 +280,13 @@ class ConnectedUsersPanel(wx.Panel):
         # Extraer modo del raw_data si está disponible
         mode = raw_data.get('mode', 'Unknown')
         
-        
+        # Extraer hora local del campo datetime del payload si está disponible
+        hora_local = raw_data.get('datetime', 'Desconocido')
+        hora_local_str = str(hora_local) if hora_local else 'Desconocido'
         # Crear entrada de log temporal (sin almacenarla)
         log_entry = {
             'timestamp_str': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'hora_local_str': hora_local_str,
             'username': username,
             'log_type': log_type,
             'content': content,
@@ -296,11 +300,12 @@ class ConnectedUsersPanel(wx.Panel):
     
     def _add_log_entry_to_ui(self, log_entry, position):
         index = self.shared_logs.InsertItem(position, log_entry['timestamp_str'])
-        self.shared_logs.SetItem(index, 1, str(log_entry['username'] or 'Unknown'))
-        self.shared_logs.SetItem(index, 2, str(log_entry['log_type'] or 'Unknown'))
-        self.shared_logs.SetItem(index, 3, str(log_entry['content'] or ''))
-        self.shared_logs.SetItem(index, 4, str(log_entry['shard'] or 'Unknown'))
-        self.shared_logs.SetItem(index, 5, str(log_entry['mode'] or 'Unknown'))
+        self.shared_logs.SetItem(index, 1, str(log_entry['hora_local_str'] or 'Desconocido'))
+        self.shared_logs.SetItem(index, 2, str(log_entry['username'] or 'Unknown'))
+        self.shared_logs.SetItem(index, 3, str(log_entry['log_type'] or 'Unknown'))
+        self.shared_logs.SetItem(index, 4, str(log_entry['content'] or ''))
+        self.shared_logs.SetItem(index, 5, str(log_entry['shard'] or 'Unknown'))
+        self.shared_logs.SetItem(index, 6, str(log_entry['mode'] or 'Unknown'))
 
     def _passes_current_filters(self, log_entry):
         """Verifica si una entrada de log pasa los filtros actuales"""
