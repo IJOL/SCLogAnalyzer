@@ -174,3 +174,7 @@ src/version.py
 supbase.realtime.examples.py
 .vscode/launch.json
 test.json
+.github/instructions/Normas generales proyecto SCLogAnalyzer.instructions.md
+.github/instructions/planes_antiguos.md
+.github/instructions/planes.instructions.md
+.github/instructions/Procedimientos_Desarrollo_SCLogAnalyzer.instructions.md

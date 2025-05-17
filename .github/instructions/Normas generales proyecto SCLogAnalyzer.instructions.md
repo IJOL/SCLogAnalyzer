@@ -23,3 +23,5 @@ cd c:\Users\nacho\git\SCLogAnalyzer ; .\venv\Scripts\activate ; python src/gui.p
 - cuando use sequentialthinking quiero que me informes del pensamiento inicial en cada iteracion
 - siempre puedes usa src/**/*.py desde el proyectop SCLogAnalyzer como base de busqueda, pero no uses el resto de los proyectos para busquedas a no ser que lo pida explicitamente
 - la herramienta MCP filñesystem solo acepta sepradores de directorios linux, no windows
+- A partir de ahora, todos los planes deben almacenarse exclusivamente en el archivo planes.instructions.md y no en el grafo de conocimiento. El archivo planes.instructions.md será la única fuente de verdad para la planificación y debe usarse para registrar, aprobar y consultar cualquier plan de edición, migración o cambio.
+- Siempre que el usuario solicite un cambio en el plan (antes de su aprobación), la respuesta debe incluir el plan completo y formateado en markdown, mostrando el estado actualizado del plan para su revisión. No se debe modificar el código hasta que el plan esté aprobado explícitamente.
