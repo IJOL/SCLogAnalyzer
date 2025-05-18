@@ -953,12 +953,12 @@ class LogFileHandler(FileSystemEventHandler):
         self.last_position = 0
         self.actor_state = {}
         # Emit events to notify subscribers about the reset
+        from helpers.message_bus import message_bus
         message_bus.emit("mode_change", None, self.current_mode)
         message_bus.emit("shard_version_update", self.current_shard, self.current_version, self.username, self.current_mode)
         message_bus.emit("username_change", self.username, None)
         output_message(None, "State reset complete")
         # Lanzar evento para forzar reconexión realtime tras reset/truncado
-        from .helpers.message_bus import message_bus
         message_bus.emit("force_realtime_reconnect")
         output_message(None, "State reset complete (y force_realtime_reconnect emitido)")
     
