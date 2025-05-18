@@ -142,6 +142,7 @@ class ConfigDialog(wx.Frame):
         self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
         self.colors_grid = self.add_colors_tab(notebook, "Colors", self.config_data.get("colors", {}))  # Add colors tab
         self.tabs_grid = self.add_tab(notebook, "Dynamic Tabs", "tabs")  # Add tabs configuration grid
+        self.add_vips_tab(notebook, "VIP Players", self.config_data.get("important_players", ""))
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -306,6 +307,9 @@ class ConfigDialog(wx.Frame):
         tabs_data = self.tabs_grid.get_data()
         self.config_manager.set("tabs", tabs_data)
         
+        # Save VIP string (from textarea)
+        self.config_manager.set("important_players", self.get_vip_string())
+        
         # Save to file
         self.config_manager.save_config()
         
@@ -337,6 +341,37 @@ class ConfigDialog(wx.Frame):
         self.config_saved = False  # Mark that config was not saved
         self.Destroy()
 
+    def add_vips_tab(self, notebook, title, vips_string):
+        """Add the VIPs tab to the config dialog notebook (multiline TextCtrl, comma or LF separated input, always shown as LF-separated)."""
+        panel = wx.ScrolledWindow(notebook)
+        panel.SetScrollRate(5, 5)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        vip_doc = wx.StaticText(
+            panel,
+            label="List of VIP player names or regex patterns, one per line.\nEach entry can be a plain string or a regex pattern (Python re).\nInvalid patterns are ignored.\nExample: ^Admiral.*$ or player123"
+        )
+        sizer.Add(vip_doc, 0, wx.ALL | wx.EXPAND, 5)
+        # Normalize input: split by comma or LF, strip, join by LF for display
+        if vips_string:
+            items = [x.strip() for part in vips_string.split('\n') for x in part.split(',')]
+            items = [x for x in items if x]
+            vips_text = '\n'.join(items)
+        else:
+            vips_text = ""
+        self.vip_text_ctrl = wx.TextCtrl(
+            panel, value=vips_text, style=wx.TE_MULTILINE | wx.TE_DONTWRAP
+        )
+        sizer.Add(self.vip_text_ctrl, 1, wx.ALL | wx.EXPAND, 5)
+        panel.SetSizer(sizer)
+        notebook.AddPage(panel, title)
+        return panel
+
+    def get_vip_string(self):
+        """Return VIPs as a single string from the TextCtrl (comma-separated, normalized)."""
+        # Normalize: split by LF, strip, join by comma, remove empty
+        raw = self.vip_text_ctrl.GetValue()
+        items = [x.strip() for x in raw.split('\n') if x.strip()]
+        return ','.join(items)
 
 class ProcessDialog(wx.Dialog):
     """Dialog for selecting a file and processing it."""

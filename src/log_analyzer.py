@@ -9,6 +9,7 @@ import threading
 import queue
 import signal
 import logging  # Add logging for error handling
+from datetime import datetime  # Fix: import datetime for timestamp handling
 #from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
@@ -228,6 +229,7 @@ class LogFileHandler(FileSystemEventHandler):
             r"Response\[\d+\]\[.*?\] Network\[(?P<network>\w+)\]\[\d+\] "
             r"Mode\[GameMode\.(?P<mode>EA_\w+)\]\[\d+\] Map\[(?P<map>[\w_]+)\]\[\d+\]"
         )
+        self.vip_patterns = self.compile_vip_patterns()  # Compile VIP patterns at initialization
         # Process entire log if requested
         if self.process_all:
             self.process_entire_log()
@@ -668,7 +670,30 @@ class LogFileHandler(FileSystemEventHandler):
             logging.error("An error occurred: %s", str(e))
             logging.error("Stack trace:\n%s", traceback.format_exc())
 
+    def detect_vip(self, entry, send_message=True):
+        """
+        Detect if any VIP appears in the log line. Use the same pattern as detect_and_emit_generic.
+        """
+        for vip_regex in self.vip_patterns:
+            match = vip_regex.search(entry)
+            if match:
+                data = match.groupdict()
+                timestamp = data.get('timestamp',datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))           # Add state data to the detected data
+                data = self.add_state_data(data)
+                pattern_name = 'vip'
+                output_message_format = self.messages.get(pattern_name, None)
+                if output_message_format:
+                    output_message(timestamp, output_message_format.format(**data), regex_pattern=pattern_name)
+        
+                if send_message:
+                    self.send_discord_message(data, pattern_name=pattern_name)
+
+                return data['vip']
+        return None
+
     def parse_log_entry(self, entry, send_message=True):
+        # VIP detection FIRST, but do not block other detections
+        self.detect_vip(entry, send_message=send_message)
         # First check for mode changes
         if self.detect_mode_change(entry, send_message):
             return
@@ -685,6 +710,19 @@ class LogFileHandler(FileSystemEventHandler):
                 success, _ = self.detect_and_emit_generic(entry, pattern_name, send_message)
                 if success:
                     return
+
+    def compile_vip_patterns(self):
+        """
+        Compile regex patterns from important_players in config. Invalid patterns are ignored.
+        """
+        patterns = []
+        vip_list = self.config_manager.get('important_players', [])
+        for pattern in vip_list:
+            try:
+                patterns.append(re.compile(f"<(?P<timestamp>.*?)>.*?(?P<vip>{pattern}?).*?"))
+            except Exception:
+                pass  # Silently ignore invalid patterns
+        return patterns  # Always assign a list, never None
 
     def detect_mode_change(self, entry, send_message=True):
         """

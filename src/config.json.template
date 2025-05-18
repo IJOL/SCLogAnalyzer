@@ -5,7 +5,7 @@
     "google_sheets_mapping": ["player_death"],
     "datasource": "googlesheets",
     "supabase_key": "",
-    "realtime": ["actor_stall", "player_death", "vehicle_destruction"],
+    "realtime": ["actor_stall", "player_death", "vehicle_destruction","vip"],
     "active_users_update_interval": 120,
     "auto_reconnection": true,
     "tabs": {
@@ -28,7 +28,7 @@
         "vehicle_destruction": "<(?P<timestamp>.*?)> \\[Notice\\] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle '(?P<vehicle>.*?)' \\[(?P<vehicle_id>\\d+)\\] in zone '(?P<zone>.*?)' \\[pos x: (?P<pos_x>[\\d\\.-]+), y: (?P<pos_y>[\\d\\.-]+), z: (?P<pos_z>[\\d\\.-]+) vel x: (?P<vel_x>[\\d\\.-]+), y: (?P<vel_y>[\\d\\.-]+), z: (?P<vel_z>[\\d\\.-]+)] driven by '(?P<driver>.*?)' \\[(?P<driver_id>\\d+)\\] advanced from destroy level (?P<destroy_level_from>\\d+) to (?P<destroy_level_to>\\d+) caused by '(?P<cause>.*?)' \\[(?P<cause_id>\\d+)\\] with '(?P<damage_type>.*?)' \\[Team_(?P<team>.*?)\\]\\[Vehicle\\]",
         "connection_flow": "<(?P<timestamp>.*?)> \\[Notice\\] <Connection Flow> CSCCommsComponent::DoEstablishCommunicationCommon: Update bubble created for communication connection '(?P<connection_id>\\d+)' on channel '(?P<channel>\\d+)' for (?P<entity>.*?) \\[(?P<entity_id>\\d+)\\] to track their communication partner (?P<partner>(?!(ATC_|AImodule_|Unavailable)).*?) \\[(?P<partner_id>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Comms\\]"
     },
-    "important_players": [],
+    "important_players": "",
     "messages": {
         "vehicle_destruction": "{vehicle}:{driver} was destroyed {destroy_level_to} by {cause} with {damage_type} in {zone}",
         "actor_death": "******* {killer}->{victim}: {zone} - {weapon} - {damage_type}",
@@ -41,15 +41,17 @@
         "connected": "====================== Connected ======================",
         "quantum_jump": "{player}: Quantum jump",
         "mode_change": "Game Mode changed: {mode} {status} at {timestamp}",
-        "connection_flow" : "{partner}: in range"
+        "connection_flow" : "{partner}: in range",
+        "vip": "VIP detected: {vip}"
     },
     "discord": {
         "player_death": "{username} :skull: **{killer} -> {victim}** *{mode}* with {weapon} in {zone} with {damage_type}",
-        "startup": "🚀 *Startup Alert* **{username}** {script_version}"
+        "startup": "🚀 *Startup Alert* **{username}** {script_version}",
+        "vip": "VIP detected: {vip}"
     },
     "console_key": "",
     "colors": {
-        "pink": ["player_death"],
+        "pink": ["player_death","vip"],        
         "yellow": ["actor_death","vehicle_destruction"],
         "green": ["actor_stall"],
         "blue,white" : ["connected"],
