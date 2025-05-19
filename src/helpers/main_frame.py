@@ -861,7 +861,7 @@ class LogAnalyzerFrame(wx.Frame):
                 self.monitoring_service.start_monitoring()
             
             # Update tabs based on the data source
-            self.data_manager.update_data_source_tabs()
+            # self.data_manager.update_data_source_tabs()
             
         except Exception as e:
             message_bus.publish(
