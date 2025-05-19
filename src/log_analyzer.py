@@ -687,6 +687,7 @@ class LogFileHandler(FileSystemEventHandler):
         
                 if send_message:
                     self.send_discord_message(data, pattern_name=pattern_name)
+                    self.send_realtime_event(data, pattern_name=pattern_name)
 
                 return data['vip']
         return None
@@ -941,33 +942,13 @@ class LogFileHandler(FileSystemEventHandler):
                 output_message(timestamp, output_message_format.format(**data), regex_pattern=pattern_name)
     
             if send_message:
-                self.send_discord_message(data, pattern_name=pattern_name)
-    
-            # Send to data queue
+                self.send_discord_message(data, pattern_name=pattern_name)            # Send to data queue
             if send_message and pattern_name in self.google_sheets_mapping:
                 self.update_data_queue(data, pattern_name)
                 
-            # Emitir evento en tiempo real si el patrón está en la lista realtime
-            if send_message and pattern_name in self.config_manager.get('realtime', []):
-                # Crear un mensaje con toda la información necesaria
-                realtime_data = {
-                    'timestamp': timestamp,
-                    'type': pattern_name,
-                    'content': output_message_format.format(**data) if output_message_format else f"{pattern_name}: {data.get('player', 'Unknown')}",
-                    'raw_data': data
-                }
-                
-                # Emitir el evento para que RealtimeBridge lo capture
-                message_bus.emit(
-                    "realtime_event",
-                    realtime_data
-                )
-                
-                message_bus.publish(
-                    content=f"Emitted realtime event for pattern: {pattern_name}",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "log_analyzer"}
-                )
+            # Emitir evento en tiempo real
+            if send_message:
+                self.send_realtime_event(data, pattern_name)
     
             return True, data
         return False, None
@@ -1001,6 +982,60 @@ class LogFileHandler(FileSystemEventHandler):
         output_message(None, "State reset complete (y force_realtime_reconnect emitido)")
     
 
+    def send_realtime_event(self, data, pattern_name):
+        """
+        Send a realtime event with rate limiting if the pattern is in the realtime list.
+        
+        Args:
+            data (dict): The data to send in the event.
+            pattern_name (str): The pattern name that triggered the event.
+        
+        Returns:
+            bool: True if the event was sent, False if rate-limited or not a realtime pattern.
+        """
+        # Check if this pattern should be sent as realtime
+        if pattern_name not in self.config_manager.get('realtime', []):
+            return False
+            
+        # Get timestamp from data
+        timestamp = data.get('timestamp')
+        
+        # Get output message format from configuration
+        output_message_format = self.messages.get(pattern_name)
+        
+        # Create the content string
+        content = output_message_format.format(**data) if output_message_format else f"{pattern_name}: {data.get('player', 'Unknown')}"
+
+        # Check if this event should be rate limited
+        if not self.rate_limiter.should_send(f"{pattern_name}:{content}", 'realtime'):
+            message_bus.publish(
+                content=f"Rate limited realtime event for pattern: {pattern_name}",
+                level=MessageLevel.DEBUG,
+                metadata={"source": "log_analyzer"}
+            )
+            return False
+        
+        # Create a message with all necessary information
+        realtime_data = {
+            'timestamp': timestamp,
+            'type': pattern_name,
+            'content': content,
+            'raw_data': data
+        }
+        
+        # Emit the event for RealtimeBridge to capture
+        message_bus.emit(
+            "realtime_event",
+            realtime_data
+        )
+        
+        message_bus.publish(
+            content=f"Emitted realtime event for pattern: {pattern_name}",
+            level=MessageLevel.DEBUG,
+            metadata={"source": "log_analyzer"}
+        )
+        
+        return True
 def is_valid_url(url):
     """Validate if the given string is a correctly formatted URL"""
     regex = re.compile(
