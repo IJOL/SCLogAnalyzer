@@ -348,39 +348,39 @@ class DataDisplayManager:
             # Eliminar esta operación del conjunto después de un tiempo razonable
             wx.CallLater(4000, lambda op_id=operation_id: self._refresh_operations.discard(op_id))
     
-    def update_data_source_tabs(self):
-        """
-        Update tabs based on the current data source configuration.
-        Called when toggling between data sources.
-        """
-        try:
-            # Import our data provider system
-            from .data_provider import get_data_provider
+    # def update_data_source_tabs(self):
+    #     """
+    #     Update tabs based on the current data source configuration.
+    #     Called when toggling between data sources.
+    #     """
+    #     try:
+    #         # Import our data provider system
+    #         from .data_provider import get_data_provider
             
-            # Get the configured data provider
-            data_provider = get_data_provider(self.config_manager)
+    #         # Get the configured data provider
+    #         data_provider = get_data_provider(self.config_manager)
             
-            if data_provider.is_connected():
-                message_bus.publish(
-                    content=f"Using data provider: {data_provider.__class__.__name__}",
-                    level=MessageLevel.INFO
-                )
-                # Use the standard create_tabs method to recreate tabs with the current data provider
-                wx.CallAfter(self.create_tabs)
-            else:
-                message_bus.publish(
-                    content=f"Data provider is not properly connected: {data_provider.__class__.__name__}",
-                    level=MessageLevel.WARNING
-                )
-        except Exception as e:
-            message_bus.publish(
-                content=f"Error updating data source tabs: {e}",
-                level=MessageLevel.ERROR
-            )
-            message_bus.publish(
-                content=traceback.format_exc(),
-                level=MessageLevel.DEBUG
-            )
+    #         if data_provider.is_connected():
+    #             message_bus.publish(
+    #                 content=f"Using data provider: {data_provider.__class__.__name__}",
+    #                 level=MessageLevel.INFO
+    #             )
+    #             # Use the standard create_tabs method to recreate tabs with the current data provider
+    #             wx.CallAfter(self.create_tabs)
+    #         else:
+    #             message_bus.publish(
+    #                 content=f"Data provider is not properly connected: {data_provider.__class__.__name__}",
+    #                 level=MessageLevel.WARNING
+    #             )
+    #     except Exception as e:
+    #         message_bus.publish(
+    #             content=f"Error updating data source tabs: {e}",
+    #             level=MessageLevel.ERROR
+    #         )
+    #         message_bus.publish(
+    #             content=traceback.format_exc(),
+    #             level=MessageLevel.DEBUG
+    #         )
     
     def test_data_provider(self):
         """Handle testing the currently active data provider."""
