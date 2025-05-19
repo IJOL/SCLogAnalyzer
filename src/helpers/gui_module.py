@@ -138,6 +138,7 @@ class ConfigDialog(wx.Frame):
         regex_keys.append("mode_change")  # Add fixed options
         regex_keys.append("startup")
         regex_keys.append("shard_info")
+        regex_keys.append("vip")
         self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
         self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
         self.colors_grid = self.add_colors_tab(notebook, "Colors", self.config_data.get("colors", {}))  # Add colors tab
@@ -245,6 +246,7 @@ class ConfigDialog(wx.Frame):
         special_keys_handled.add("use_googlesheet")
         special_keys_handled.add("use_supabase")
         special_keys_handled.add("datasource")
+        special_keys_handled.add("important_players")  # Username will be handled separately
         
         # Process other configuration keys
         for key, value in config_data.items():
@@ -911,7 +913,7 @@ class DataTransferDialog(wx.Dialog):
                     
                   
                     # Update tabs based on data source change
-                    wx.CallAfter(self.GetParent().data_manager.update_data_source_tabs)
+#                    wx.CallAfter(self.GetParent().data_manager.update_data_source_tabs)
                     
                     # Show success message
                     wx.CallAfter(wx.MessageBox, 
