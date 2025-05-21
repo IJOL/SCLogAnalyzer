@@ -1,9 +1,11 @@
 """
 NotificationManager: Singleton para gestionar notificaciones Windows Toast con rate limiting y configuración oculta.
 """
+import os
 import threading
 import time
 from winotify import Notification
+from .rate_limiter import MessageRateLimiter
 
 class NotificationManager:
     _instance = None
@@ -21,27 +23,42 @@ class NotificationManager:
             return
         self._initialized = True
         self.config_manager = config_manager
-        # winotify no requiere instancia global, solo se usa Notification
         self._load_config()
-        self._last_sent = {}  # {(type, content): timestamp}
-        self._recent_times = []  # [timestamp]
-        self._rate_limit_lock = threading.Lock()
+        # Instancia de rate limiter para notificaciones:
+        # - No más de una notificación igual cada 5 minutos
+        # - No más de 2 notificaciones en total cada 30 segundos
+        self._notifier_limiter = MessageRateLimiter(
+            timeout=300, max_duplicates=1, global_limit_count=2, global_limit_window=30
+        )
         # Suscribirse al evento de notificación
         from .message_bus import message_bus
         message_bus.on("show_windows_notification", self._on_show_notification)
 
     def _on_show_notification(self, content):
-        if not self.notifications_enabled:
+        # Bypass rate limiting para notificaciones de prueba
+        is_test = (
+            isinstance(content, str) and "notificación de prueba" in content.lower()
+        )
+        if not self.notifications_enabled and not is_test:
             return 0
-        if self._rate_limited("windows_notification", content):
+        if not is_test and not self._notifier_limiter.should_send(content, "windows_notification"):
             return 0
         try:
+            from os.path import abspath, join, exists
+            icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SCLogAnalyzer.ico")
+            # icon_path = abspath(join("src", "icon.ico"))
+            if not exists(icon_path):
+                icon_path = None  # fallback: no icono si no existe
+            from winotify import audio
             toast = Notification(
                 app_id="SCLogAnalyzer",
                 title="SCLogAnalyzer",
                 msg=content,
+                icon=icon_path,  # icono grande 32/48px
                 duration="short" if self.notifications_duration < 8 else "long"
             )
+            toast.set_audio(audio.Default, loop=False)  # Sonido por defecto de Windows
+            # Acción: abrir el log principal
             toast.show()
         except Exception:
             pass  # Nunca debe bloquear la app
@@ -54,20 +71,3 @@ class NotificationManager:
 
     def reload_config(self):
         self._load_config()
-
-    def _rate_limited(self, notif_type, content):
-        now = time.time()
-        key = (notif_type, content)
-        with self._rate_limit_lock:
-            # No más de una notificación igual cada 5 minutos
-            last = self._last_sent.get(key, 0)
-            if now - last < 300:
-                return True
-            # No más de 2 notificaciones en total cada 30 segundos
-            self._recent_times = [t for t in self._recent_times if now - t < 30]
-            if len(self._recent_times) >= 2:
-                return True
-            # Si pasa, actualiza los registros
-            self._last_sent[key] = now
-            self._recent_times.append(now)
-        return False

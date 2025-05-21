@@ -20,6 +20,7 @@ from helpers.config_utils import get_application_path, get_config_manager
 from helpers.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
 from helpers.message_bus import message_bus, MessageLevel  # Import at module level
 from helpers.data_provider import get_data_provider  # Import data provider
+from helpers.rate_limiter import MessageRateLimiter
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -40,91 +41,8 @@ except ImportError:
     def get_version():
         return "unknown"
 
-class MessageRateLimiter:
-    """Class to handle rate limiting of repeated messages."""
-    def __init__(self, timeout=300, max_duplicates=1, cleanup_interval=60):
-        """
-        Initialize the rate limiter.
-        
-        Args:
-            timeout: Time in seconds before allowing the same message again
-            max_duplicates: Maximum number of duplicate messages allowed within timeout period
-            cleanup_interval: Time in seconds to keep stale messages before cleanup
-        """
-        self.messages = {}  # {message_hash: (timestamp, count)}
-        self.timeout = timeout
-        self.max_duplicates = max_duplicates
-        self.cleanup_interval = cleanup_interval
-        self.last_cleanup = time.time()  # Track the last cleanup time
-
-    def should_send(self, message, message_type=None):
-        """
-        Check if a message should be sent based on rate limiting rules.
-        
-        Args:
-            message: The message content (without timestamp)
-            message_type: Optional type identifier for the message (e.g., 'discord', 'stdout')
-            
-        Returns:
-            bool: True if message should be sent, False otherwise
-        """
-        current_time = time.time()
-        # Perform cleanup periodically
-        if current_time - self.last_cleanup > self.cleanup_interval:
-            self.cleanup_messages(current_time)
-        
-        # Create a unique key based on message content and type
-        key = f"{message_type}:{message}" if message_type else message
-        
-        # Check if this message has been seen before
-        if key in self.messages:
-            last_time, count = self.messages[key]
-            
-            # If message has been sent too many times within timeout, block it
-            if count >= self.max_duplicates and current_time - last_time < self.timeout:
-                # Update count but don't reset the timer
-                self.messages[key] = (last_time, count + 1)
-                return False
-                
-            # If timeout has passed, reset counter
-            if current_time - last_time >= self.timeout:
-                self.messages[key] = (current_time, 1)
-                return True
-                
-            # Update count and timestamp
-            self.messages[key] = (last_time, count + 1)
-        else:
-            # First time seeing this message
-            self.messages[key] = (current_time, 1)
-            
-        return True
-    
-    def cleanup_messages(self, current_time):
-        """
-        Remove stale messages from the store.
-        
-        Args:
-            current_time: The current time to compare against message timestamps.
-        """
-        stale_keys = [
-            key for key, (last_time, _) in self.messages.items()
-            if current_time - last_time > self.cleanup_interval
-        ]
-        for key in stale_keys:
-            del self.messages[key]
-        self.last_cleanup = current_time
-
-    def get_stats(self, message, message_type=None):
-        """Get statistics about a message."""
-        key = f"{message_type}:{message}" if message_type else message
-        if key in self.messages:
-            last_time, count = self.messages[key]
-            return {
-                "last_sent": last_time,
-                "count": count,
-                "blocked": count > self.max_duplicates and (time.time() - last_time < self.timeout)
-            }
-        return None
+# Instancia única de rate limiter para todos los contextos (stdout, discord, realtime)
+rate_limiter = MessageRateLimiter(timeout=300, max_duplicates=1)
 
 def output_message(timestamp, message, regex_pattern=None, level=None):
     """
@@ -355,7 +273,7 @@ class LogFileHandler(FileSystemEventHandler):
                 return
             
             # Check if this message should be rate limited - using pattern_name as part of the key
-            if not self.rate_limiter.should_send(f"{pattern_name}:{content}", 'discord'):
+            if not rate_limiter.should_send(f"{pattern_name}:{content}", 'discord'):
                 output_message(None, f"Rate limited Discord message for pattern: {pattern_name}")
                 return
                 
@@ -1007,7 +925,7 @@ class LogFileHandler(FileSystemEventHandler):
         content = output_message_format.format(**data) if output_message_format else f"{pattern_name}: {data.get('player', 'Unknown')}"
 
         # Check if this event should be rate limited
-        if not self.rate_limiter.should_send(f"{pattern_name}:{content}", 'realtime'):
+        if not rate_limiter.should_send(f"{pattern_name}:{content}", 'realtime'):
             message_bus.publish(
                 content=f"Rate limited realtime event for pattern: {pattern_name}",
                 level=MessageLevel.DEBUG,
