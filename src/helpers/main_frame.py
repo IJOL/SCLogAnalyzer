@@ -217,7 +217,7 @@ class LogAnalyzerFrame(wx.Frame):
             id=wx.ID_ANY,
             label="Notificaciones"
         )
-        self.notifications_toggle.SetValue(self.config_manager.get('notifications_enabled', False))
+        self.notifications_toggle.SetValue(self.config_manager.get('notifications_enabled', True))
         self.notifications_toggle.SetToolTip("Activar/desactivar notificaciones Windows")
         self.notifications_toggle.Bind(wx.EVT_CHECKBOX, self.on_toggle_notifications)
         button_sizer.Add(self.notifications_toggle, 0, wx.ALL, 2)
