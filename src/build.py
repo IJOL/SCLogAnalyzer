@@ -211,8 +211,8 @@ def update_commit_messages(content, commits):
     # Track what version we're currently adding commits for
     current_tag_section = None
     
-    # Reverse commits to get them in chronological order (oldest first)
-    commits_reversed = list(reversed(commits))
+    # Mantenemos el orden original (más reciente primero)
+    commits_reversed = commits  # commits ya está en orden más reciente primero
     
     for hash_val, message in commits_reversed:
         # Check if this commit has a tag to mark a version boundary
