@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 9
+RELEASE = 10
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "9d84add"
+PATCH = "c6c8874"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -16,6 +16,10 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.9.x series
+    "c6c8874: Enable notifications by default in LogAnalyzerFrame and NotificationManager",
+
+    # Version v0.9.9-9d84add-pyam-exhang-docker
+    "f3d19c3: Increment version to v0.9.9-9d84add-pyam-exhang",
     "9d84add: Update update_commit_messages to maintain original commit order",
     "ee6400c: Refactor NotificationManager to use MessageRateLimiter for notification rate limiting and remove redundant rate limiting logic",
     "e3f6e27: Implement NotificationManager for Windows Toast notifications and integrate with RealtimeBridge for event notifications",
