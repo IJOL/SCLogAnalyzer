@@ -183,7 +183,6 @@ class LogAnalyzerFrame(wx.Frame):
         # También puedes mostrar un wx.MessageBox si lo deseas
         # wx.MessageBox("Realtime connection lost. Attempting to reconnect...", "Realtime Warning", wx.OK | wx.ICON_WARNING)
 
-        
     def _create_ui_components(self):
         """Create all UI components for the main application window."""
         # Create main panel
@@ -212,11 +211,24 @@ class LogAnalyzerFrame(wx.Frame):
 
         # Add a horizontal sizer for buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        
+        # Control de notificaciones (ahora con wx.CheckBox)
+        self.notifications_toggle = wx.CheckBox(
+            self.log_page,
+            id=wx.ID_ANY,
+            label="Notificaciones"
+        )
+        self.notifications_toggle.SetValue(self.config_manager.get('notifications_enabled', False))
+        self.notifications_toggle.SetToolTip("Activar/desactivar notificaciones Windows")
+        self.notifications_toggle.Bind(wx.EVT_CHECKBOX, self.on_toggle_notifications)
+        button_sizer.Add(self.notifications_toggle, 0, wx.ALL, 2)
         # Style buttons with icons and custom fonts
         self.process_log_button = self._create_button(self.log_page, " Process Log", wx.ART_FILE_OPEN)
         self.autoshard_button = self._create_button(self.log_page, " Auto Shard", wx.ART_TIP)
         self.autoshard_button.Enable(False)  # Start in disabled state
+        # Botón de simulación de notificación (oculto por defecto, controlado por update_debug_ui_visibility)
+        self.simulate_notification_button = self._create_button(self.log_page, " Simular Notificación", wx.ART_INFORMATION)
+        self.simulate_notification_button.Bind(wx.EVT_BUTTON, self.on_simulate_notification)
+        self.simulate_notification_button.Hide()  # Oculto por defecto
         self.monitor_button = self._create_button(self.log_page, " Start Monitoring", wx.ART_EXECUTABLE_FILE)
         self.check_db_button = self._create_button(self.log_page, " Check DB", wx.ART_FIND)
         self.check_db_button.Hide()  # Hidden by default (debug mode only)
@@ -224,7 +236,6 @@ class LogAnalyzerFrame(wx.Frame):
         self.data_transfer_button.Hide()  # Hidden by default (debug mode only)
         self.test_data_provider_button = self._create_button(self.log_page, " Test Data Provider", wx.ART_LIST_VIEW)
         self.test_data_provider_button.Hide()  # Hidden by default (debug mode only)
-
         # Add buttons to the horizontal button sizer
         button_sizer.Add(self.process_log_button, 0, wx.ALL, 2)
         button_sizer.Add(self.autoshard_button, 0, wx.ALL, 2)
@@ -232,7 +243,7 @@ class LogAnalyzerFrame(wx.Frame):
         button_sizer.Add(self.check_db_button, 0, wx.ALL, 2)
         button_sizer.Add(self.data_transfer_button, 0, wx.ALL, 2)
         button_sizer.Add(self.test_data_provider_button, 0, wx.ALL, 2)
-
+        button_sizer.Add(self.simulate_notification_button, 0, wx.ALL, 2)
         # Add the button sizer to the log page sizer
         log_page_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 2)
 
@@ -995,7 +1006,10 @@ class LogAnalyzerFrame(wx.Frame):
             self.test_data_provider_button.Show(self.debug_mode)
         if hasattr(self, 'data_transfer_button'):
             self.data_transfer_button.Show(self.debug_mode)
-            
+        # Botón de simulación de notificación
+        if hasattr(self, 'simulate_notification_button'):
+            self.simulate_notification_button.Show(self.debug_mode)
+        
         # Check DB button needs special handling - only visible in debug mode and only enabled with Supabase
         if hasattr(self, 'check_db_button'):
             # Make the button visible in debug mode
@@ -1010,7 +1024,7 @@ class LogAnalyzerFrame(wx.Frame):
                 self.check_db_button.SetLabel(" Check DB")
             else:
                 self.check_db_button.SetLabel(" Check DB (Supabase only)")
-            
+        
         # Update log level filtering based on debug mode
         if hasattr(self, 'data_manager'):
             self.data_manager.set_debug_mode(self.debug_mode)
@@ -1067,7 +1081,16 @@ class LogAnalyzerFrame(wx.Frame):
                 level=MessageLevel.ERROR
             )
 
+    def on_toggle_notifications(self, event):
+        enabled = self.notifications_toggle.GetValue()
+        self.config_manager.set('notifications_enabled', enabled)
+        self.realtime_bridge.notification_manager.reload_config()
 
+    def on_simulate_notification(self, event):
+        """Simula el envío de una notificación Windows para pruebas de UI/debug."""
+        message_bus.emit("show_windows_notification",
+            content="Esto es una notificación de prueba generada en modo debug."
+        )
 def main():
     """Main entry point for the application."""
     # Create the wx.App instance first, before any wx operations

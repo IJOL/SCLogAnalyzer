@@ -10,6 +10,7 @@ import asyncio  # Añadido para manejar coroutines
 # Import Supabase manager
 from .supabase_manager import supabase_manager
 from .message_bus import message_bus, MessageLevel
+from .notification_manager import NotificationManager
 
 # Variable global para almacenar el singleton de RealtimeBridge
 _realtime_bridge_instance = None
@@ -95,6 +96,9 @@ class RealtimeBridge:
         # Nuevo: filtro de mensajes 'stalled' controlado por la UI
         self.filter_stalled_if_online = True  # Controlado por la UI, usado solo aquí
         self.filter_broadcast_usernames = set()  # Controlado por la UI, usado solo aquí
+        
+        # Nuevo: NotificationManager para notificaciones de eventos relevantes
+        self.notification_manager = NotificationManager(config_manager)
         
     def set_username(self, username, old_username=None):
         """Sets or updates the username and connects if needed"""
@@ -567,6 +571,10 @@ class RealtimeBridge:
                 except Exception:
                     pass
                 return
+            elif self.notification_manager.notifications_enabled \
+                and event_data.get('type') in self.notification_manager.notifications_events: 
+                message_bus.emit("show_windows_notification", event_data.get('content', ''))
+
 
             message_bus.emit("remote_realtime_event", username, event_data)
 
