@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 10
+RELEASE = 11
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "c6c8874"
+PATCH = "87fde04"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -16,6 +16,10 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.9.x series
+    "87fde04: Add winotify to requirements for Windows notifications",
+
+    # Version v0.9.10-c6c8874-pyam-exhang-docker
+    "8c64c32: Increment version to v0.9.10-c6c8874-pyam-exhang",
     "c6c8874: Enable notifications by default in LogAnalyzerFrame and NotificationManager",
 
     # Version v0.9.9-9d84add-pyam-exhang-docker
