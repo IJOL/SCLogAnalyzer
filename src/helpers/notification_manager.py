@@ -4,7 +4,7 @@ NotificationManager: Singleton para gestionar notificaciones Windows Toast con r
 import os
 import threading
 import time
-from winotify import Notification
+import wx
 from .rate_limiter import MessageRateLimiter
 
 class NotificationManager:
@@ -34,34 +34,113 @@ class NotificationManager:
         from .message_bus import message_bus
         message_bus.on("show_windows_notification", self._on_show_notification)
 
+    class NotificationPopup(wx.Frame):
+        def __init__(self, message, icon_path=None, duration=5, title="SCLogAnalyzer"):
+            style = wx.STAY_ON_TOP | wx.FRAME_NO_TASKBAR | wx.BORDER_NONE
+            wx.Frame.__init__(self, None, style=style)
+            self.duration = duration
+            panel = wx.Panel(self)
+            panel.SetBackgroundColour(wx.Colour(240, 240, 240))  # gris clarito
+            main_sizer = wx.BoxSizer(wx.VERTICAL)
+            # Título
+            title_text = wx.StaticText(panel, label=title)
+            title_font = wx.Font(15, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+            title_text.SetFont(title_font)
+            main_sizer.Add(title_text, 0, wx.TOP | wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_HORIZONTAL, 14)
+            # Icono y contenido
+            content_sizer = wx.BoxSizer(wx.HORIZONTAL)
+            icon_size = (48, 48)
+            if icon_path and os.path.exists(icon_path):
+                bmp = wx.Bitmap(icon_path, wx.BITMAP_TYPE_ICO)
+                if bmp.IsOk():
+                    bmp = wx.Bitmap.ConvertToImage(bmp).Scale(icon_size[0], icon_size[1], wx.IMAGE_QUALITY_HIGH)
+                    bmp = wx.Bitmap(bmp)
+                else:
+                    bmp = wx.ArtProvider.GetBitmap(wx.ART_INFORMATION, wx.ART_OTHER, icon_size)
+            else:
+                bmp = wx.ArtProvider.GetBitmap(wx.ART_INFORMATION, wx.ART_OTHER, icon_size)
+            icon = wx.StaticBitmap(panel, bitmap=bmp)
+            content_sizer.Add(icon, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
+            # Texto de contenido
+            text = wx.StaticText(panel, label=message)
+            font = wx.Font(13, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
+            text.SetFont(font)
+            text.Wrap(220)  # Más cuadrada, menos larga
+            content_sizer.Add(text, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
+            main_sizer.Add(content_sizer, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+            panel.SetSizer(main_sizer)
+            main_sizer.Fit(panel)
+            # Hacer la ventana más cuadrada
+            width, height = panel.GetSize()
+            self.SetClientSize((max(width, 320), max(height, 120)))
+            self.SetBackgroundColour(wx.Colour(240, 240, 240))
+            self._position_bottom_right()
+            self.timer = wx.Timer(self)
+            self.Bind(wx.EVT_TIMER, self.on_timer, self.timer)
+            self.timer.StartOnce(self.duration * 1000)
+            self.Show()
+            wx.Bell()
+
+        def _position_bottom_right(self):
+            display = wx.Display(wx.Display.GetFromWindow(self))
+            geometry = display.GetGeometry()
+            width, height = self.GetSize()
+            x = geometry.GetRight() - width - 40
+            y = geometry.GetBottom() - height - 60
+            self.SetPosition((x, y))
+
+        def on_timer(self, event):
+            self.timer.Stop()
+            self.Destroy()
+
     def _on_show_notification(self, content):
-        # Bypass rate limiting para notificaciones de prueba
+        from .message_bus import message_bus
+        from .message_bus import MessageLevel
+        import traceback
+        # Log entrada (DEBUG)
+        message_bus.publish(
+            content=f"[NotificationManager] _on_show_notification called with content: {repr(content)}",
+            level=MessageLevel.DEBUG,
+            metadata={"source": "notification_manager"}
+        )
         is_test = (
             isinstance(content, str) and "notificación de prueba" in content.lower()
         )
         if not self.notifications_enabled and not is_test:
+            message_bus.publish(
+                content="[NotificationManager] Notifications disabled and not test. Skipping.",
+                level=MessageLevel.DEBUG,
+                metadata={"source": "notification_manager"}
+            )
             return 0
         if not is_test and not self._notifier_limiter.should_send(content, "windows_notification"):
             return 0
-        try:
-            from os.path import abspath, join, exists
-            icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SCLogAnalyzer.ico")
-            # icon_path = abspath(join("src", "icon.ico"))
-            if not exists(icon_path):
-                icon_path = None  # fallback: no icono si no existe
-            from winotify import audio
-            toast = Notification(
-                app_id="SCLogAnalyzer",
-                title="SCLogAnalyzer",
-                msg=content,
-                icon=icon_path,  # icono grande 32/48px
-                duration="short" if self.notifications_duration < 8 else "long"
-            )
-            toast.set_audio(audio.Default, loop=False)  # Sonido por defecto de Windows
-            # Acción: abrir el log principal
-            toast.show()
-        except Exception:
-            pass  # Nunca debe bloquear la app
+        def show_notification():
+            try:
+                from os.path import abspath, join, exists
+                icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SCLogAnalyzer.ico")
+                if not exists(icon_path):
+                    icon_path = None  # fallback: no icono si no existe
+                duration = getattr(self, 'notifications_duration', 5)
+                self.NotificationPopup(str(content), icon_path=icon_path, duration=duration)
+                message_bus.publish(
+                    content=f"[NotificationManager] NotificationPopup shown: {repr(content)}",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "notification_manager"}
+                )
+            except Exception as ex:
+                tb = traceback.format_exc()
+                message_bus.publish(
+                    content=f"[NotificationManager] Error showing notification: {ex}\n{tb}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "notification_manager"}
+                )
+            return 0
+        # Asegura ejecución en hilo principal wx
+        if wx.IsMainThread():
+            show_notification()
+        else:
+            wx.CallAfter(show_notification)
         return 0
 
     def _load_config(self):
