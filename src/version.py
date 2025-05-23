@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 11
+RELEASE = 12
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "87fde04"
+PATCH = "bf90a3d"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -16,6 +16,12 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.9.x series
+    "bf90a3d: Update .gitignore to exclude SCLogAnalyzer build directory and enhance build.py with zipfile support for distribution",
+    "50f7235: Add venv310/ to .gitignore to exclude Python virtual environment files",
+    "f9aa33c: Refactor NotificationManager to use wx for notifications and implement NotificationPopup class",
+
+    # Version v0.9.11-87fde04-pyam-exhang-docker
+    "8bf2bf4: Increment version to v0.9.11-87fde04-pyam-exhang",
     "87fde04: Add winotify to requirements for Windows notifications",
 
     # Version v0.9.10-c6c8874-pyam-exhang-docker
