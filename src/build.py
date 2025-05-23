@@ -12,6 +12,7 @@ import subprocess
 import argparse
 import importlib.util
 import shutil
+import zipfile
 from pathlib import Path
 
 # Directory settings
@@ -22,10 +23,12 @@ DIST_DIR = ROOT_DIR / "dist"
 CONFIG_TEMPLATE = SRC_DIR / "config.json.template"
 
 
-def abort_if_uncommitted_py_changes():
+def abort_if_uncommitted_py_changes(allow_uncommitted=False):
     """
-    Abort the process if there are uncommitted changes in any .py files
+    Abort the process if there are uncommitted changes in any .py files, unless allow_uncommitted=True
     """
+    if allow_uncommitted:
+        return
     try:
         result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, check=True)
         lines = result.stdout.strip().split('\n')
@@ -425,40 +428,39 @@ def install_requirements():
         return False
 
 
-def build_executables(build_all=False):
+def build_executables(build_all=False, windowed=False):
     """
     Build executables using PyInstaller
     """
     if not DIST_DIR.exists():
         DIST_DIR.mkdir(parents=True)
-    
     try:
-        if build_all or not (DIST_DIR / "log_analyzer.exe").exists():
+        # Construir SIEMPRE SCLogAnalyzer.exe
+        print("Building SCLogAnalyzer GUI app...")
+        pyinstaller_mode = "--windowed" if windowed else "--console"
+        subprocess.run([
+            "pyinstaller", "--onefile", pyinstaller_mode, "--clean", 
+            "--add-data", f"{CONFIG_TEMPLATE};.", 
+            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_red.png'};assets", 
+            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets", 
+            "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};.", 
+            "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};.", 
+            "--name", "SCLogAnalyzer", f"{SRC_DIR / 'gui.py'}"
+        ], check=True)
+        # Solo construir los otros si build_all=True
+        if build_all:
             print("Building log_analyzer executable...")
             subprocess.run([
                 "pyinstaller", "--onefile", "--console", "--clean", 
                 "--add-data", f"{CONFIG_TEMPLATE};.", 
                 "--name", "log_analyzer", f"{SRC_DIR / 'log_analyzer.py'}"
             ], check=True)
-        
-        if build_all or not (DIST_DIR / "StatusBoardBot.exe").exists():
             print("Building StatusBoardBot executable...")
             subprocess.run([
                 "pyinstaller", "--onefile", "--console", "--clean", 
                 "--add-data", f"{SRC_DIR / 'bot' / 'config.json.template'};.", 
                 "--name", "StatusBoardBot", f"{SRC_DIR / 'bot' / 'bot.py'}"
             ], check=True)
-        
-        if build_all or not (DIST_DIR / "SCLogAnalyzer.exe").exists():
-            print("Building SCLogAnalyzer GUI app...")
-            subprocess.run([
-                "pyinstaller", "--onefile", "--windowed", "--clean", 
-                "--add-data", f"{CONFIG_TEMPLATE};.", 
-                "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};.", 
-                "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};.", 
-                "--name", "SCLogAnalyzer", f"{SRC_DIR / 'gui.py'}"
-            ], check=True)
-            
         return True
     except subprocess.SubprocessError as e:
         print(f"Error building executables: {e}")
@@ -467,40 +469,44 @@ def build_executables(build_all=False):
 
 def create_zip_files():
     """
-    Create ZIP files for distribution
+    Create ZIP files for distribution using Python's zipfile module
     """
     try:
         readme_dir = ROOT_DIR / "dist" / "readme"
-        
-        # Create zip for log_analyzer
-        if (DIST_DIR / "log_analyzer.exe").exists():
+        # Helper to add files and folders recursively
+        def add_to_zip(zipf, path, arcname=None):
+            path = Path(path)
+            if path.is_file():
+                zipf.write(path, arcname or path.name)
+            elif path.is_dir():
+                for sub in path.rglob("*"):
+                    if sub.is_file():
+                        rel = sub.relative_to(path.parent if arcname is None else Path(arcname).parent)
+                        zipf.write(sub, str(rel))
+        # log_analyzer.zip
+        exe = DIST_DIR / "log_analyzer.exe"
+        if exe.exists():
             print("Creating log_analyzer.zip...")
-            subprocess.run([
-                "powershell", "-Command",
-                f"Compress-Archive -Path '{DIST_DIR / 'log_analyzer.exe'}', '{readme_dir}' " +
-                f"-DestinationPath '{DIST_DIR / 'log_analyzer.zip'}' -Force"
-            ], check=True)
-        
-        # Create zip for StatusBoardBot
-        if (DIST_DIR / "StatusBoardBot.exe").exists():
+            with zipfile.ZipFile(DIST_DIR / "log_analyzer.zip", "w", zipfile.ZIP_DEFLATED) as zipf:
+                zipf.write(exe, exe.name)
+                if readme_dir.exists():
+                    add_to_zip(zipf, readme_dir, "readme")
+        # StatusBoardBot.zip
+        exe = DIST_DIR / "StatusBoardBot.exe"
+        if exe.exists():
             print("Creating StatusBoardBot.zip...")
-            subprocess.run([
-                "powershell", "-Command",
-                f"Compress-Archive -Path '{DIST_DIR / 'StatusBoardBot.exe'}' " +
-                f"-DestinationPath '{DIST_DIR / 'StatusBoardBot.zip'}' -Force"
-            ], check=True)
-        
-        # Create zip for SCLogAnalyzer
-        if (DIST_DIR / "SCLogAnalyzer.exe").exists():
+            with zipfile.ZipFile(DIST_DIR / "StatusBoardBot.zip", "w", zipfile.ZIP_DEFLATED) as zipf:
+                zipf.write(exe, exe.name)
+        # SCLogAnalyzer.zip
+        exe = DIST_DIR / "SCLogAnalyzer.exe"
+        if exe.exists():
             print("Creating SCLogAnalyzer.zip...")
-            subprocess.run([
-                "powershell", "-Command",
-                f"Compress-Archive -Path '{DIST_DIR / 'SCLogAnalyzer.exe'}', '{readme_dir}' " +
-                f"-DestinationPath '{DIST_DIR / 'SCLogAnalyzer.zip'}' -Force"
-            ], check=True)
-            
+            with zipfile.ZipFile(DIST_DIR / "SCLogAnalyzer.zip", "w", zipfile.ZIP_DEFLATED) as zipf:
+                zipf.write(exe, exe.name)
+                if readme_dir.exists():
+                    add_to_zip(zipf, readme_dir, "readme")
         return True
-    except subprocess.SubprocessError as e:
+    except Exception as e:
         print(f"Error creating ZIP files: {e}")
         return False
 
@@ -532,8 +538,7 @@ if latest_tag:
     tag_commit = get_commit_hash(latest_tag)
     head_commit = get_head_commit()
     if tag_commit and head_commit and tag_commit == head_commit:
-        print(f"No new commits since last tag ({latest_tag}). Build stopped.")
-        sys.exit(0)
+        print(f"Warning: No new commits since last tag ({latest_tag}), pero se permite el build local.")
 
 
 def main():
@@ -549,8 +554,9 @@ def main():
     parser.add_argument('--test', '-t', action='store_true', help='Mark as test version')
     parser.add_argument('--skip-venv', action='store_true', help='Skip virtual environment activation')
     parser.add_argument('--skip-requirements', action='store_true', help='Skip installing requirements')
-    parser.add_argument('--skip-zip', action='store_true', help='Skip creating ZIP files')
-    
+    parser.add_argument('--zip', action='store_true', help='Create ZIP files for distribution after build (default: off)')
+    parser.add_argument('--build-all', action='store_true', help='Build all executables (log_analyzer, StatusBoardBot, SCLogAnalyzer)')
+    parser.add_argument('--windowed', '-w', action='store_true', help='Build SCLogAnalyzer.exe in windowed mode (default: console mode)')
     args = parser.parse_args()
     
     # If no specific actions are specified, enable all
@@ -601,13 +607,12 @@ def main():
             if not install_requirements():
                 print("Warning: Failed to install requirements")
         
-        # Build executables
-        if not build_executables(True):
+        # Build ejecutables: solo todos si --build-all o --all
+        if not build_executables(args.build_all or args.all, windowed=args.windowed):
             print("Error: Failed to build executables")
             return 1
-        
-        # Create ZIP files
-        if not args.skip_zip:
+        # Create ZIP files SOLO si --zip
+        if args.zip:
             if not create_zip_files():
                 print("Warning: Failed to create ZIP files")
     
@@ -616,7 +621,22 @@ def main():
 
 
 if __name__ == "__main__":
-    # Check for uncommitted .py changes before anything else
-    abort_if_uncommitted_py_changes()
-    
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--push', '-p', action='store_true')
+    parser.add_argument('--all', '-a', action='store_true')
+    args, unknown = parser.parse_known_args()
+    # Solo forzar commit limpio si es build de release (push o all)
+    abort_if_uncommitted_py_changes(allow_uncommitted=not (args.push or args.all))
+
+    # --- Evitar warning de commits en build local ---
+    def show_commit_warning():
+        if args.push or args.all:
+            latest_tag = get_latest_tag()
+            if latest_tag:
+                tag_commit = get_commit_hash(latest_tag)
+                head_commit = get_head_commit()
+                if tag_commit and head_commit and tag_commit == head_commit:
+                    print(f"Warning: No new commits since last tag ({latest_tag}), pero se permite el build local.")
+    show_commit_warning()
     sys.exit(main())
