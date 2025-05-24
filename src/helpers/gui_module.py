@@ -547,13 +547,18 @@ class WindowsHelper:
         return windows[0] if windows else None
 
     @staticmethod
-    def capture_window_screenshot(hwnd, output_path):
+    def capture_window_screenshot(hwnd, output_path, **kwargs):
         """Capture a screenshot of a specific window using its handle."""
+        full = 'full' in kwargs
         try:
             left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-            width = 200
-            height = 200
-            left = right - width
+            if full:
+                width = right - left
+                height = bottom - top
+            else:                
+                width = 200
+                height = 200
+                left = right - width
 
             with mss.mss() as sct:
                 monitor = {"top": top, "left": left, "width": width, "height": height}

@@ -18,6 +18,13 @@ from .config_utils import get_config_manager
 from .supabase_manager import supabase_manager
 from helpers import updater
 from version import get_version
+from .freezer_helper import (
+    create_freeze, 
+    create_freezer_tab, 
+    refresh_freezer_tab,
+    handle_freezer_open,
+    handle_freezer_delete
+)
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -204,6 +211,10 @@ class LogAnalyzerFrame(wx.Frame):
         self.notebook = wx.Notebook(panel)
         self.log_page = wx.Panel(self.notebook)
         self.notebook.AddPage(self.log_page, "Main Log")
+        # --- Añadir pestaña 'Congelador' ---
+        self.freezer_page = wx.Panel(self.notebook)
+        self.notebook.AddPage(self.freezer_page, "Freezer")
+        self._init_freezer_tab()
         
         # Bind the notebook page change event
         self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_notebook_page_changed)
@@ -233,6 +244,9 @@ class LogAnalyzerFrame(wx.Frame):
         self.autoshard_button = self._create_button(self.main_button_sizer, "Shard", wx.ART_TIP)
         self.autoshard_button.Enable(False)
         self.monitor_button = self._create_button(self.main_button_sizer, "Start", wx.ART_EXECUTABLE_FILE)
+        # --- Botón 'Freeze' ---
+        self.freeze_button = self._create_button(self.main_button_sizer, "Freeze", wx.ART_NEW)
+        self.freeze_button.Bind(wx.EVT_BUTTON, self.on_freeze)
         # --- Botón 'Congelar' (se añade aquí, pero la lógica se implementa en el siguiente plan) ---
         # Botones de debug (compactos, solo en debug_button_sizer)
         self.check_db_button = self._create_button(self.debug_button_sizer, "Check DB", wx.ART_FIND)
@@ -1089,6 +1103,35 @@ class LogAnalyzerFrame(wx.Frame):
         message_bus.emit("show_windows_notification",
             content="Esto es una notificación de prueba generada en modo debug."
         )
+
+    def on_freeze(self, event):
+        from .gui_module import WindowsHelper
+        log_src = getattr(self, 'log_file_path', None)
+        hwnd = WindowsHelper.find_window_by_title("Star Citizen", class_name="CryENGINE", process_name="StarCitizen.exe")
+        import win32gui
+        import win32con
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(hwnd)
+
+        entry = create_freeze(log_src, hwnd, parent=self)
+        if entry:
+            # wx.MessageBox("Freeze completed successfully!", "Freeze", wx.OK | wx.ICON_INFORMATION)
+            refresh_freezer_tab(self)
+            message_bus.publish(
+                content=f"Congelador salvado en {entry['folder']}",
+                level=MessageLevel.INFO
+            )
+
+    def _init_freezer_tab(self):
+        create_freezer_tab(self)
+        refresh_freezer_tab(self)
+
+    def _on_freezer_open(self, event):
+        handle_freezer_open(self, event)
+
+    def _on_freezer_delete(self, event):
+        handle_freezer_delete(self, event)
+
 def main():
     """Main entry point for the application."""
     # Create the wx.App instance first, before any wx operations
