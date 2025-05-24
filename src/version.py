@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 14
+RELEASE = 15
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "8b2ad66"
+PATCH = "267a777"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -16,6 +16,9 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.9.x series
+
+    # Version v0.9.14-8b2ad66-pyam-exhang-docker
+    "267a777: Increment version to v0.9.14-8b2ad66-pyam-exhang",
     "8b2ad66: Refactor build process to use src/gui.py for executable creation and improve readability of pyinstaller command",
     "cec5d1a: Increment version to v0.9.13-35b1d49-pyam-exhang",
     "35b1d49: Refactor icon path retrieval in NotificationManager to use get_application_path for improved asset management",
