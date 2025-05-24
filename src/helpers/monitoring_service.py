@@ -152,11 +152,11 @@ class MonitoringService:
             started (bool): True if monitoring has started, False otherwise.
         """
         if self.monitoring:  # Check the actual monitoring state
-            self.parent.monitor_button.SetLabel("Stop Monitoring")
+            self.parent.monitor_button.SetLabel(" Stop")
             self.parent.process_log_button.Enable(False)
             self.parent.SetStatusText("Monitoring active")
         else:
-            self.parent.monitor_button.SetLabel("Start Monitoring")
+            self.parent.monitor_button.SetLabel(" Start")
             self.parent.process_log_button.Enable(True)
             self.parent.SetStatusText("Monitoring stopped")
     
