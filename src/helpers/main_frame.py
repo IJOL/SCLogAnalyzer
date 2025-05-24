@@ -209,6 +209,11 @@ class LogAnalyzerFrame(wx.Frame):
         # Create a vertical sizer for the log page
         log_page_sizer = wx.BoxSizer(wx.VERTICAL)
 
+        # --- NUEVO: Separación de sizers para botones principales y debug ---
+        # Sizer para botones principales
+        self.main_button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        # Sizer para botones de debug (creado una vez, gestionado dinámicamente)
+        self.debug_button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         # Add a horizontal sizer for buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         # Control de notificaciones (ahora con wx.CheckBox)
@@ -220,33 +225,25 @@ class LogAnalyzerFrame(wx.Frame):
         self.notifications_toggle.SetValue(self.config_manager.get('notifications_enabled', True))
         self.notifications_toggle.SetToolTip("Activar/desactivar notificaciones Windows")
         self.notifications_toggle.Bind(wx.EVT_CHECKBOX, self.on_toggle_notifications)
-        button_sizer.Add(self.notifications_toggle, 0, wx.ALL, 2)
-        # Style buttons with icons and custom fonts
-        self.process_log_button = self._create_button(self.log_page, " Process Log", wx.ART_FILE_OPEN)
-        self.autoshard_button = self._create_button(self.log_page, " Auto Shard", wx.ART_TIP)
-        self.autoshard_button.Enable(False)  # Start in disabled state
-        # Botón de simulación de notificación (oculto por defecto, controlado por update_debug_ui_visibility)
-        self.simulate_notification_button = self._create_button(self.log_page, " Simular Notificación", wx.ART_INFORMATION)
+        self.main_button_sizer.Add(self.notifications_toggle, 0, wx.ALL, 1)
+        # Botones principales (compactos)
+        self.process_log_button = self._create_button(self.main_button_sizer, "Process", wx.ART_FILE_OPEN)
+        self.autoshard_button = self._create_button(self.main_button_sizer, "Shard", wx.ART_TIP)
+        self.autoshard_button.Enable(False)
+        self.monitor_button = self._create_button(self.main_button_sizer, "Start", wx.ART_EXECUTABLE_FILE)
+        # --- Botón 'Congelar' (se añade aquí, pero la lógica se implementa en el siguiente plan) ---
+        # Botones de debug (compactos, solo en debug_button_sizer)
+        self.check_db_button = self._create_button(self.debug_button_sizer, "Check DB", wx.ART_FIND)
+        self.data_transfer_button = self._create_button(self.debug_button_sizer, "Transfer", wx.ART_COPY)
+        self.test_data_provider_button = self._create_button(self.debug_button_sizer, "Test Data", wx.ART_LIST_VIEW)
+        self.simulate_notification_button = self._create_button(self.debug_button_sizer, "Test Notif", wx.ART_INFORMATION)
         self.simulate_notification_button.Bind(wx.EVT_BUTTON, self.on_simulate_notification)
-        self.simulate_notification_button.Hide()  # Oculto por defecto
-        self.monitor_button = self._create_button(self.log_page, " Start Monitoring", wx.ART_EXECUTABLE_FILE)
-        self.check_db_button = self._create_button(self.log_page, " Check DB", wx.ART_FIND)
-        self.check_db_button.Hide()  # Hidden by default (debug mode only)
-        self.data_transfer_button = self._create_button(self.log_page, " Data Transfer", wx.ART_COPY)
-        self.data_transfer_button.Hide()  # Hidden by default (debug mode only)
-        self.test_data_provider_button = self._create_button(self.log_page, " Test Data Provider", wx.ART_LIST_VIEW)
-        self.test_data_provider_button.Hide()  # Hidden by default (debug mode only)
-        # Add buttons to the horizontal button sizer
-        button_sizer.Add(self.process_log_button, 0, wx.ALL, 2)
-        button_sizer.Add(self.autoshard_button, 0, wx.ALL, 2)
-        button_sizer.Add(self.monitor_button, 0, wx.ALL, 2)
-        button_sizer.Add(self.check_db_button, 0, wx.ALL, 2)
-        button_sizer.Add(self.data_transfer_button, 0, wx.ALL, 2)
-        button_sizer.Add(self.test_data_provider_button, 0, wx.ALL, 2)
-        button_sizer.Add(self.simulate_notification_button, 0, wx.ALL, 2)
-        # Add the button sizer to the log page sizer
-        log_page_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 2)
-
+        # Ya no se hace Hide() de los botones de debug, la visibilidad la gestiona el sizer de debug
+        # --- Añadir sizers al layout ---
+        log_page_sizer.Add(self.main_button_sizer, 0, wx.EXPAND | wx.ALL, 2)
+        # El sizer de debug solo se añade si debug_mode está activo
+        if self.debug_mode:
+            log_page_sizer.Add(self.debug_button_sizer, 0, wx.EXPAND | wx.ALL, 2)
         # Add the log text area with fixed-width font and rich text support
         self.log_text = wx.TextCtrl(
             self.log_page,
@@ -300,11 +297,15 @@ class LogAnalyzerFrame(wx.Frame):
         self.CreateStatusBar()
         self.SetStatusText("Ready")
     
-    def _create_button(self, parent, label, art_id):
-        """Helper method to create styled buttons."""
-        button = wx.Button(parent, label=label)
+    def _create_button(self, sizer, label, art_id, min_size=None):
+        """Crea un botón compacto, look Windows, lo añade al sizer y lo devuelve. Ajusta tamaño al texto salvo que se indique min_size."""
+        button = wx.Button(self.log_page, label=label)
         button.SetBitmap(wx.ArtProvider.GetBitmap(art_id, wx.ART_BUTTON, (16, 16)))
-        button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        # Fuente estándar Windows
+        button.SetFont(wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT))
+        if min_size is not None:
+            button.SetMinSize(min_size)
+        sizer.Add(button, 0, wx.ALL, 1)
         return button
     
     def __getattr__(self, name):
@@ -1001,41 +1002,33 @@ class LogAnalyzerFrame(wx.Frame):
         
     def update_debug_ui_visibility(self):
         """Update UI elements based on debug mode state"""
-        # Debug mode buttons visibility
-        if hasattr(self, 'test_data_provider_button'):
-            self.test_data_provider_button.Show(self.debug_mode)
-        if hasattr(self, 'data_transfer_button'):
-            self.data_transfer_button.Show(self.debug_mode)
-        # Botón de simulación de notificación
-        if hasattr(self, 'simulate_notification_button'):
-            self.simulate_notification_button.Show(self.debug_mode)
-        
-        # Check DB button needs special handling - only visible in debug mode and only enabled with Supabase
-        if hasattr(self, 'check_db_button'):
-            # Make the button visible in debug mode
-            self.check_db_button.Show(self.debug_mode)
-            
-            # Only enable it if Supabase is the datasource
-            is_supabase = self.config_manager.get('datasource') == 'supabase'
-            self.check_db_button.Enable(is_supabase)
-            
-            # Update the button label to indicate why it might be disabled
-            if is_supabase:
-                self.check_db_button.SetLabel(" Check DB")
-            else:
-                self.check_db_button.SetLabel(" Check DB (Supabase only)")
-        
-        # Update log level filtering based on debug mode
-        if hasattr(self, 'data_manager'):
-            self.data_manager.set_debug_mode(self.debug_mode)
-            
-        # Force layout update
-        if hasattr(self, 'log_page') and self.log_page:
-            self.log_page.Layout()
-            
-        # Update GUI refresh
-        if hasattr(self, 'GetMenuBar') and self.GetMenuBar():
-            self.GetMenuBar().Refresh()
+        # --- Gestión dinámica del sizer de debug ---
+        log_page_sizer = self.log_page.GetSizer()
+        # Comprobar si el sizer de debug está en el layout de forma compatible con wxPython
+        debug_sizer_in_layout = any(
+            item.IsSizer() and item.GetSizer() is self.debug_button_sizer
+            for item in log_page_sizer.GetChildren()
+        )
+        if self.debug_mode and not debug_sizer_in_layout:
+            log_page_sizer.Insert(1, self.debug_button_sizer, 0, wx.EXPAND | wx.ALL, 2)
+        elif not self.debug_mode and debug_sizer_in_layout:
+            log_page_sizer.Detach(self.debug_button_sizer)
+        # Visibilidad y lógica especial de botones de debug
+        self.test_data_provider_button.Show(self.debug_mode)
+        self.data_transfer_button.Show(self.debug_mode)
+        self.simulate_notification_button.Show(self.debug_mode)
+        # Check DB button: solo visible en debug y habilitado solo si datasource es 'supabase'
+        self.check_db_button.Show(self.debug_mode)
+        is_supabase = self.config_manager.get('datasource') == 'supabase'
+        self.check_db_button.Enable(is_supabase)
+        if is_supabase:
+            self.check_db_button.SetLabel(" Check DB")
+        else:
+            self.check_db_button.SetLabel(" Check DB (Supabase only)")
+        self.data_manager.set_debug_mode(self.debug_mode)
+
+        # Forzar refresco de layout
+        self.log_page.Layout()
         self.Refresh()
     
     def async_init_tabs(self):
