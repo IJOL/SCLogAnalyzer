@@ -40,7 +40,7 @@ class NotificationManager:
             wx.Frame.__init__(self, None, style=style)
             self.duration = duration
             panel = wx.Panel(self)
-            panel.SetBackgroundColour(wx.Colour(240, 240, 240))  # gris clarito
+            panel.SetBackgroundColour(wx.Colour(140, 140, 140))  # gris clarito
             main_sizer = wx.BoxSizer(wx.VERTICAL)
             # Título
             title_text = wx.StaticText(panel, label=title)
@@ -73,7 +73,7 @@ class NotificationManager:
             # Hacer la ventana más cuadrada
             width, height = panel.GetSize()
             self.SetClientSize((max(width, 320), max(height, 120)))
-            self.SetBackgroundColour(wx.Colour(240, 240, 240))
+            # self.SetBackgroundColour(wx.Colour(240, 210, 240))
             self._position_bottom_right()
             self.timer = wx.Timer(self)
             self.Bind(wx.EVT_TIMER, self.on_timer, self.timer)
