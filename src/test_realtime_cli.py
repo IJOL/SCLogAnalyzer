@@ -21,6 +21,7 @@ from helpers.message_bus import message_bus, setup_console_handler
 from helpers import supabase_manager
 
 setup_console_handler(debug=True, replay_history=False)
+message_bus.set_debug_mode(True)
 
 class TestUser:
     def __init__(self, username, shard="TestShard", version="test-v1.0"):

@@ -148,7 +148,8 @@ class MessageBus:
     def set_debug_mode(self, enabled: bool) -> None:
         """
         Enable or disable debug mode.
-        When debug mode is enabled, all messages will also be printed to stdout.
+        A partir de la refactorización, message_bus es la única fuente de verdad global para el modo debug.
+        Todos los módulos deben consultar/activar el modo debug a través de este método y de is_debug_mode().
         
         Args:
             enabled: True to enable debug mode, False to disable
@@ -159,6 +160,7 @@ class MessageBus:
     def is_debug_mode(self) -> bool:
         """
         Check if debug mode is enabled.
+        A partir de la refactorización, message_bus es la única fuente de verdad global para el modo debug.
         
         Returns:
             True if debug mode is enabled, False otherwise

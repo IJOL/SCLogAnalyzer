@@ -22,8 +22,6 @@ class DataDisplayManager:
             config_manager: Configuration manager instance. If None, will try to get from parent.
         """
         self.parent = parent_frame
-        # Initialize debug mode to False by default
-        self.debug_mode = False
         
         # Use provided config_manager or try to get from parent as fallback
         self.config_manager = config_manager
@@ -56,36 +54,6 @@ class DataDisplayManager:
                 level
             )
     
-    def set_debug_mode(self, enabled):
-        """
-        Enable or disable debug mode, affecting log level visibility.
-        
-        Args:
-            enabled (bool): True to enable debug mode, False to disable
-        """
-        self.debug_mode = enabled
-        
-        # Update the log level filter based on debug mode
-        if enabled:
-            # Show all messages including DEBUG when debug mode is on
-            self._set_log_level_filter(MessageLevel.DEBUG)
-            # Enable message bus debug mode - peek at messages without consuming them
-            message_bus.set_debug_mode(True)
-            message_bus.publish(
-                content="Debug mode enabled - showing all log levels and peeking at message bus",
-                level=MessageLevel.INFO
-            )
-        else:
-            # Only show INFO and above when debug mode is off
-            self._set_log_level_filter(MessageLevel.INFO)
-            # Disable message bus debug mode
-            message_bus.set_debug_mode(False)
-            message_bus.publish(
-                content="Debug mode disabled - hiding DEBUG level messages",
-                level=MessageLevel.INFO
-            )
-        
-   
     def fetch_and_update(self, params, target_grid):
         """
         Fetch data based on parameters and update the target grid.

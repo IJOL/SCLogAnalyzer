@@ -393,7 +393,7 @@ class SupabaseDataProvider(DataProvider):
             return False
         
         # If we're not in debug mode, don't create dynamic views
-        if not message_bus.debug_mode:
+        if not message_bus.is_debug_mode():
             message_bus.publish(
                 content="Debug mode is not enabled, skipping dynamic view creation",
                 level=MessageLevel.INFO,

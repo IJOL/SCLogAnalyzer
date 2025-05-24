@@ -1127,10 +1127,8 @@ if __name__ == "__main__":
         if datasource_index < len(sys.argv):
             datasource = sys.argv[datasource_index]
     debug_mode = '--debug' in sys.argv or '-d' in sys.argv
-
-    # Set debug mode globally
-    main.debug_mode = debug_mode
-
+    # Set debug mode global en message_bus
+    message_bus.set_debug_mode(debug_mode)
     # Show version info on startup
     print(f"SC Log Analyzer v{get_version()} starting...")
     main(process_all, use_discord, process_once, datasource)

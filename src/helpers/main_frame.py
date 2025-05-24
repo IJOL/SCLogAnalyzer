@@ -54,8 +54,10 @@ class LogAnalyzerFrame(wx.Frame):
         self.shard = "Unknown"
         self.version = "Unknown"
         self.mode = "None"
-        # Set debug mode from parameter
+        # Set debug mode from parameter (solo para UI)
         self.debug_mode = debug_mode
+        # Sincroniza el estado global de debug
+        message_bus.set_debug_mode(self.debug_mode)
         
         # Define a consistent name for log message subscription
         self.log_subscription_name = "gui_main"
@@ -979,8 +981,10 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Secret key combination: CTRL+SHIFT+ALT+D
         if ctrl_down and shift_down and alt_down and key_code == ord('D'):
-            # Toggle debug mode
+            # Toggle debug mode (solo UI)
             self.debug_mode = not self.debug_mode
+            # Sincroniza el estado global de debug
+            message_bus.set_debug_mode(self.debug_mode)
             self.update_debug_ui_visibility()
             
             # Show a subtle indication in the status bar
@@ -1009,23 +1013,24 @@ class LogAnalyzerFrame(wx.Frame):
             item.IsSizer() and item.GetSizer() is self.debug_button_sizer
             for item in log_page_sizer.GetChildren()
         )
-        if self.debug_mode and not debug_sizer_in_layout:
+        debug_active = message_bus.is_debug_mode()
+        if debug_active and not debug_sizer_in_layout:
             log_page_sizer.Insert(1, self.debug_button_sizer, 0, wx.EXPAND | wx.ALL, 2)
-        elif not self.debug_mode and debug_sizer_in_layout:
+        elif not debug_active and debug_sizer_in_layout:
             log_page_sizer.Detach(self.debug_button_sizer)
         # Visibilidad y lógica especial de botones de debug
-        self.test_data_provider_button.Show(self.debug_mode)
-        self.data_transfer_button.Show(self.debug_mode)
-        self.simulate_notification_button.Show(self.debug_mode)
+        self.test_data_provider_button.Show(debug_active)
+        self.data_transfer_button.Show(debug_active)
+        self.simulate_notification_button.Show(debug_active)
         # Check DB button: solo visible en debug y habilitado solo si datasource es 'supabase'
-        self.check_db_button.Show(self.debug_mode)
+        self.check_db_button.Show(debug_active)
         is_supabase = self.config_manager.get('datasource') == 'supabase'
         self.check_db_button.Enable(is_supabase)
         if is_supabase:
             self.check_db_button.SetLabel(" Check DB")
         else:
             self.check_db_button.SetLabel(" Check DB (Supabase only)")
-        self.data_manager.set_debug_mode(self.debug_mode)
+        # Elimina llamada redundante a set_debug_mode en data_manager
 
         # Forzar refresco de layout
         self.log_page.Layout()

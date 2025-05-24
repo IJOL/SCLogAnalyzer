@@ -397,20 +397,9 @@ class ConnectedUsersPanel(wx.Panel):
     def _is_debug_mode(self):
         """
         Devuelve True si estamos en modo debug.
-        Patrón correcto del proyecto:
-        1. Intenta leer self.parent.debug_mode (LogAnalyzerFrame), que se activa por flag CLI o combinación secreta en GUI.
-        2. Si no existe, consulta el estado global del message_bus (message_bus.is_debug_mode()).
-        3. Nunca usar config_manager ni __main__ para debug.
+        A partir de la refactorización, message_bus es la única fuente de verdad global.
         """
-        debug_flag = False
-        # 1. Intentar parent.debug_mode
-        if hasattr(self.parent, 'debug_mode'):
-            debug_flag = getattr(self.parent, 'debug_mode', False)
-        else:
-            # 2. Fallback: message_bus global
-            from .message_bus import message_bus
-            debug_flag = message_bus.is_debug_mode()
-        return debug_flag
+        return message_bus.is_debug_mode()
 
     def on_reconnect(self, event=None):
         """
