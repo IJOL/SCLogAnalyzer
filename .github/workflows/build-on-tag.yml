@@ -33,16 +33,15 @@ jobs:
       - name: Build executables
         run: |
           .\venv\Scripts\activate
-          #pyinstaller --onefile --console --clean --add-data "src/config.json.template;." --name log_analyzer src/log_analyzer.py
-          pyinstaller --onefile --windowed --clean \
-            --add-data "src/config.json.template;." \
-            --add-data "src/assets/icon_connection_red.png;assets" \
-            --add-data "src/assets/icon_connection_green.png;assets" \
-            --add-data "src/assets/SCLogAnalyzer.ico;assets" \
-            --add-binary "venv\Lib\site-packages\pyzbar\libiconv.dll;." \
-            --add-binary "venv\Lib\site-packages\pyzbar\libzbar-64.dll;." \
-            --name SCLogAnalyzer \
-            --icon src/assets/SCLogAnalyzer.ico \
+          pyinstaller --onefile --windowed --clean `
+            --add-data "src/config.json.template;." `
+            --add-data "src/assets/icon_connection_red.png;assets" `
+            --add-data "src/assets/icon_connection_green.png;assets" `
+            --add-data "src/assets/SCLogAnalyzer.ico;assets" `
+            --add-binary "venv\Lib\site-packages\pyzbar\libiconv.dll;." `
+            --add-binary "venv\Lib\site-packages\pyzbar\libzbar-64.dll;." `
+            --name SCLogAnalyzer `
+            --icon src/assets/SCLogAnalyzer.ico `
             src/gui.py
 
       - name: Archive Windows Executable Artifacts
