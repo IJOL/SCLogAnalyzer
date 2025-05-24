@@ -5,6 +5,8 @@ import os
 import threading
 import time
 import wx
+
+from .config_utils import get_application_path
 from .rate_limiter import MessageRateLimiter
 
 class NotificationManager:
@@ -117,8 +119,8 @@ class NotificationManager:
             return 0
         def show_notification():
             try:
-                from os.path import abspath, join, exists
-                icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SCLogAnalyzer.ico")
+                from os.path import join, exists
+                icon_path = join(get_application_path(),"assets", "SCLogAnalyzer.ico")
                 if not exists(icon_path):
                     icon_path = None  # fallback: no icono si no existe
                 duration = getattr(self, 'notifications_duration', 5)
