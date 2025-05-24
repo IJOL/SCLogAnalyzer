@@ -428,7 +428,7 @@ def install_requirements():
         return False
 
 
-def build_executables(build_all=False, windowed=False):
+def build_executables(build_all=False, windowed=True):
     """
     Build executables using PyInstaller
     """
@@ -443,8 +443,10 @@ def build_executables(build_all=False, windowed=False):
             "--add-data", f"{CONFIG_TEMPLATE};.", 
             "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_red.png'};assets", 
             "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets", 
+            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets", 
             "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};.", 
             "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};.", 
+            "--icon src/assets/SCLogAnalyzer.ico"
             "--name", "SCLogAnalyzer", f"{SRC_DIR / 'gui.py'}"
         ], check=True)
         # Solo construir los otros si build_all=True
@@ -556,7 +558,7 @@ def main():
     parser.add_argument('--skip-requirements', action='store_true', help='Skip installing requirements')
     parser.add_argument('--zip', action='store_true', help='Create ZIP files for distribution after build (default: off)')
     parser.add_argument('--build-all', action='store_true', help='Build all executables (log_analyzer, StatusBoardBot, SCLogAnalyzer)')
-    parser.add_argument('--windowed', '-w', action='store_true', help='Build SCLogAnalyzer.exe in windowed mode (default: console mode)')
+    parser.add_argument('--console', '-c', action='store_true', help='Build SCLogAnalyzer.exe in console mode (default: windowed mode)')
     args = parser.parse_args()
     
     # If no specific actions are specified, enable all
@@ -608,7 +610,7 @@ def main():
                 print("Warning: Failed to install requirements")
         
         # Build ejecutables: solo todos si --build-all o --all
-        if not build_executables(args.build_all or args.all, windowed=args.windowed):
+        if not build_executables(args.build_all or args.all, windowed=not args.console):
             print("Error: Failed to build executables")
             return 1
         # Create ZIP files SOLO si --zip
