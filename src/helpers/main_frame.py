@@ -1105,15 +1105,9 @@ class LogAnalyzerFrame(wx.Frame):
         )
 
     def on_freeze(self, event):
-        from .gui_module import WindowsHelper
         log_src = getattr(self, 'log_file_path', None)
-        hwnd = WindowsHelper.find_window_by_title("Star Citizen", class_name="CryENGINE", process_name="StarCitizen.exe")
-        import win32gui
-        import win32con
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.SetForegroundWindow(hwnd)
-
-        entry = create_freeze(log_src, hwnd, parent=self)
+        from .gui_module import WindowsHelper
+        entry = create_freeze(log_src, parent=self)
         if entry:
             # wx.MessageBox("Freeze completed successfully!", "Freeze", wx.OK | wx.ICON_INFORMATION)
             refresh_freezer_tab(self)
@@ -1121,6 +1115,8 @@ class LogAnalyzerFrame(wx.Frame):
                 content=f"Congelador salvado en {entry['folder']}",
                 level=MessageLevel.INFO
             )
+        WindowsHelper.focus_sc()
+
 
     def _init_freezer_tab(self):
         create_freezer_tab(self)

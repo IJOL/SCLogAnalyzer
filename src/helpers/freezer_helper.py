@@ -15,7 +15,7 @@ def ensure_freezer_dir():
     return FREEZER_DIR
 
 
-def create_freeze(log_src, hwnd, parent=None):
+def create_freeze(log_src, parent=None):
     ensure_freezer_dir()
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     freeze_dir = os.path.join(FREEZER_DIR, timestamp)
@@ -28,11 +28,7 @@ def create_freeze(log_src, hwnd, parent=None):
         return None
     screenshot_path = os.path.join(freeze_dir, f'screenshot_{timestamp}.jpg')
     try:
-        if hwnd:
-            WindowsHelper.capture_window_screenshot(hwnd, screenshot_path, full=True)
-        else:
-            wx.MessageBox("Star Citizen window not found.", "Freeze Error", wx.OK | wx.ICON_ERROR, parent)
-            return None
+        WindowsHelper.capture_window_screenshot(None, screenshot_path, full=True)
     except Exception as e:
         wx.MessageBox(f"Screenshot failed: {e}", "Freeze Error", wx.OK | wx.ICON_ERROR, parent)
         return None

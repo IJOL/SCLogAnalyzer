@@ -549,6 +549,9 @@ class WindowsHelper:
     @staticmethod
     def capture_window_screenshot(hwnd, output_path, **kwargs):
         """Capture a screenshot of a specific window using its handle."""
+        if not hwnd:
+            hwnd = WindowsHelper.find_window_by_title("Star Citizen", class_name="CryENGINE", process_name="StarCitizen.exe")
+
         full = 'full' in kwargs
         try:
             left, top, right, bottom = win32gui.GetWindowRect(hwnd)
@@ -573,12 +576,10 @@ class WindowsHelper:
     def send_keystrokes_to_window(window_title, keystrokes, screenshots_folder, **kwargs):
         """Send keystrokes to a specific window and capture a screenshot if PRINT_SCREEN_KEY is triggered."""
         try:
-            hwnd = WindowsHelper.find_window_by_title(window_title, kwargs.get('class_name'), kwargs.get('process_name'))
+            hwnd = WindowsHelper.focus_sc()
             if not hwnd:
                 raise RuntimeError(f"Window with title '{window_title}' not found.")
 
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-            win32gui.SetForegroundWindow(hwnd)
             time.sleep(0.05)
 
             keyboard = Controller()
@@ -603,6 +604,15 @@ class WindowsHelper:
                 time.sleep(0.05)
         except Exception as e:
             raise RuntimeError(f"Error sending keystrokes to window: {e}")
+
+    @staticmethod
+    def focus_sc():
+        hwnd = WindowsHelper.find_window_by_title("Star Citizen", class_name="CryENGINE", process_name="StarCitizen.exe")
+        if hwnd:
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(hwnd)
+            return hwnd
+        return None
 
 class NumericValidator(wx.Validator):
     """Custom numeric validator for text controls."""
