@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 9
-RELEASE = 12
+RELEASE = 13
 MATURITY = "pyam-exhang"  # "alpha", "beta", or "final"
-PATCH = "bf90a3d"
+PATCH = "35b1d49"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -16,6 +16,17 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.9.x series
+    "35b1d49: Refactor icon path retrieval in NotificationManager to use get_application_path for improved asset management",
+    "2991d19: Enhance build process by adding SCLogAnalyzer icon and updating executable build options for windowed mode",
+    "37496bc: Refactor freeze creation to remove hwnd parameter and enhance window focus handling",
+    "2a28ec1: Add freezer functionality for log management and UI integration",
+    "5c483fc: Refactor debug mode handling to centralize control in message_bus, simplifying state management across modules",
+    "61e5529: Update NotificationManager background color for improved visibility",
+    "854c921: Update monitoring button labels for clarity during monitoring state changes",
+    "44704e3: Refactor LogAnalyzerFrame to separate main and debug button sizers for improved UI organization",
+
+    # Version v0.9.12-bf90a3d-pyam-exhang-docker
+    "429fa1e: Increment version to v0.9.12-bf90a3d-pyam-exhang",
     "bf90a3d: Update .gitignore to exclude SCLogAnalyzer build directory and enhance build.py with zipfile support for distribution",
     "50f7235: Add venv310/ to .gitignore to exclude Python virtual environment files",
     "f9aa33c: Refactor NotificationManager to use wx for notifications and implement NotificationPopup class",
