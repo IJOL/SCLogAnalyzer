@@ -350,21 +350,30 @@ def commit_and_push_changes(version, push=False):
 
 def create_and_push_tag(version, is_test=False, push=False):
     """
-    Create a git tag and push it to the repository
+    Create a git tag and push it to the repository, solo si hay commits nuevos desde el último tag
     """
     try:
         # Prepend test- to version if this is not an official release
         tag_version = f"test-{version}" if is_test else version
-        
+
+        # Comprobación: solo crear tag si hay commits nuevos desde el último tag
+        latest_tag = get_latest_tag()
+        if latest_tag:
+            tag_commit = get_commit_hash(latest_tag)
+            head_commit = get_head_commit()
+            if tag_commit and head_commit and tag_commit == head_commit:
+                print(f"[ABORT] No se crea el tag '{tag_version}' porque no hay commits nuevos desde el último tag ({latest_tag}).")
+                return False
+
         print(f"Creating tag: {tag_version}")
         subprocess.run(['git', 'tag', '-a', tag_version, '-m', f"Version {tag_version}"], check=True)
-        
+
         if push:
             print(f"Pushing tag {tag_version} to remote repository...")
             subprocess.run(['git', 'push', 'origin', tag_version], check=True)
         else:
             print(f"Tag {tag_version} created. Use --push to push it to the remote repository.")
-        
+
         return True
     except subprocess.SubprocessError as e:
         print(f"Error creating/pushing tag: {e}")
