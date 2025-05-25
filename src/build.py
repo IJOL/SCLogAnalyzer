@@ -94,7 +94,7 @@ def get_recent_commits(since_tag=None):
                     
                     if major_match and minor_match:
                         major = major_match.group(1)
-                        minor = minor_match.group(1)
+                        minor = int(minor_match.group(1))-1
                         current_version = f"v{major}.{minor}"
                         print(f"Current version detected as {current_version}.x")
             except Exception as e:
