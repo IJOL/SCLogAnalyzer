@@ -885,6 +885,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.current_shard = None
         self.current_version = None
         self.current_mode = None
+        last_username = self.username
         self.username = self.config_manager.get('username', 'Unknown')
         self.in_ea_mode = False
         self.last_position = 0
@@ -893,7 +894,8 @@ class LogFileHandler(FileSystemEventHandler):
         from helpers.message_bus import message_bus
         message_bus.emit("mode_change", None, self.current_mode)
         message_bus.emit("shard_version_update", self.current_shard, self.current_version, self.username, self.current_mode)
-        message_bus.emit("username_change", self.username, None)
+        message_bus.emit("username_change", self.username,  last_username)
+
         output_message(None, "State reset complete")
         # Lanzar evento para forzar reconexión realtime tras reset/truncado
         message_bus.emit("force_realtime_reconnect")
