@@ -436,33 +436,6 @@ class ConnectedUsersPanel(wx.Panel):
                 metadata={"source": "connected_users_panel"}
             )
     
-    def on_reconnect_button(self, event=None):
-        """
-        Handler for the reconnect button or programmatic reconnect request.
-        Calls the singleton RealtimeBridge's reconnect() method, which is sync-safe and handles all async logic internally.
-        """
-        from .realtime_bridge import _realtime_bridge_instance
-        if _realtime_bridge_instance:
-            result = _realtime_bridge_instance.reconnect()
-            if result:
-                message_bus.publish(
-                    content="Reconnect requested from ConnectedUsersPanel: success",
-                    level=MessageLevel.INFO,
-                    metadata={"source": "connected_users_panel"}
-                )
-            else:
-                message_bus.publish(
-                    content="Reconnect requested from ConnectedUsersPanel: failed",
-                    level=MessageLevel.ERROR,
-                    metadata={"source": "connected_users_panel"}
-                )
-        else:
-            message_bus.publish(
-                content="RealtimeBridge singleton not available for reconnect",
-                level=MessageLevel.ERROR,
-                metadata={"source": "connected_users_panel"}
-            )
-
     def _on_broadcast_ping_missing(self, *args, **kwargs):
         """
         Handler para evento de pings broadcast ausentes. Activa la alerta y el botón de reconexión solo si no estamos en debug.

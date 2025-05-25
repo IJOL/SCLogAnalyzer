@@ -895,11 +895,7 @@ class LogFileHandler(FileSystemEventHandler):
         message_bus.emit("mode_change", None, self.current_mode)
         message_bus.emit("shard_version_update", self.current_shard, self.current_version, self.username, self.current_mode)
         message_bus.emit("username_change", self.username,  last_username)
-
-        output_message(None, "State reset complete")
-        # Lanzar evento para forzar reconexión realtime tras reset/truncado
         message_bus.emit("force_realtime_reconnect")
-        output_message(None, "State reset complete (y force_realtime_reconnect emitido)")
     
 
     def send_realtime_event(self, data, pattern_name):

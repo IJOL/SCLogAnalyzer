@@ -102,9 +102,13 @@ class RealtimeBridge:
         
     def set_username(self, username, old_username=None):
         """Sets or updates the username and connects if needed"""
+        # Solo reconectar si el username es válido y diferente al anterior
         if self.username == username:
             return  # No change needed
-            
+        if username is None or username == "Unknown":
+            self.username = username
+            return
+        old_username_val = self.username
         self.username = username
         
         message_bus.publish(
@@ -115,14 +119,9 @@ class RealtimeBridge:
         
         # If we already have a connection but username changed, reconnect
         if self.is_connected:
-            message_bus.publish(
-                content="Username changed, reconnecting Realtime Bridge...",
-                level=MessageLevel.INFO,
-                metadata={"source": "realtime_bridge"}
-            )
             self.disconnect()
             self.connect()
-        # If we don't have a connection yet but now have a username, connect
+        # Si no hay conexión y ahora hay username válido, conectar
         elif not self.is_connected and username:
             self.connect()
         
@@ -703,25 +702,20 @@ class RealtimeBridge:
             time.sleep(5)
 
     def _handle_force_reconnect(self, *args, **kwargs):
-        """Handle force_realtime_reconnect event: always reconnect (incondicional, no configurable)."""
-        message_bus.publish(
-            content="Received force_realtime_reconnect event. Forcing unconditional reconnect (mandatory, not configurable).",
-            level=MessageLevel.INFO,
-            metadata={"source": "realtime_bridge"}
-        )
-        result = self.reconnect()
-        if result:
+        """Handle force_realtime_reconnect event: tras reset/truncado solo se desconecta, no se reconecta."""
+        if not self.is_connected:
             message_bus.publish(
-                content="RealtimeBridge: Reconnected successfully after log reset/truncation.",
+                content="force_realtime_reconnect: ya estaba desconectado, no se realiza acción.",
                 level=MessageLevel.INFO,
                 metadata={"source": "realtime_bridge"}
             )
-        else:
-            message_bus.publish(
-                content="RealtimeBridge: Reconnect failed after log reset/truncation.",
-                level=MessageLevel.ERROR,
-                metadata={"source": "realtime_bridge"}
-            )
+            return
+        message_bus.publish(
+            content="force_realtime_reconnect: recibido, realizando solo disconnect() (no se reconecta hasta username válido)",
+            level=MessageLevel.INFO,
+            metadata={"source": "realtime_bridge"}
+        )
+        self.disconnect()
 
     def reconnect(self):
         """
