@@ -706,7 +706,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.tooltip = tooltip
 
         # Set the icon using the custom application icon
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SCLogAnalyzer.ico")
+        icon_path = os.path.join(get_application_path(),'assets', "SCLogAnalyzer.ico")
         if os.path.exists(icon_path):
             self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO), self.tooltip)
         else:

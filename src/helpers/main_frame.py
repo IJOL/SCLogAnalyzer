@@ -14,7 +14,7 @@ from .data_display_manager import DataDisplayManager
 from .window_state_manager import WindowStateManager
 from .gui_module import ConfigDialog, ProcessDialog, TaskBarIcon, AboutDialog
 from .message_bus import message_bus, MessageLevel
-from .config_utils import get_config_manager
+from .config_utils import get_application_path, get_config_manager
 from .supabase_manager import supabase_manager
 from helpers import updater
 from version import get_version
@@ -52,7 +52,7 @@ class LogAnalyzerFrame(wx.Frame):
         message_bus.on("config.saved", self.on_config_saved)
         
         # Set the application icon
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "SCLogAnalyzer.ico")
+        icon_path = os.path.join(get_application_path(),'assets', "SCLogAnalyzer.ico")
         if os.path.exists(icon_path):
             self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO))
         
