@@ -658,6 +658,12 @@ class RealtimeBridge:
         if self._ping_missing_thread and self._ping_missing_thread.is_alive():
             self._ping_missing_thread.join(timeout=3)
         self._ping_missing_thread = None
+        message_bus.publish(
+            content="Stopped ping missing thread",
+            level=MessageLevel.DEBUG,
+            metadata={"source": "realtime_bridge"}
+        )
+
 
     def _ping_missing_loop(self):
         while self._ping_missing_check_active:
