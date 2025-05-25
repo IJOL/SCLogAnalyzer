@@ -83,10 +83,6 @@ class LogAnalyzerFrame(wx.Frame):
                 if supabase_client:
                     # Crear la instancia de RealtimeBridge
                     self.realtime_bridge = RealtimeBridge(supabase_client, self.config_manager)
-                    
-                    # Iniciar la conexión con Supabase Realtime
-                    self.realtime_bridge.connect()
-                    
                     message_bus.publish(
                         content="Realtime intercommunication enabled",
                         level=MessageLevel.INFO,
