@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 10
-RELEASE = 99
+RELEASE = 0
 MATURITY = "attritus"  # "alpha", "beta", or "final"
-PATCH = "267a777"
+PATCH = "b9b1a83"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -15,7 +15,18 @@ def get_version():
 
 # Recent commit messages
 COMMIT_MESSAGES = [
-    # Commits for v0.9.x series
+    # Commits for v0.10.x series
+    "b9b1a83: Decrement minor version number in get_recent_commits function",
+    "3e07073: Update version information to reflect new release details",
+    "4002987: Remove FreezerPanel implementation and associated functionality",
+    "b860f7a: Implement Freezer tab functionality and remove obsolete freezer helper module",
+    "f9ec12f: Add icon creation and extraction functionality for SCLogAnalyzer",
+    "855811a: Remove specific instruction files from .gitignore to streamline ignored files list",
+    "0d4ab16: Refactor icon path handling to use get_application_path for consistency across modules",
+    "7e99c9f: Enhance tag creation to only proceed if there are new commits since the last tag",
+
+    # Version v0.9.15-267a777-pyam-exhang-docker
+    "6c6f162: Increment version to v0.9.15-267a777-pyam-exhang",
 
     # Version v0.9.14-8b2ad66-pyam-exhang-docker
     "267a777: Increment version to v0.9.14-8b2ad66-pyam-exhang",
