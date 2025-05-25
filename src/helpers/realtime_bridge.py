@@ -81,24 +81,24 @@ class RealtimeBridge:
         self._ping_missing_check_active = False
         self._ping_missing_thread = None
         self._ping_missing_event_emitted = False
+        # Nuevo: filtro de mensajes 'stalled' controlado por la UI
+        self.filter_stalled_if_online = True  # Controlado por la UI, usado solo aquí
+        self.filter_broadcast_usernames = set()  # Controlado por la UI, usado solo aquí
         
-        # Suscribirse a los eventos del MessageBus local que nos interesa compartir
-        message_bus.on("shard_version_update", self._handle_shard_version_update)
-        message_bus.on("realtime_event", self._handle_realtime_event)
-        message_bus.on("username_change", self.set_username)  # Subscribe to existing username_change events
-        # Subscribe to force_realtime_reconnect event for log truncation/reset
-        message_bus.on("force_realtime_reconnect", self._handle_force_reconnect)
         
         # Nuevo: Lock de reconexión y estado
         self._reconnect_lock = threading.Lock()
         self._reconnect_in_progress = False  # (opcional, para logging)
         
-        # Nuevo: filtro de mensajes 'stalled' controlado por la UI
-        self.filter_stalled_if_online = True  # Controlado por la UI, usado solo aquí
-        self.filter_broadcast_usernames = set()  # Controlado por la UI, usado solo aquí
         
         # Nuevo: NotificationManager para notificaciones de eventos relevantes
         self.notification_manager = NotificationManager(config_manager)
+        # Suscribirse a los eventos del MessageBus local que nos interesa compartir
+        message_bus.on("shard_version_update", self._handle_shard_version_update)
+        message_bus.on("realtime_event", self._handle_realtime_event)
+        message_bus.on("username_change", self.set_username)  # Subscribe to existing username_change events
+        # Subscribe to force_realtime_reconnect event for log truncation/reset
+        message_bus.on("realtime_disconnect", self._handle_realtime_disconnect)
         
     def set_username(self, username, old_username=None):
         """Sets or updates the username and connects if needed"""
@@ -701,20 +701,10 @@ class RealtimeBridge:
                 pass
             time.sleep(5)
 
-    def _handle_force_reconnect(self, *args, **kwargs):
+    def _handle_realtime_disconnect(self, *args, **kwargs):
         """Handle force_realtime_reconnect event: tras reset/truncado solo se desconecta, no se reconecta."""
         if not self.is_connected:
-            message_bus.publish(
-                content="force_realtime_reconnect: ya estaba desconectado, no se realiza acción.",
-                level=MessageLevel.INFO,
-                metadata={"source": "realtime_bridge"}
-            )
             return
-        message_bus.publish(
-            content="force_realtime_reconnect: recibido, realizando solo disconnect() (no se reconecta hasta username válido)",
-            level=MessageLevel.INFO,
-            metadata={"source": "realtime_bridge"}
-        )
         self.disconnect()
 
     def reconnect(self):

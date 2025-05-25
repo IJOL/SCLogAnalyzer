@@ -895,7 +895,7 @@ class LogFileHandler(FileSystemEventHandler):
         message_bus.emit("mode_change", None, self.current_mode)
         message_bus.emit("shard_version_update", self.current_shard, self.current_version, self.username, self.current_mode)
         message_bus.emit("username_change", self.username,  last_username)
-        message_bus.emit("force_realtime_reconnect")
+        message_bus.emit("realtime_disconnect")
     
 
     def send_realtime_event(self, data, pattern_name):
