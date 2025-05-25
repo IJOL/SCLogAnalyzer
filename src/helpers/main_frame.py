@@ -18,13 +18,6 @@ from .config_utils import get_application_path, get_config_manager
 from .supabase_manager import supabase_manager
 from helpers import updater
 from version import get_version
-from .freezer_helper import (
-    create_freeze, 
-    create_freezer_tab, 
-    refresh_freezer_tab,
-    handle_freezer_open,
-    handle_freezer_delete
-)
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -211,10 +204,6 @@ class LogAnalyzerFrame(wx.Frame):
         self.notebook = wx.Notebook(panel)
         self.log_page = wx.Panel(self.notebook)
         self.notebook.AddPage(self.log_page, "Main Log")
-        # --- Añadir pestaña 'Congelador' ---
-        self.freezer_page = wx.Panel(self.notebook)
-        self.notebook.AddPage(self.freezer_page, "Freezer")
-        self._init_freezer_tab()
         
         # Bind the notebook page change event
         self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_notebook_page_changed)
@@ -1103,31 +1092,6 @@ class LogAnalyzerFrame(wx.Frame):
         message_bus.emit("show_windows_notification",
             content="Esto es una notificación de prueba generada en modo debug."
         )
-
-    def on_freeze(self, event):
-        log_src = getattr(self, 'log_file_path', None)
-        from .gui_module import WindowsHelper
-        entry = create_freeze(log_src, parent=self)
-        if entry:
-            # wx.MessageBox("Freeze completed successfully!", "Freeze", wx.OK | wx.ICON_INFORMATION)
-            refresh_freezer_tab(self)
-            message_bus.publish(
-                content=f"Congelador salvado en {entry['folder']}",
-                level=MessageLevel.INFO
-            )
-        WindowsHelper.focus_sc()
-
-
-    def _init_freezer_tab(self):
-        create_freezer_tab(self)
-        refresh_freezer_tab(self)
-
-    def _on_freezer_open(self, event):
-        handle_freezer_open(self, event)
-
-    def _on_freezer_delete(self, event):
-        handle_freezer_delete(self, event)
-
 def main():
     """Main entry point for the application."""
     # Create the wx.App instance first, before any wx operations

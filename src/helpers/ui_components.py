@@ -110,21 +110,18 @@ class TabCreator:
         """
         # Check if tab already exists
         if tab_title in self.tab_references:
-            # Tab exists, just return the existing grid
-            grid, refresh_button = self.tab_references[tab_title]            
+            grid, refresh_button = self.tab_references[tab_title]
             return grid, refresh_button
-        
-        # If tab doesn't exist, use _add_tab to create it
+        # Usa _add_tab para crear el tab base
         grid, refresh_button = self._add_tab(self.parent.notebook, tab_title, params, tab_info)
 
+        # Si se pasa un top_panel, lo añade arriba del grid
         if grid and top_panel:
-            # Add the top panel to the tab's sizer
             parent_panel = grid.GetParent()
             parent_sizer = parent_panel.GetSizer()
             parent_sizer.Insert(0, top_panel, 0, wx.EXPAND | wx.ALL, 5)
             parent_panel.Layout()
 
-        # Trigger initial refresh if the grid was created
         return grid, refresh_button
         
     def add_form_tab(self, tab_title, form_fields={}, params=None, tab_info=None):
