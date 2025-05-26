@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 10
-RELEASE = 0
+RELEASE = 1
 MATURITY = "attritus"  # "alpha", "beta", or "final"
-PATCH = "b9b1a83"
+PATCH = "ff89999"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -16,6 +16,16 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.10.x series
+    "ff89999: Refactor config utility functions to streamline template path retrieval and update icon loading in UI components",
+    "c36e6d4: Fix asset path for SCLogAnalyzer icon in build_executables function",
+    "1b8e125: Log ping missing thread stop event in RealtimeBridge",
+    "6e3bdec: Remove redundant connection initiation for RealtimeBridge in LogAnalyzerFrame",
+    "017c86e: Rename force_realtime_reconnect event to realtime_disconnect in LogFileHandler and update RealtimeBridge to handle new event",
+    "aaf7a26: Remove reconnect button handler and streamline username handling in RealtimeBridge",
+    "58a979a: Fix username change event emission to include previous username",
+
+    # Version v0.10.0-b9b1a83-attritus-docker
+    "0502dbd: Increment version to v0.10.0-b9b1a83-attritus",
     "b9b1a83: Decrement minor version number in get_recent_commits function",
     "3e07073: Update version information to reflect new release details",
     "4002987: Remove FreezerPanel implementation and associated functionality",
