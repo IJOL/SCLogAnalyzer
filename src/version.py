@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 10
-RELEASE = 1
+RELEASE = 2
 MATURITY = "attritus"  # "alpha", "beta", or "final"
-PATCH = "ff89999"
+PATCH = "f86d692"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -16,6 +16,9 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.10.x series
+
+    # Version v0.10.1-ff89999-attritus-docker
+    "f86d692: Increment version to v0.10.1-ff89999-attritus",
     "ff89999: Refactor config utility functions to streamline template path retrieval and update icon loading in UI components",
     "c36e6d4: Fix asset path for SCLogAnalyzer icon in build_executables function",
     "1b8e125: Log ping missing thread stop event in RealtimeBridge",
