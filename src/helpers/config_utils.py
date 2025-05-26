@@ -70,17 +70,16 @@ def emit_default_config(config_path, in_gui=False, template_path=None):
         level=MessageLevel.INFO
     )
 
-def get_template_path():
-    """Get the path to the configuration template file."""
+def get_template_base_dir():
     if getattr(sys, 'frozen', False):
-        # Running in PyInstaller bundle
-        return os.path.join(sys._MEIPASS, DEFAULT_CONFIG_TEMPLATE)
-    elif   '__compiled__' in globals():
-        # Running in Nuitka compiled executable
-        return os.path.join(os.path.dirname(__file__), DEFAULT_CONFIG_TEMPLATE)
+        return sys._MEIPASS
+    elif '__compiled__' in globals():
+        return os.path.dirname(__file__)
     else:
-        # Running in normal Python environment
-        return os.path.join(get_application_path(), DEFAULT_CONFIG_TEMPLATE)
+        return get_application_path()
+
+def get_template_path():
+    return os.path.join(get_template_base_dir(), DEFAULT_CONFIG_TEMPLATE)
 
 
 def get_application_path():

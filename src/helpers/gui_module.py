@@ -15,7 +15,7 @@ import wx.adv  # Import wx.adv for taskbar icon support
 import sys
 
 from version import get_version  # Using absolute import for module in parent directory
-from .config_utils import get_application_path  # Direct import from same directory
+from .config_utils import get_application_path, get_template_base_dir, get_template_path  # Direct import from same directory
 from .message_bus import message_bus, MessageLevel  # Direct import from same directory
 
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -706,7 +706,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.tooltip = tooltip
 
         # Set the icon using the custom application icon
-        icon_path = os.path.join(get_application_path(),'assets', "SCLogAnalyzer.ico")
+        icon_path = os.path.join(get_template_base_dir(),'assets', "SCLogAnalyzer.ico")
         if os.path.exists(icon_path):
             self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO), self.tooltip)
         else:

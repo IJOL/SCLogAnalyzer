@@ -7,7 +7,7 @@ import time
 import os
 from typing import Dict, Any, Callable, Tuple, List, Optional, Union
 from .message_bus import message_bus, MessageLevel
-from .config_utils import get_application_path, get_config_manager
+from .config_utils import get_application_path, get_config_manager, get_template_base_dir, get_template_path
 
 class TabCreator:
     """Manages creation and configuration of tabs in the notebook."""
@@ -351,8 +351,8 @@ class DynamicLabels:
         # --- Custom icon loading (PNG) ---
         # Iconos descargados de https://icons8.com/icon/124377/green-circle y https://icons8.com/icon/124376/red-circle
         # Licencia: uso libre con atribución (icons8)
-        green_icon_path = os.path.join(get_application_path(), 'assets', 'icon_connection_green.png')
-        red_icon_path = os.path.join(get_application_path(), 'assets', 'icon_connection_red.png')
+        green_icon_path = os.path.join(get_template_base_dir(), 'assets', 'icon_connection_green.png')
+        red_icon_path = os.path.join(get_template_base_dir(), 'assets', 'icon_connection_red.png')
         self._icon_paths = {
             True: green_icon_path,
             False: red_icon_path
