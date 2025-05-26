@@ -448,28 +448,28 @@ def build_executables(build_all=False, windowed=True):
         print("Building SCLogAnalyzer GUI app...")
         pyinstaller_mode = "--windowed" if windowed else "--console"
         subprocess.run([
-            "pyinstaller", "--onefile", pyinstaller_mode, "--clean", 
-            "--add-data", f"{CONFIG_TEMPLATE};.", 
-            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_red.png'};assets", 
-            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets", 
-            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets", 
-            "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};.", 
-            "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};.", 
-            "--icon src/assets/SCLogAnalyzer.ico"
+            "pyinstaller", "--onefile", pyinstaller_mode, "--clean",
+            "--add-data", f"{CONFIG_TEMPLATE};.",
+            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_red.png'};assets",
+            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets",
+            "--add-data", f"{SRC_DIR / 'assets' / 'SCLogAnalyzer.ico'};assets",
+            "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};.",
+            "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};.",
+            "--icon", "src/assets/SCLogAnalyzer.ico",
             "--name", "SCLogAnalyzer", f"{SRC_DIR / 'gui.py'}"
         ], check=True)
         # Solo construir los otros si build_all=True
         if build_all:
             print("Building log_analyzer executable...")
             subprocess.run([
-                "pyinstaller", "--onefile", "--console", "--clean", 
-                "--add-data", f"{CONFIG_TEMPLATE};.", 
+                "pyinstaller", "--onefile", "--console", "--clean",
+                "--add-data", f"{CONFIG_TEMPLATE};.",
                 "--name", "log_analyzer", f"{SRC_DIR / 'log_analyzer.py'}"
             ], check=True)
             print("Building StatusBoardBot executable...")
             subprocess.run([
-                "pyinstaller", "--onefile", "--console", "--clean", 
-                "--add-data", f"{SRC_DIR / 'bot' / 'config.json.template'};.", 
+                "pyinstaller", "--onefile", "--console", "--clean",
+                "--add-data", f"{SRC_DIR / 'bot' / 'config.json.template'};.",
                 "--name", "StatusBoardBot", f"{SRC_DIR / 'bot' / 'bot.py'}"
             ], check=True)
         return True
