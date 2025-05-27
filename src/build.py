@@ -26,6 +26,8 @@ CONFIG_TEMPLATE = SRC_DIR / "config.json.template"
 def abort_if_uncommitted_py_changes(allow_uncommitted=False):
     """
     Abort the process if there are uncommitted changes in any .py files, unless allow_uncommitted=True
+    El propio build.py no cuenta para esta comprobación.
+    Además, si el único cambio es en build.py, no debe hacer ni incremento ni commit de versión.
     """
     if allow_uncommitted:
         return
@@ -33,9 +35,15 @@ def abort_if_uncommitted_py_changes(allow_uncommitted=False):
         result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, check=True)
         lines = result.stdout.strip().split('\n')
         py_changes = [line for line in lines if line and line[-3:] == '.py']
-        if py_changes:
+        # Excluir build.py de la comprobación
+        py_changes_no_build = [line for line in py_changes if not line.endswith('src/build.py') and not line.endswith('src\\build.py')]
+        if py_changes_no_build:
             print("ERROR: Hay archivos .py con cambios sin commitear. Por favor, commitea o descarta los cambios antes de continuar.")
             sys.exit(1)
+        # Si solo hay cambios en build.py, abortar incremento/commit
+        if py_changes and not py_changes_no_build:
+            print("[ABORT] Solo hay cambios en build.py, no se realiza incremento ni commit de versión.")
+            sys.exit(0)
     except Exception as e:
         print(f"ERROR al comprobar cambios sin commitear: {e}")
         sys.exit(1)
@@ -351,18 +359,25 @@ def commit_and_push_changes(version, push=False):
 def create_and_push_tag(version, is_test=False, push=False):
     """
     Create a git tag and push it to the repository, solo si hay commits nuevos desde el último tag
+    Además, aborta si el único commit nuevo es un bump de versión.
     """
     try:
-        # Prepend test- to version if this is not an official release
         tag_version = f"test-{version}" if is_test else version
 
-        # Comprobación: solo crear tag si hay commits nuevos desde el último tag
         latest_tag = get_latest_tag()
         if latest_tag:
             tag_commit = get_commit_hash(latest_tag)
             head_commit = get_head_commit()
             if tag_commit and head_commit and tag_commit == head_commit:
                 print(f"[ABORT] No se crea el tag '{tag_version}' porque no hay commits nuevos desde el último tag ({latest_tag}).")
+                return False
+            # Nueva comprobación: abortar si el único commit nuevo es un bump de versión
+            result = subprocess.run([
+                'git', 'log', f'{latest_tag}..HEAD', '--pretty=format:%s'
+            ], capture_output=True, text=True, check=True)
+            messages = [msg.strip() for msg in result.stdout.strip().split('\n') if msg.strip()]
+            if len(messages) == 1 and messages[0].lower().startswith('increment version to'):
+                print(f"[ABORT] No se crea el tag '{tag_version}' porque el único commit nuevo desde el último tag es un bump de versión.")
                 return False
 
         print(f"Creating tag: {tag_version}")
@@ -582,6 +597,14 @@ def main():
     version = None
     if args.increment:
         print("=== Step 1: Incrementing version ===")
+        # Solo permitir incremento si hay cambios reales en src/ distintos de build.py
+        result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, check=True)
+        lines = result.stdout.strip().split('\n')
+        py_changes = [line for line in lines if line and line[-3:] == '.py']
+        py_changes = [line for line in py_changes if not line.endswith('src/build.py') and not line.endswith('src\\build.py')]
+        if not py_changes:
+            print("[ABORT] No se incrementa la versión porque no hay cambios reales en el código fuente (excluyendo build.py).")
+            return 1
         increment_version(args.increment)
         
         # Get the current version
