@@ -775,17 +775,25 @@ class SupabaseDataProvider(DataProvider):
                 # Add username filter if provided
                 if username and self.has_column(table_name, 'username'):
                     query = query.eq('username', username)
-                    
-                # Determine if this is a view by checking if the name ends with "_view"
+                      # Determine if this is a view by checking if the name ends with "_view"
                 is_view = table_name.endswith("_view")
                 
                 if is_view:
+                    # Verificar si es una vista de resumen con kdr_live
+                    is_resumen_view = "resumen" in table_name.lower() and table_name.endswith("_view")
+                    has_kdr_live = is_resumen_view and self.has_column(table_name, 'kdr_live')
+                    
                     # For views, don't try to order by created_at as it may not exist
                     try:
-                        result = query.execute()
+                        if has_kdr_live:
+                            result = query.order('kdr_live', desc=True).execute()
+                        else:
+                            result = query.execute()
                         data = result.data if hasattr(result, 'data') else []
+                        
+                        order_msg = " ordered by kdr_live DESC" if has_kdr_live else ""
                         message_bus.publish(
-                            content=f"Successfully fetched {len(data)} records from view '{table_name}'",
+                            content=f"Successfully fetched {len(data)} records from view '{table_name}'{order_msg}",
                             level=MessageLevel.DEBUG,
                             metadata={"source": self.SOURCE}
                         )
