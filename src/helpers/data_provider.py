@@ -639,9 +639,7 @@ class SupabaseDataProvider(DataProvider):
                 level=MessageLevel.ERROR,
                 metadata={"source": self.SOURCE}
             )
-            return []
-
-        # Special handling for "Resumen" (summary) table
+            return []        # Special handling for "Resumen" (summary) table
         if table_name.lower() == "resumen":
             # Check if view exists, create it if it doesn't
             if not self._ensure_resumen_view_exists():
@@ -654,6 +652,34 @@ class SupabaseDataProvider(DataProvider):
             
             # Use the view directly - table_name is already "resumen_view" in the database
             return self._execute_table_query("resumen_view")
+            
+        # Special handling for "Resumen_Mes_Actual" (current month summary) table
+        if table_name.lower() == "resumen_mes_actual":
+            # Check if view exists, create it if it doesn't
+            if not self._ensure_resumen_mes_actual_view_exists():
+                message_bus.publish(
+                    content="Failed to create or verify Resumen Mes Actual view",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                return []
+            
+            # Use the view directly
+            return self._execute_table_query("resumen_mes_actual_view")
+            
+        # Special handling for "Resumen_Mes_Anterior" (previous month summary) table
+        if table_name.lower() == "resumen_mes_anterior":
+            # Check if view exists, create it if it doesn't
+            if not self._ensure_resumen_mes_anterior_view_exists():
+                message_bus.publish(
+                    content="Failed to create or verify Resumen Mes Anterior view",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                return []
+            
+            # Use the view directly
+            return self._execute_table_query("resumen_mes_anterior_view")
             
         # Check if this is a dynamic tab from config (not a standard table)
         # We need to look for the query in the config
@@ -1108,6 +1134,578 @@ class SupabaseDataProvider(DataProvider):
         else:
             message_bus.publish(
                 content=f"Failed to create Resumen view: {result}",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+
+    def _ensure_resumen_mes_actual_view_exists(self) -> bool:
+        """
+        Ensure that the Resumen Mes Actual view exists in the database.
+        Creates it if it doesn't exist. This view shows stats filtered for the current month.
+        
+        Returns:
+            bool: True if the view exists or was created successfully, False otherwise
+        """
+        # Check if view already exists using the metadata cache when possible
+        if supabase_manager._table_exists("resumen_mes_actual_view"):
+            return True
+            
+        # Before creating the view, check if the required tables exist
+        sc_default_exists = supabase_manager._table_exists("sc_default")
+        ea_squadronbattle_exists = supabase_manager._table_exists("ea_squadronbattle")
+        
+        if not sc_default_exists or not ea_squadronbattle_exists:
+            missing_tables = []
+            if not sc_default_exists:
+                missing_tables.append("sc_default")
+            if not ea_squadronbattle_exists:
+                missing_tables.append("ea_squadronbattle")
+                
+            message_bus.publish(
+                content=f"Cannot create Resumen Mes Actual view: required table(s) {', '.join(missing_tables)} do not exist yet. " +
+                        f"The view will be created automatically after data is inserted into these tables.",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+            
+        message_bus.publish(
+            content="Creating or updating Resumen Mes Actual view in Supabase",
+            level=MessageLevel.INFO,
+            metadata={"source": self.SOURCE}
+        )
+        
+        # SQL to create the Resumen Mes Actual view (same as resumen_view but filtered for current month)
+        create_view_sql = """
+        CREATE OR REPLACE VIEW resumen_mes_actual_view AS
+        WITH filtered_sc_default AS (
+            -- Only select records reported by the player themselves from SC_Default (Live) for current month
+            SELECT
+                username,
+                killer,
+                victim
+            FROM 
+                sc_default
+            -- Only count reports made by the player themselves in current month
+            WHERE 
+                username IS NOT NULL
+                AND DATE_TRUNC('month', timestamp::timestamp) = DATE_TRUNC('month', NOW())
+        ),
+        
+        filtered_ea_squadronbattle AS (
+            -- Only select records reported by the player themselves from EA_SquadronBattle (SB) for current month
+            SELECT
+                username,
+                killer,
+                victim
+            FROM 
+                ea_squadronbattle
+            -- Only count reports made by the player themselves in current month
+            WHERE 
+                username IS NOT NULL
+                AND DATE_TRUNC('month', timestamp::timestamp) = DATE_TRUNC('month', NOW())
+        ),
+        
+        sc_default_stats AS (
+            -- Count kills from SC_Default (Live)
+            SELECT 
+                username,
+                COUNT(*) AS kills_live,
+                0 AS deaths_live
+            FROM 
+                filtered_sc_default
+            WHERE 
+                killer = username
+            GROUP BY 
+                username
+            
+            UNION ALL
+            
+            -- Count deaths from SC_Default (Live)
+            SELECT 
+                username,
+                0 AS kills_live,
+                COUNT(*) AS deaths_live
+            FROM 
+                filtered_sc_default
+            WHERE 
+                victim = username
+            GROUP BY 
+                username
+        ),
+        
+        ea_squadronbattle_stats AS (
+            -- Count kills from EA_SquadronBattle (SB)
+            SELECT 
+                username,
+                COUNT(*) AS kills_sb,
+                0 AS deaths_sb
+            FROM 
+                filtered_ea_squadronbattle
+            WHERE 
+                killer = username
+            GROUP BY 
+                username
+            
+            UNION ALL
+            
+            -- Count deaths from EA_SquadronBattle (SB)
+            SELECT 
+                username,
+                0 AS kills_sb,
+                COUNT(*) AS deaths_sb
+            FROM 
+                filtered_ea_squadronbattle
+            WHERE 
+                victim = username
+            GROUP BY 
+                username
+        ),
+        
+        -- Aggregate SC_Default (Live) stats
+        aggregated_live_stats AS (
+            SELECT 
+                username,
+                SUM(kills_live) AS kills_live,
+                SUM(deaths_live) AS deaths_live
+            FROM 
+                sc_default_stats
+            GROUP BY 
+                username
+        ),
+        
+        -- Aggregate EA_SquadronBattle (SB) stats
+        aggregated_sb_stats AS (
+            SELECT 
+                username,
+                SUM(kills_sb) AS kills_sb,
+                SUM(deaths_sb) AS deaths_sb
+            FROM 
+                ea_squadronbattle_stats
+            GROUP BY 
+                username
+        ),
+        
+        -- Calculate average kills for each mode
+        avg_stats AS (
+            SELECT 
+                AVG(kills_live) AS avg_kills_live,
+                AVG(kills_sb) AS avg_kills_sb,
+                AVG(kills_live + COALESCE(kills_sb, 0)) AS avg_total_kills
+            FROM (
+                SELECT 
+                    live.kills_live,
+                    sb.kills_sb
+                FROM 
+                    aggregated_live_stats live
+                FULL OUTER JOIN
+                    aggregated_sb_stats sb ON live.username = sb.username
+                WHERE 
+                    COALESCE(live.kills_live, 0) > 0 OR COALESCE(sb.kills_sb, 0) > 0
+            ) subq
+        )
+        
+        -- Combine all stats with separate columns for each game mode
+        SELECT 
+            COALESCE(live.username, sb.username) AS username,
+            -- Live mode stats (SC_Default)
+            COALESCE(live.kills_live, 0) AS kills_live,
+            COALESCE(live.deaths_live, 0) AS deaths_live,
+            -- Squadron Battle stats
+            COALESCE(sb.kills_sb, 0) AS kills_sb,
+            COALESCE(sb.deaths_sb, 0) AS deaths_sb,
+            -- Total kills and deaths across both modes
+            COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0) AS total_kills,
+            COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0) AS total_deaths,
+            -- KDR for Live mode with adjusted calculation (KD * kills/avg_kills)
+            CASE 
+                WHEN COALESCE(live.deaths_live, 0) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_kills_live > 0 THEN 
+                            ROUND(COALESCE(live.kills_live, 0) * (COALESCE(live.kills_live, 0) / NULLIF(avg.avg_kills_live, 0)), 2)
+                        ELSE COALESCE(live.kills_live, 0)
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_kills_live > 0 THEN 
+                            ROUND(
+                                (CAST(COALESCE(live.kills_live, 0) AS NUMERIC) / NULLIF(COALESCE(live.deaths_live, 0), 0)) * 
+                                (COALESCE(live.kills_live, 0) / NULLIF(avg.avg_kills_live, 0)), 
+                                2
+                            )
+                        ELSE 
+                            ROUND(CAST(COALESCE(live.kills_live, 0) AS NUMERIC) / NULLIF(COALESCE(live.deaths_live, 0), 0), 2)
+                    END
+            END AS kdr_live,
+            -- KDR for Squadron Battle mode with adjusted calculation (KD * kills/avg_kills)
+            CASE 
+                WHEN COALESCE(sb.deaths_sb, 0) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_kills_sb > 0 THEN 
+                            ROUND(COALESCE(sb.kills_sb, 0) * (COALESCE(sb.kills_sb, 0) / NULLIF(avg.avg_kills_sb, 0)), 2)
+                        ELSE COALESCE(sb.kills_sb, 0)
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_kills_sb > 0 THEN 
+                            ROUND(
+                                (CAST(COALESCE(sb.kills_sb, 0) AS NUMERIC) / NULLIF(COALESCE(sb.deaths_sb, 0), 0)) * 
+                                (COALESCE(sb.kills_sb, 0) / NULLIF(avg.avg_kills_sb, 0)), 
+                                2
+                            )
+                        ELSE 
+                            ROUND(CAST(COALESCE(sb.kills_sb, 0) AS NUMERIC) / NULLIF(COALESCE(sb.deaths_sb, 0), 0), 2)
+                    END
+            END AS kdr_sb,
+            -- Overall KDR across both modes with adjusted calculation (KD * kills/avg_kills)
+            CASE 
+                WHEN (COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_total_kills > 0 THEN 
+                            ROUND(
+                                (COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) * 
+                                ((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) / NULLIF(avg.avg_total_kills, 0)),
+                                2
+                            )
+                        ELSE (COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0))
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_total_kills > 0 THEN 
+                            ROUND(
+                                (CAST((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) AS NUMERIC) / 
+                                NULLIF((COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)), 0)) * 
+                                ((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) / NULLIF(avg.avg_total_kills, 0)),
+                                2
+                            )
+                        ELSE 
+                            ROUND(
+                                CAST((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) AS NUMERIC) / 
+                                NULLIF((COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)), 0), 
+                                2
+                            )
+                    END
+            END AS kdr_total
+        FROM 
+            aggregated_live_stats live
+        FULL OUTER JOIN
+            aggregated_sb_stats sb ON live.username = sb.username
+        CROSS JOIN
+            avg_stats avg
+        ORDER BY 
+            total_kills DESC;
+        """
+        
+        # Execute the SQL
+        success, result = supabase_manager._execute_sql(create_view_sql)
+        
+        if success:
+            message_bus.publish(
+                content="Successfully created or updated Resumen Mes Actual view",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            
+            # Invalidate the metadata cache after creating/updating the view
+            if message_bus:
+                message_bus.emit("schema_change")
+                message_bus.publish(
+                    content="Emitted schema_change event to invalidate metadata cache after Resumen Mes Actual view creation",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": self.SOURCE}
+                )
+                
+            return True
+        else:
+            message_bus.publish(
+                content=f"Failed to create Resumen Mes Actual view: {result}",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+
+    def _ensure_resumen_mes_anterior_view_exists(self) -> bool:
+        """
+        Ensure that the Resumen Mes Anterior view exists in the database.
+        Creates it if it doesn't exist. This view shows stats filtered for the previous month.
+        
+        Returns:
+            bool: True if the view exists or was created successfully, False otherwise
+        """
+        # Check if view already exists using the metadata cache when possible
+        if supabase_manager._table_exists("resumen_mes_anterior_view"):
+            return True
+            
+        # Before creating the view, check if the required tables exist
+        sc_default_exists = supabase_manager._table_exists("sc_default")
+        ea_squadronbattle_exists = supabase_manager._table_exists("ea_squadronbattle")
+        
+        if not sc_default_exists or not ea_squadronbattle_exists:
+            missing_tables = []
+            if not sc_default_exists:
+                missing_tables.append("sc_default")
+            if not ea_squadronbattle_exists:
+                missing_tables.append("ea_squadronbattle")
+                
+            message_bus.publish(
+                content=f"Cannot create Resumen Mes Anterior view: required table(s) {', '.join(missing_tables)} do not exist yet. " +
+                        f"The view will be created automatically after data is inserted into estas tables.",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            return False
+            
+        message_bus.publish(
+            content="Creating or updating Resumen Mes Anterior view in Supabase",
+            level=MessageLevel.INFO,
+            metadata={"source": self.SOURCE}
+        )
+        
+        # SQL to create the Resumen Mes Anterior view (same as resumen_view but filtered for previous month)
+        create_view_sql = """
+        CREATE OR REPLACE VIEW resumen_mes_anterior_view AS
+        WITH filtered_sc_default AS (
+            -- Only select records reported by the player themselves from SC_Default (Live) for previous month
+            SELECT
+                username,
+                killer,
+                victim
+            FROM 
+                sc_default
+            -- Only count reports made by the player themselves in previous month
+            WHERE 
+                username IS NOT NULL
+                AND DATE_TRUNC('month', timestamp::timestamp) = DATE_TRUNC('month', NOW() - INTERVAL '1 month')
+        ),
+        
+        filtered_ea_squadronbattle AS (
+            -- Only select records reported by the player themselves from EA_SquadronBattle (SB) for previous month
+            SELECT
+                username,
+                killer,
+                victim
+            FROM 
+                ea_squadronbattle
+            -- Only count reports made by the player themselves in previous month
+            WHERE 
+                username IS NOT NULL
+                AND DATE_TRUNC('month', timestamp::timestamp) = DATE_TRUNC('month', NOW() - INTERVAL '1 month')
+        ),
+        
+        sc_default_stats AS (
+            -- Count kills from SC_Default (Live)
+            SELECT 
+                username,
+                COUNT(*) AS kills_live,
+                0 AS deaths_live
+            FROM 
+                filtered_sc_default
+            WHERE 
+                killer = username
+            GROUP BY 
+                username
+            
+            UNION ALL
+            
+            -- Count deaths from SC_Default (Live)
+            SELECT 
+                username,
+                0 AS kills_live,
+                COUNT(*) AS deaths_live
+            FROM 
+                filtered_sc_default
+            WHERE 
+                victim = username
+            GROUP BY 
+                username
+        ),
+        
+        ea_squadronbattle_stats AS (
+            -- Count kills from EA_SquadronBattle (SB)
+            SELECT 
+                username,
+                COUNT(*) AS kills_sb,
+                0 AS deaths_sb
+            FROM 
+                filtered_ea_squadronbattle
+            WHERE 
+                killer = username
+            GROUP BY 
+                username
+            
+            UNION ALL
+            
+            -- Count deaths from EA_SquadronBattle (SB)
+            SELECT 
+                username,
+                0 AS kills_sb,
+                COUNT(*) AS deaths_sb
+            FROM 
+                filtered_ea_squadronbattle
+            WHERE 
+                victim = username
+            GROUP BY 
+                username
+        ),
+        
+        -- Aggregate SC_Default (Live) stats
+        aggregated_live_stats AS (
+            SELECT 
+                username,
+                SUM(kills_live) AS kills_live,
+                SUM(deaths_live) AS deaths_live
+            FROM 
+                sc_default_stats
+            GROUP BY 
+                username
+        ),
+        
+        -- Aggregate EA_SquadronBattle (SB) stats
+        aggregated_sb_stats AS (
+            SELECT 
+                username,
+                SUM(kills_sb) AS kills_sb,
+                SUM(deaths_sb) AS deaths_sb
+            FROM 
+                ea_squadronbattle_stats
+            GROUP BY 
+                username
+        ),
+        
+        -- Calculate average kills for each mode
+        avg_stats AS (
+            SELECT 
+                AVG(kills_live) AS avg_kills_live,
+                AVG(kills_sb) AS avg_kills_sb,
+                AVG(kills_live + COALESCE(kills_sb, 0)) AS avg_total_kills
+            FROM (
+                SELECT 
+                    live.kills_live,
+                    sb.kills_sb
+                FROM 
+                    aggregated_live_stats live
+                FULL OUTER JOIN
+                    aggregated_sb_stats sb ON live.username = sb.username
+                WHERE 
+                    COALESCE(live.kills_live, 0) > 0 OR COALESCE(sb.kills_sb, 0) > 0
+            ) subq
+        )
+        
+        -- Combine all stats with separate columns for each game mode
+        SELECT 
+            COALESCE(live.username, sb.username) AS username,
+            -- Live mode stats (SC_Default)
+            COALESCE(live.kills_live, 0) AS kills_live,
+            COALESCE(live.deaths_live, 0) AS deaths_live,
+            -- Squadron Battle stats
+            COALESCE(sb.kills_sb, 0) AS kills_sb,
+            COALESCE(sb.deaths_sb, 0) AS deaths_sb,
+            -- Total kills and deaths across both modes
+            COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0) AS total_kills,
+            COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0) AS total_deaths,
+            -- KDR for Live mode with adjusted calculation (KD * kills/avg_kills)
+            CASE 
+                WHEN COALESCE(live.deaths_live, 0) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_kills_live > 0 THEN 
+                            ROUND(COALESCE(live.kills_live, 0) * (COALESCE(live.kills_live, 0) / NULLIF(avg.avg_kills_live, 0)), 2)
+                        ELSE COALESCE(live.kills_live, 0)
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_kills_live > 0 THEN 
+                            ROUND(
+                                (CAST(COALESCE(live.kills_live, 0) AS NUMERIC) / NULLIF(COALESCE(live.deaths_live, 0), 0)) * 
+                                (COALESCE(live.kills_live, 0) / NULLIF(avg.avg_kills_live, 0)), 
+                                2
+                            )
+                        ELSE 
+                            ROUND(CAST(COALESCE(live.kills_live, 0) AS NUMERIC) / NULLIF(COALESCE(live.deaths_live, 0), 0), 2)
+                    END
+            END AS kdr_live,
+            -- KDR for Squadron Battle mode with adjusted calculation (KD * kills/avg_kills)
+            CASE 
+                WHEN COALESCE(sb.deaths_sb, 0) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_kills_sb > 0 THEN 
+                            ROUND(COALESCE(sb.kills_sb, 0) * (COALESCE(sb.kills_sb, 0) / NULLIF(avg.avg_kills_sb, 0)), 2)
+                        ELSE COALESCE(sb.kills_sb, 0)
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_kills_sb > 0 THEN 
+                            ROUND(
+                                (CAST(COALESCE(sb.kills_sb, 0) AS NUMERIC) / NULLIF(COALESCE(sb.deaths_sb, 0), 0)) * 
+                                (COALESCE(sb.kills_sb, 0) / NULLIF(avg.avg_kills_sb, 0)), 
+                                2
+                            )
+                        ELSE 
+                            ROUND(CAST(COALESCE(sb.kills_sb, 0) AS NUMERIC) / NULLIF(COALESCE(sb.deaths_sb, 0), 0), 2)
+                    END
+            END AS kdr_sb,
+            -- Overall KDR across both modes with adjusted calculation (KD * kills/avg_kills)
+            CASE 
+                WHEN (COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)) = 0 THEN 
+                    CASE 
+                        WHEN avg.avg_total_kills > 0 THEN 
+                            ROUND(
+                                (COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) * 
+                                ((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) / NULLIF(avg.avg_total_kills, 0)),
+                                2
+                            )
+                        ELSE (COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0))
+                    END
+                ELSE 
+                    CASE 
+                        WHEN avg.avg_total_kills > 0 THEN 
+                            ROUND(
+                                (CAST((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) AS NUMERIC) / 
+                                NULLIF((COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)), 0)) * 
+                                ((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) / NULLIF(avg.avg_total_kills, 0)),
+                                2
+                            )
+                        ELSE 
+                            ROUND(
+                                CAST((COALESCE(live.kills_live, 0) + COALESCE(sb.kills_sb, 0)) AS NUMERIC) / 
+                                NULLIF((COALESCE(live.deaths_live, 0) + COALESCE(sb.deaths_sb, 0)), 0), 
+                                2
+                            )
+                    END
+            END AS kdr_total
+        FROM 
+            aggregated_live_stats live
+        FULL OUTER JOIN
+            aggregated_sb_stats sb ON live.username = sb.username
+        CROSS JOIN
+            avg_stats avg
+        ORDER BY 
+            total_kills DESC;
+        """
+        
+        # Execute the SQL
+        success, result = supabase_manager._execute_sql(create_view_sql)
+        
+        if success:
+            message_bus.publish(
+                content="Successfully created or updated Resumen Mes Anterior view",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            
+            # Invalidate the metadata cache after creating/updating the view
+            if message_bus:
+                message_bus.emit("schema_change")
+                message_bus.publish(
+                    content="Emitted schema_change event to invalidate metadata cache after Resumen Mes Anterior view creation",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": self.SOURCE}
+                )
+                
+            return True
+        else:
+            message_bus.publish(
+                content=f"Failed to create Resumen Mes Anterior view: {result}",
                 level=MessageLevel.ERROR,
                 metadata={"source": self.SOURCE}
             )

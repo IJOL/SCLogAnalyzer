@@ -590,10 +590,10 @@ class DataDisplayManager:
             )
 
     def _get_required_tab_configs(self):
-        """Get the list of tab configurations - centralized for maintainability"""
-        # Hardcoded tabs - these will always be available
+        """Get the list of tab configurations - centralized for maintainability"""        # Hardcoded tabs - these will always be available
         hardcoded_tabs = [
-            {"title": "Stats", "params": {"sheet": "Resumen"}},
+            {"title": "Stats", "params": {"sheet": "Resumen_Mes_Actual"}},
+            {"title": "Stats del mes pasado", "params": {"sheet": "Resumen_Mes_Anterior"}},
             {"title": "SC Default", "params": {"sheet": "SC_Default", "username": lambda self: self.username}},
             {
                 "title": "SC Squadrons Battle", 
