@@ -7,6 +7,7 @@ MATURITY = "attritus"  # "alpha", "beta", or "final"
 PATCH = "27ef38a"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
+__version__ = VERSION  
 
 def get_version():
     """Return the full version string"""
