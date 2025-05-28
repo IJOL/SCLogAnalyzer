@@ -112,11 +112,6 @@ class DataDisplayManager:
                     content=f"Fetched {len(data)} records from data source",
                     level=MessageLevel.DEBUG
                 )
-            else:
-                message_bus.publish(
-                    content="No data returned from data source",
-                    level=MessageLevel.WARNING
-                )
             
             if not isinstance(data, list) or not data:
                 return

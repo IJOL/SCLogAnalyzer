@@ -756,7 +756,7 @@ class SupabaseDataProvider(DataProvider):
         """
         # Check if the table exists before attempting to query it
         # Skip check for resumen_view which is created on demand with _ensure_resumen_view_exists
-        if table_name != "resumen_view" and not supabase_manager._table_exists(table_name):
+        if not supabase_manager._table_exists(table_name):
             message_bus.publish(
                 content=f"Table '{table_name}' does not exist yet. It will be created when data is first inserted.",
                 level=MessageLevel.INFO,
@@ -1408,13 +1408,7 @@ class SupabaseDataProvider(DataProvider):
             )
             
             # Invalidate the metadata cache after creating/updating the view
-            if message_bus:
-                message_bus.emit("schema_change")
-                message_bus.publish(
-                    content="Emitted schema_change event to invalidate metadata cache after Resumen Mes Actual view creation",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": self.SOURCE}
-                )
+            message_bus.emit("schema_change")
                 
             return True
         else:
