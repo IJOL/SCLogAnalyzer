@@ -23,32 +23,6 @@ DIST_DIR = ROOT_DIR / "dist"
 CONFIG_TEMPLATE = SRC_DIR / "config.json.template"
 
 
-def abort_if_uncommitted_py_changes(allow_uncommitted=False):
-    """
-    Abort the process if there are uncommitted changes in any .py files, unless allow_uncommitted=True
-    El propio build.py no cuenta para esta comprobación.
-    Además, si el único cambio es en build.py, no debe hacer ni incremento ni commit de versión.
-    """
-    if allow_uncommitted:
-        return
-    try:
-        result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, check=True)
-        lines = result.stdout.strip().split('\n')
-        py_changes = [line for line in lines if line and line[-3:] == '.py']
-        # Excluir build.py de la comprobación
-        py_changes_no_build = [line for line in py_changes if not line.endswith('src/build.py') and not line.endswith('src\\build.py')]
-        if py_changes_no_build:
-            print("ERROR: Hay archivos .py con cambios sin commitear. Por favor, commitea o descarta los cambios antes de continuar.")
-            sys.exit(1)
-        # Si solo hay cambios en build.py, abortar incremento/commit
-        if py_changes and not py_changes_no_build:
-            print("[ABORT] Solo hay cambios en build.py, no se realiza incremento ni commit de versión.")
-            sys.exit(0)
-    except Exception as e:
-        print(f"ERROR al comprobar cambios sin commitear: {e}")
-        sys.exit(1)
-
-
 def get_current_commit_hash():
     """
     Get the short hash of the current commit
@@ -592,19 +566,29 @@ def main():
     if args.all:
         args.increment = True
         args.push = True
-    
-    # Step 1: Increment version if requested
+      # Step 1: Increment version if requested
     version = None
     if args.increment:
         print("=== Step 1: Incrementing version ===")
-        # Solo permitir incremento si hay cambios reales en src/ distintos de build.py
+        
+        # Verificar 1: No debe haber archivos .py modificados (excluyendo build.py)
         result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, check=True)
         lines = result.stdout.strip().split('\n')
         py_changes = [line for line in lines if line and line[-3:] == '.py']
         py_changes = [line for line in py_changes if not line.endswith('src/build.py') and not line.endswith('src\\build.py')]
-        if not py_changes:
-            print("[ABORT] No se incrementa la versión porque no hay cambios reales en el código fuente (excluyendo build.py).")
+        if py_changes:
+            print("[ABORT] No se incrementa la versión porque hay archivos .py con cambios sin commitear (excluyendo build.py).")
             return 1
+        
+        # Verificar 2: Debe haber commits nuevos desde el último tag
+        latest_tag = get_latest_tag()
+        if latest_tag:
+            tag_commit = get_commit_hash(latest_tag)
+            head_commit = get_head_commit()
+            if tag_commit and head_commit and tag_commit == head_commit:
+                print(f"[ABORT] No se incrementa la versión porque no hay commits nuevos desde el último tag ({latest_tag}).")
+                return 1
+        
         increment_version(args.increment)
         
         # Get the current version
@@ -660,8 +644,6 @@ if __name__ == "__main__":
     parser.add_argument('--push', '-p', action='store_true')
     parser.add_argument('--all', '-a', action='store_true')
     args, unknown = parser.parse_known_args()
-    # Solo forzar commit limpio si es build de release (push o all)
-    abort_if_uncommitted_py_changes(allow_uncommitted=not (args.push or args.all))
 
     # --- Evitar warning de commits en build local ---
     def show_commit_warning():
