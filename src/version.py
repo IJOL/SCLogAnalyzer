@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 10
-RELEASE = 2
+RELEASE = 3
 MATURITY = "attritus"  # "alpha", "beta", or "final"
-PATCH = "f86d692"
+PATCH = "27ef38a"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 
@@ -16,6 +16,13 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.10.x series
+    "27ef38a: [fix] Enhance SupabaseDataProvider to conditionally order view results by kdr_live and update log message",
+    "bc41e70: [fix] Refactor data fetching logic to simplify table existence check and remove redundant message bus notifications",
+    "a3dfa15: [feature] Update tab configurations and add views for current and previous month summaries",
+    "dc13d5c: Enhance build script to exclude changes in build.py from version increment and tagging processes",
+
+    # Version v0.10.2-f86d692-attritus-docker
+    "d11c738: Increment version to v0.10.2-f86d692-attritus",
 
     # Version v0.10.1-ff89999-attritus-docker
     "f86d692: Increment version to v0.10.1-ff89999-attritus",
