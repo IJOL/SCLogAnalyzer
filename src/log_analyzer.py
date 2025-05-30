@@ -982,33 +982,50 @@ class LogFileHandler(FileSystemEventHandler):
         
         Args:
             data (dict): The actor_death event data containing killer and victim.
+                        Can include an 'action' field with "get", "killer", or "victim".
         """
         try:
-            # Extract killer and victim from the data
-            killer = data.get('killer')
-            victim = data.get('victim')
+            # Si no hay datos, crear un diccionario vacío con action="get"
+            if not data:
+                data = {'action': 'get'}
             
-            if not killer or not victim:
-                message_bus.publish(
-                    content="Actor death event missing killer or victim, skipping profile scraping",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "log_analyzer"}
-                )
-                return
-            
-            # Determinar a quién hacer scraping (killer o victim, pero no username)
-            username = self.username  # Use instance attribute
-            target_player = None
-            if killer != username:
-                target_player = killer
-            elif victim != username:
-                target_player = victim
+            # Si no hay acción especificada, determinarla según los datos
+            if 'action' not in data:
+                # Extract killer and victim from the data
+                killer = data.get('killer')
+                victim = data.get('victim')
+                
+                if not killer or not victim:
+                    message_bus.publish(
+                        content="Actor death event missing killer or victim, skipping profile scraping",
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "log_analyzer"}
+                    )
+                    return
+                
+                # Determinar a quién hacer scraping (killer o victim, pero no username)
+                username = self.username  # Use instance attribute
+                target_player = None
+                action = None
+                
+                if killer != username:
+                    target_player = killer
+                    action = "killer"
+                elif victim != username:
+                    target_player = victim
+                    action = "victim"
+                    
+                # Añadir la acción determinada a los datos
+                data['action'] = action
+            else:
+                # Si la acción ya está especificada (como "get"), usar player_name como target
+                target_player = data.get('player_name')
                 
             # Si hay target, hacer scraping asíncrono
             if target_player:
-                scrape_profile_async(target_player,data)
+                scrape_profile_async(target_player, data)
                 message_bus.publish(
-                    content=f"Started profile scraping for {target_player} (from {killer} vs {victim})",
+                    content=f"Started profile scraping for {target_player} with action={data.get('action')}",
                     level=MessageLevel.DEBUG,
                     metadata={"source": "log_analyzer"}
                 )
