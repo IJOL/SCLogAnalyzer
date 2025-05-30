@@ -15,12 +15,14 @@ from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
 from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustment
 from pyzbar.pyzbar import decode  # For QR code detection
+from bs4 import BeautifulSoup  # For profile scraping
 # Using absolute imports instead of relative ones
 from helpers.config_utils import get_application_path, get_config_manager
 from helpers.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
 from helpers.message_bus import message_bus, MessageLevel  # Import at module level
 from helpers.data_provider import get_data_provider  # Import data provider
 from helpers.rate_limiter import MessageRateLimiter
+from helpers.async_profile import scrape_profile_async  # Import profile scraper helper
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -155,6 +157,8 @@ class LogFileHandler(FileSystemEventHandler):
             # Move to the end of the file if we're not processing everything
             self.last_position = self._get_file_end_position()
             output_message(None, f"Skipping to the end of log file (position {self.last_position})")
+        # Setup message bus listener for actor_profile events
+        message_bus.on("actor_profile", self._on_actor_profile)
 
     def __getattr__(self, name):
         """
@@ -177,6 +181,25 @@ class LogFileHandler(FileSystemEventHandler):
         except Exception as e:
             # If that fails or if the property doesn't exist, raise AttributeError
             raise AttributeError(f"Neither LogFileHandler nor ConfigManager has an attribute named '{name}'") from e
+    
+    def _on_actor_profile(self, player_name, org, enlisted, metadata=None):
+        """Handler for actor_profile events from message bus"""
+        # Create data dict to match pattern used by other event handlers
+        data = {
+            'player_name': player_name,
+            'org': org,
+            'enlisted': enlisted,            
+        }
+        
+        # Add metadata if provided
+        if metadata:
+            data.update(metadata)
+
+        # Use standard pattern: check if format exists in messages and output
+        output_message_format = self.messages.get("actor_profile")
+        if output_message_format:
+            output_message(None, output_message_format.format(**data), regex_pattern="actor_profile")
+        self.send_discord_message(data, pattern_name="actor_profile")
 
     def add_state_data(self, data):
         """
@@ -861,12 +884,12 @@ class LogFileHandler(FileSystemEventHandler):
     
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)            # Send to data queue
-            if send_message and pattern_name in self.google_sheets_mapping:
-                self.update_data_queue(data, pattern_name)
-                
-            # Emitir evento en tiempo real
-            if send_message:
-                self.send_realtime_event(data, pattern_name)
+                if  pattern_name in self.google_sheets_mapping:
+                    self.update_data_queue(data, pattern_name)
+                self.send_realtime_event(data, pattern_name)            
+                scraping_events = self.config_manager.get('scraping', ['actor_death'])
+                if pattern_name in scraping_events:
+                    self.async_profile_scraping(data)
     
             return True, data
         return False, None
@@ -952,17 +975,51 @@ class LogFileHandler(FileSystemEventHandler):
         )
         
         return True
-def is_valid_url(url):
-    """Validate if the given string is a correctly formatted URL"""
-    regex = re.compile(
-        r'^(?:http|ftp)s?://'  # http:// or https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # domain...
-        r'localhost|'  # localhost...
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|'  # ...or ipv4
-        r'\[?[A-F0-9]*:[A-F0-9:]+\]?)'  # ...or ipv6
-        r'(?::\d+)?'  # optional port
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-    return re.match(regex, url) is not None
+
+    def async_profile_scraping(self, data):
+        """
+        Async profile scraping for actor_death events - Plan MEGA SIMPLE implementation.
+        
+        Args:
+            data (dict): The actor_death event data containing killer and victim.
+        """
+        try:
+            # Extract killer and victim from the data
+            killer = data.get('killer')
+            victim = data.get('victim')
+            
+            if not killer or not victim:
+                message_bus.publish(
+                    content="Actor death event missing killer or victim, skipping profile scraping",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "log_analyzer"}
+                )
+                return
+            
+            # Determinar a quién hacer scraping (killer o victim, pero no username)
+            username = self.username  # Use instance attribute
+            target_player = None
+            if killer != username:
+                target_player = killer
+            elif victim != username:
+                target_player = victim
+                
+            # Si hay target, hacer scraping asíncrono
+            if target_player:
+                scrape_profile_async(target_player,data)
+                message_bus.publish(
+                    content=f"Started profile scraping for {target_player} (from {killer} vs {victim})",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "log_analyzer"}
+                )
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error in async profile scraping: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "log_analyzer"}
+            )
+
 
 def signal_handler(signum, frame):
     """Handle external signals to stop the application"""

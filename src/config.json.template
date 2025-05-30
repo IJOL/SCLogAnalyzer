@@ -5,7 +5,8 @@
     "google_sheets_mapping": ["player_death"],
     "datasource": "googlesheets",
     "supabase_key": "",
-    "realtime": ["actor_stall", "player_death", "vehicle_destruction","vip"],
+    "realtime": ["actor_stall", "player_death", "vehicle_destruction","vip","actor_profile"],
+    "scraping": ["actor_death"],
     "active_users_update_interval": 120,
     "auto_reconnection": true,
     "tabs": {
@@ -42,16 +43,18 @@
         "quantum_jump": "{player}: Quantum jump",
         "mode_change": "Game Mode changed: {mode} {status} at {timestamp}",
         "connection_flow" : "{partner}: in range",
-        "vip": "VIP detected: {vip}"
+        "vip": "VIP detected: {vip}",
+        "actor_profile": "{player_name}: {org} {enlisted} {action} {username}"
     },
     "discord": {
         "player_death": "{username} :skull: **{killer} -> {victim}** *{mode}* with {weapon} in {zone} with {damage_type}",
         "startup": "🚀 *Startup Alert* **{username}** {script_version}",
-        "vip": "VIP detected: {vip}"
+        "vip": "VIP detected: {vip}",
+        "actor_profile": "{player_name}: {org} {enlisted} {action} {username}"
     },
     "console_key": "",
     "colors": {
-        "pink": ["player_death","vip"],        
+        "pink": ["player_death","vip,"actor_profile"],        
         "yellow": ["actor_death","vehicle_destruction"],
         "green": ["actor_stall"],
         "blue,white" : ["connected"],
