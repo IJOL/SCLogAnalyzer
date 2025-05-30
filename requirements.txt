@@ -1,5 +1,6 @@
-watchdog==3.0.0
-requests==2.31.0
+watchdog
+requests
+beautifulsoup4
 pyinstaller
 discord.py
 wxPython
@@ -11,7 +12,7 @@ mss  # Added for GPU-rendered window capturing
 psutil  # Re-added for process and system utilities
 webcolors
 supabase > 2.7.0 # Added for Supabase integration
-python-dotenv==1.0.0  # For managing environment variables
+python-dotenv  # For managing environment variables
 pyperclip  # Added for clipboard operations in Supabase onboarding
 plumbum  # Added for improved shell command execution
 nuitka  # Added for alternative compilation method
