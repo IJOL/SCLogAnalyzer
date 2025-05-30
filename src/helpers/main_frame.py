@@ -119,11 +119,8 @@ class LogAnalyzerFrame(wx.Frame):
         
         # Set up a custom log handler for GUI
         log_analyzer.main.gui_log_handler = self.append_log_message
-      
-        # Initialize variables for monitoring
-        self.observer = None
-        self.event_handler = None
-        
+    
+       
         # Initialize configuration and settings
         self.initialize_config()
         self.config_manager.renew_config()
@@ -232,6 +229,9 @@ class LogAnalyzerFrame(wx.Frame):
         # --- Botón 'Freeze' ---
         self.freeze_button = self._create_button(self.main_button_sizer, "Freeze", wx.ART_NEW)
         self.freeze_button.Bind(wx.EVT_BUTTON, self.on_freeze)
+        # Añadir botón Profile Request al lado de Freeze
+        self.profile_request_button = self._create_button(self.main_button_sizer, "Profile Request", wx.ART_FIND)
+        self.profile_request_button.Bind(wx.EVT_BUTTON, self.on_profile_request)
         # --- Botón 'Congelar' (se añade aquí, pero la lógica se implementa en el siguiente plan) ---
         # Botones de debug (compactos, solo en debug_button_sizer)
         self.check_db_button = self._create_button(self.debug_button_sizer, "Check DB", wx.ART_FIND)
@@ -1088,6 +1088,32 @@ class LogAnalyzerFrame(wx.Frame):
         message_bus.emit("show_windows_notification",
             content="Esto es una notificación de prueba generada en modo debug."
         )
+
+    def on_profile_request(self, event):
+        import threading
+        import datetime
+        dlg = wx.TextEntryDialog(self, "Introduce el nombre del jugador:", "Profile Request")
+        if dlg.ShowModal() == wx.ID_OK:
+            player_name = dlg.GetValue().strip()
+            if not player_name:
+                wx.MessageBox("El nombre del jugador no puede estar vacío.", "Entrada inválida", wx.OK | wx.ICON_WARNING)
+                dlg.Destroy()
+                return
+            def do_request():
+                try:
+
+                    data = {
+                        'player_name': player_name,
+                        'action': 'get',
+                        'timestamp': datetime.datetime.now().isoformat(),
+                        'source': 'manual_request'
+                    }
+                    self.monitoring_service.event_handler.async_profile_scraping(data)
+                except Exception as e:
+                    wx.CallAfter(wx.MessageBox, f"Error al procesar la solicitud de perfil:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+            threading.Thread(target=do_request, daemon=True).start()
+        dlg.Destroy()
+
 def main():
     """Main entry point for the application."""
     # Create the wx.App instance first, before any wx operations

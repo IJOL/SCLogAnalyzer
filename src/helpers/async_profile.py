@@ -10,6 +10,7 @@ import threading
 import requests
 from bs4 import BeautifulSoup
 from .message_bus import message_bus, MessageLevel
+import datetime
 
 
 def extract_enhanced_profile_data(soup):
@@ -22,7 +23,9 @@ def extract_enhanced_profile_data(soup):
         'location': 'Unknown',
         'fluency': [],
         'main_org_sid': 'Unknown',
-        'main_org_rank': 'Unknown'
+        'main_org_rank': 'Unknown',
+        'enlisted': 'Unknown',
+        'enlisted_dt': None  # Nuevo campo: datetime.datetime o None
     }
     
     try:
@@ -44,7 +47,6 @@ def extract_enhanced_profile_data(soup):
         
         # 3. Handle Name
         try:
-            # Buscar span.label que contenga "Handle name" y obtener el siguiente .value
             labels = soup.find_all('span', class_='label')
             for label in labels:
                 if 'Handle name' in label.get_text():
@@ -57,7 +59,6 @@ def extract_enhanced_profile_data(soup):
         
         # 4. Title/Rank (icono con heap_thumb)
         try:
-            # Buscar entrada con icono que contenga heap_thumb
             icon_entries = soup.find_all('p', class_='entry')
             for entry in icon_entries:
                 icon_span = entry.find('span', class_='icon')
@@ -129,6 +130,33 @@ def extract_enhanced_profile_data(soup):
         except Exception:
             pass
         
+        # 9. Enlisted (fecha de alistamiento)
+        try:
+            entries = soup.find_all('p', class_='entry')
+            for entry in entries:
+                label = entry.find('span', class_='label')
+                if label and 'Enlisted' in label.get_text():
+                    value = entry.find('span', class_='value')
+                    if value:
+                        enlisted_str = value.get_text(strip=True)
+                    else:
+                        text = entry.get_text(strip=True)
+                        if text.startswith('Enlisted'):
+                            enlisted_str = text.replace('Enlisted', '', 1).strip()
+                        else:
+                            enlisted_str = text
+                    profile_data['enlisted'] = enlisted_str
+                    # Intentar parsear a datetime
+                    try:
+                        # Ejemplo formato: 'Aug 7, 2018'
+                        dt = datetime.datetime.strptime(enlisted_str, '%b %d, %Y')
+                        profile_data['enlisted_dt'] = dt
+                    except Exception:
+                        profile_data['enlisted_dt'] = None
+                    break
+        except Exception:
+            pass
+        
     except Exception as e:
         # Log error pero continuar
         message_bus.publish(
@@ -142,36 +170,24 @@ def extract_enhanced_profile_data(soup):
 
 def scrape_profile_async(player_name: str, metadata: dict = None):
     """Thread simple para scraping de perfil RSI según Plan MEGA SIMPLE"""
-    def scrape():
+    metadata = metadata or {}   
+    def scrape(metadata):
         try:
             url = f"https://robertsspaceindustries.com/en/citizens/{player_name}"
             response = requests.get(url, timeout=5)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # Buscar organización (método original para compatibilidad)
-                org_element = soup.find('div', class_='org')
-                org = org_element.get_text(strip=True) if org_element else 'Unknown'
-                
-                # Buscar fecha de enlisted (método original para compatibilidad)
-                enlisted_element = soup.find('p', class_='entry')
-                enlisted = enlisted_element.get_text(strip=True) if enlisted_element else 'Unknown'
-                
+              
                 # Extraer información mejorada
                 enhanced_profile_data = extract_enhanced_profile_data(soup)
                 
-                # Preparar metadata enriquecido
-                enhanced_metadata = {
-                    'profile_data': enhanced_profile_data,
-                    'scraping_source': 'enhanced_profile_scraper'
-                }
-                
-                # Agregar metadata original del usuario si existe
-                if metadata:
-                    enhanced_metadata.update(metadata)
+                metadata.update(enhanced_profile_data)
                 
                 # Emitir evento actor_profile (misma signatura que antes)
-                message_bus.emit('actor_profile', player_name, org, enlisted, metadata=enhanced_metadata)
+                message_bus.emit('actor_profile', 
+                                  player_name, 
+                                  metadata.get('main_org_sid'), 
+                                  metadata.get('enlisted'), metadata)
         except Exception as e:
             # Fail silently según el plan
             message_bus.publish(
@@ -180,7 +196,7 @@ def scrape_profile_async(player_name: str, metadata: dict = None):
                 metadata={"source": "profile_scraper"}
             )
     
-    thread = threading.Thread(target=scrape, daemon=True)
+    thread = threading.Thread(target=scrape, args=[metadata], daemon=True)
     thread.start()
 
 def async_profile_request(player_name: str, action="get", data=None):

@@ -194,12 +194,18 @@ class LogFileHandler(FileSystemEventHandler):
         # Add metadata if provided
         if metadata:
             data.update(metadata)
-
+            data['all'] = ' '.join([f"{k}: {v}\n" for k, v in metadata.items() 
+                                   if v is not None and 
+                                        k not in ['source','timestamp','player_name', 'org', 'enlisted','action'] and 
+                                        v not in ('None','Unknown','')])
+        # Add state data to the data dict   
+        data = self.add_state_data(data)
         # Use standard pattern: check if format exists in messages and output
         output_message_format = self.messages.get("actor_profile")
         if output_message_format:
             output_message(None, output_message_format.format(**data), regex_pattern="actor_profile")
         self.send_discord_message(data, pattern_name="actor_profile")
+        self.send_realtime_event(data, pattern_name="actor_profile")
 
     def add_state_data(self, data):
         """
@@ -986,9 +992,8 @@ class LogFileHandler(FileSystemEventHandler):
         """
         try:
             # Si no hay datos, crear un diccionario vacío con action="get"
-            if not data:
-                data = {'action': 'get'}
-            
+            if not data.get('action') == 'get':
+                return
             # Si no hay acción especificada, determinarla según los datos
             if 'action' not in data:
                 # Extract killer and victim from the data

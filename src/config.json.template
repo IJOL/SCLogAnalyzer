@@ -30,34 +30,34 @@
         "connection_flow": "<(?P<timestamp>.*?)> \\[Notice\\] <Connection Flow> CSCCommsComponent::DoEstablishCommunicationCommon: Update bubble created for communication connection '(?P<connection_id>\\d+)' on channel '(?P<channel>\\d+)' for (?P<entity>.*?) \\[(?P<entity_id>\\d+)\\] to track their communication partner (?P<partner>(?!(ATC_|AImodule_|Unavailable)).*?) \\[(?P<partner_id>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Comms\\]"
     },
     "important_players": "",
-    "messages": {
-        "vehicle_destruction": "{vehicle}:{driver} was destroyed {destroy_level_to} by {cause} with {damage_type} in {zone}",
-        "actor_death": "******* {killer}->{victim}: {zone} - {weapon} - {damage_type}",
-        "player_death": "+++++++ {killer}->{victim}: {zone} - {weapon} - {damage_type}",
-        "actor_stall": "{player}: Stalled",
-        "leave_player": "{player}: Left zone {zone}",
-        "enter_player": "{player}: Entered zone {zone}",
-        "enter_ship": "{player}: Ship {entity} entered zone {zone}",
-        "leave_ship": "{player}: Ship {entity} left zone {zone}",
-        "connected": "====================== Connected ======================",
-        "quantum_jump": "{player}: Quantum jump",
-        "mode_change": "Game Mode changed: {mode} {status} at {timestamp}",
-        "connection_flow" : "{partner}: in range",
-        "vip": "VIP detected: {vip}",
-        "actor_profile": "{player_name}: {org} {enlisted} {action} {username}"
-    },
-    "discord": {
-        "player_death": "{username} :skull: **{killer} -> {victim}** *{mode}* with {weapon} in {zone} with {damage_type}",
-        "startup": "🚀 *Startup Alert* **{username}** {script_version}",
-        "vip": "VIP detected: {vip}",
-        "actor_profile": "{player_name}: {org} {enlisted} {action} {username}"
-    },
     "console_key": "",
     "colors": {
-        "pink": ["player_death","vip,"actor_profile"],        
+        "pink": ["player_death","vip","actor_profile"],        
         "yellow": ["actor_death","vehicle_destruction"],
         "green": ["actor_stall"],
         "blue,white" : ["connected"],
         "orange" : ["mode_change"]
+    },
+    "messages": {
+        "vehicle_destruction": "🚗💥 {vehicle}:{driver} was destroyed {destroy_level_to} by {cause} with {damage_type} in {zone}",
+        "actor_death": "⚔️💀 ******* {killer}->{victim}: {zone} - {weapon} - {damage_type}",
+        "player_death": "☠️🔥 +++++++ {killer}->{victim}: {zone} - {weapon} - {damage_type}",
+        "actor_stall": "🛑⏸️ {player}: Stalled",
+        "leave_player": "👋🚪 {player}: Left zone {zone}",
+        "enter_player": "🚶‍♂️🚪 {player}: Entered zone {zone}",
+        "enter_ship": "🚀🛬 {player}: Ship {entity} entered zone {zone}",
+        "leave_ship": "🚀🏃‍♂️ {player}: Ship {entity} left zone {zone}",
+        "connected": "🔌✅ ====================== Connected ======================",
+        "quantum_jump": "✨🚀 {player}: Quantum jump",
+        "mode_change": "🎮🔄 Game Mode changed: {mode} {status} at {timestamp}",
+        "connection_flow" : "📡🔗 {partner}: in range",
+        "vip": "👑🌟 VIP detected: {vip}",
+        "actor_profile": "🧑‍🚀📋 {player_name}: {org} {enlisted} {action} {username}\n{all}"
+    },
+    "discord": {
+        "player_death": "☠️🔥 {username} :skull: **{killer} -> {victim}** *{mode}* with {weapon} in {zone} with {damage_type}",
+        "startup": "🚀 *Startup Alert* **{username}** {script_version}",
+        "vip": "👑🌟 VIP detected: {vip}",
+        "actor_profile": "🧑‍🚀📋 {player_name}: {org} {enlisted} {action} {username}\n{all}"
     }
 }
