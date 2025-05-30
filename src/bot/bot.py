@@ -211,30 +211,33 @@ class StatusBoardBot(commands.Cog):
                     await message.delete()
                     logger.info("Found and deleted old stats embed message.")
                     continue
-                elif message.content and message.content.startswith("🟢 **Live Mode Statistics**"):
+                elif message.content and message.content.startswith("🟢 **Live Mode Statistics - Current Month**"):
                     # Found an existing Live mode stats message
                     self.stats_live_message_id = message.id
                     logger.info("Found existing Live mode stats message.")
                     continue
-                elif message.content and message.content.startswith("🟣 **Squadron Battle Statistics**"):
+                elif message.content and message.content.startswith("🟣 **Squadron Battle Statistics - Current Month**"):
                     # Found an existing Squadron Battle stats message
                     self.stats_sb_message_id = message.id
                     logger.info("Found existing Squadron Battle stats message.")
+                    continue
+                elif message.content and (message.content.startswith("🟢 **Live Mode Statistics**") or message.content.startswith("🟣 **Squadron Battle Statistics**")):
+                    # Found an old format message without "- Current Month", delete it
+                    await message.delete()
+                    logger.info("Found and deleted old stats message without 'Current Month' suffix.")
                     continue
                 elif message.content and message.content.startswith("📊 **Real-Time Statistics**"):
                     # Found an old single stats message, delete it
                     await message.delete()
                     logger.info("Found and deleted old combined stats message.")
-                    continue
-
-            # Create new messages if not found
+                    continue            # Create new messages if not found
             if not self.stats_live_message_id:
-                message = await channel.send("🟢 **Live Mode Statistics**\n```Loading data...```")
+                message = await channel.send("🟢 **Live Mode Statistics - Current Month**\n```Loading data...```")
                 self.stats_live_message_id = message.id
                 logger.info(f"Created new Live mode stats message with ID: {message.id}")
             
             if not self.stats_sb_message_id:
-                message = await channel.send("🟣 **Squadron Battle Statistics**\n```Loading data...```")
+                message = await channel.send("🟣 **Squadron Battle Statistics - Current Month**\n```Loading data...```")
                 self.stats_sb_message_id = message.id
                 logger.info(f"Created new Squadron Battle stats message with ID: {message.id}")
             
@@ -270,10 +273,8 @@ class StatusBoardBot(commands.Cog):
             # Use data provider to fetch data
             if not self.data_provider.is_connected():
                 logger.error("Data provider is not connected. Cannot update stats.")
-                return
-
-            # Fetch data from the configured data source
-            data = self.data_provider.fetch_data("Resumen")
+                return            # Fetch data from the configured data source
+            data = self.data_provider.fetch_data("Resumen_Mes_Actual")
             
             if not isinstance(data, list) or not data:
                 logger.warning("Data from data provider is empty or in an unexpected format.")
@@ -335,7 +336,7 @@ class StatusBoardBot(commands.Cog):
                 "Deaths/Live": "Deaths", 
                 "Ratio/Live": "Ratio"
             }
-            title = "🟢 **Live Mode Statistics**"
+            title = "🟢 **Live Mode Statistics - Current Month**"
             sort_key = "Ratio/Live"
             kills_key = "Kills/Live"
             deaths_key = "Deaths/Live"
@@ -346,7 +347,7 @@ class StatusBoardBot(commands.Cog):
                 "Deaths/SB": "Deaths",
                 "Ratio/SB": "Ratio"
             }
-            title = "🟣 **Squadron Battle Statistics**"
+            title = "🟣 **Squadron Battle Statistics - Current Month**"
             sort_key = "Ratio/SB"
             kills_key = "Kills/SB"
             deaths_key = "Deaths/SB"
@@ -374,10 +375,9 @@ class StatusBoardBot(commands.Cog):
             # Only include players with non-zero kills or deaths
             if kills > 0 or deaths > 0:
                 filtered_data.append(row)
-                
-        # If all players are filtered out, show a message instead
+                  # If all players are filtered out, show a message instead
         if not filtered_data:
-            message = f"{title}\n```No active players found in this mode.```"
+            message = f"{title}\n```No activity recorded this month yet.```"
             datasource = self.config_manager.get('datasource', 'googlesheets')
             message += f"\nData source: {datasource}"
             return message
@@ -526,10 +526,9 @@ class StatusBoardBot(commands.Cog):
             await ctx.send("Data provider is not connected. Please check the configuration.")
             return
 
-        try:
-            # Fetch data from the configured data provider
+        try:            # Fetch data from the configured data provider
             logger.info("Fetching data from data provider")
-            data = self.data_provider.fetch_data("Resumen")
+            data = self.data_provider.fetch_data("Resumen_Mes_Actual")
             logger.info(f"Received data with {len(data)} records")
 
             if not isinstance(data, list) or not data:
