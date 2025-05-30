@@ -22,8 +22,12 @@
    ```
 
 3. Install requirements:
-   ```
+   ```bash
+   # For production/runtime use:
    pip install -r requirements.txt
+   
+   # For development (includes testing and build tools):
+   pip install -r requirements.txt -r requirements-dev.txt
    ```
 
 ## Usage
@@ -31,6 +35,51 @@
 Run the script with the path to the configuration file:
 
 StarCitizenDiscordLogger.exe "path/to/config.json" [--process-all | -p]
+
+## Building Executables
+
+The project includes a modern build system with support for two compilation methods:
+
+### PyInstaller Build (Default)
+```bash
+python src/build.py --build
+```
+- Creates `dist/SCLogAnalyzer.exe`
+- Fast compilation time
+- Larger executable size
+- Good compatibility
+
+### Nuitka Build (Advanced)
+```bash
+python src/build.py --nuitka
+```
+- Creates `dist/SCLogAnalyzer-nuitka.exe`
+- Longer compilation time
+- Smaller executable size
+- Better performance
+- Native compilation
+
+### Build Options
+- `--dry-run`: Show commands without executing them
+- `--console`: Build console mode instead of windowed
+- `--skip-venv`: Skip virtual environment activation
+- `--skip-requirements`: Skip dependency installation
+
+### Real-time Build Output ✨
+Both PyInstaller and Nuitka builds now display **real-time output** during compilation:
+- See build progress as it happens
+- Monitor compilation stages
+- Identify issues immediately
+- No more waiting in the dark during long builds
+
+### Version Management
+```bash
+# Auto-increment version and commit
+python src/build.py --increment
+
+# Increment, commit and push to repository
+python src/build.py --increment --push
+```
 
 
 ## Configuration

@@ -1,69 +1,210 @@
 #!/usr/bin/env python
 """
-Build script for SC Log Analyzer
-This replaces both the increment_version.py script and build.bat
-Run this script to increment the version and build the application
+Modern Build script for SC Log Analyzer using Plumbum
+This replaces subprocess calls with elegant Plumbum syntax
 """
 
 import os
 import re
 import sys
-import subprocess
 import argparse
 import importlib.util
 import shutil
 import zipfile
 from pathlib import Path
+from plumbum import local, ProcessExecutionError
+import subprocess
 
 # Directory settings
 ROOT_DIR = Path(__file__).parent.parent
 SRC_DIR = ROOT_DIR / "src"
 VERSION_FILE = SRC_DIR / "version.py"
 DIST_DIR = ROOT_DIR / "dist"
+NUITKA_BUILD_DIR = ROOT_DIR / "nuitka-build"
 CONFIG_TEMPLATE = SRC_DIR / "config.json.template"
 
+# Plumbum commands
+git = local["git"]
+pyinstaller = local["pyinstaller"]
+nuitka = local[sys.executable]["-m", "nuitka"]
+python = local[sys.executable]
+pip = local[sys.executable]["-m", "pip"]
 
-def get_current_commit_hash():
+
+# === FAKE DATA GENERATORS FOR DRY-RUN MODE ===
+
+def get_realistic_fake_data():
+    """Lee version.py y genera datos fake realistas basados en la versión actual"""
+    import importlib.util
+    try:
+        # Leer version.py actual
+        spec = importlib.util.spec_from_file_location("version", VERSION_FILE)
+        version_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(version_module)
+        
+        current_major = version_module.MAJOR
+        current_minor = version_module.MINOR  
+        current_release = version_module.RELEASE
+        current_maturity = version_module.MATURITY
+        
+        # Incrementar RELEASE de forma realista
+        new_release = current_release + 1
+        
+        return {
+            'current_version': f"v{current_major}.{current_minor}.{current_release}",
+            'new_version': f"v{current_major}.{current_minor}.{new_release}",
+            'full_new_version': f"v{current_major}.{current_minor}.{new_release}-abc1234-{current_maturity}",
+            'commit_hash': 'abc1234',
+            'old_release': current_release,
+            'new_release': new_release,
+            'major': current_major,
+            'minor': current_minor,
+            'maturity': current_maturity
+        }
+    except Exception:
+        # Fallback si no se puede leer
+        return {
+            'current_version': 'v0.10.3',
+            'new_version': 'v0.10.4', 
+            'full_new_version': 'v0.10.4-abc1234-attritus',
+            'commit_hash': 'abc1234',
+            'old_release': 3,
+            'new_release': 4,
+            'major': 0,
+            'minor': 10,
+            'maturity': 'attritus'
+        }
+
+def get_fake_commit_hash():
+    """Genera un hash fake consistente y realista"""
+    return get_realistic_fake_data()['commit_hash']
+
+def get_fake_version_increment(current_version=None):
+    """Genera incremento fake realista basado en la versión actual"""
+    data = get_realistic_fake_data()
+    return data['new_version']
+
+def get_fake_tag():
+    """Genera un tag fake basado en la versión actual del proyecto"""
+    return get_realistic_fake_data()['current_version']
+
+def get_fake_commits():
+    """Genera commits fake pero coherentes"""
+    return [
+        ("abc1234", "feat: Add new feature"),
+        ("def5678", "fix: Fix critical bug"),
+        ("ghi9012", "docs: Update documentation")
+    ]
+
+
+def run_command(cmd, dry_run=False, description="", stream_output=False):
+    """Execute or display a Plumbum command based on dry-run mode
+    
+    Args:
+        cmd: Plumbum command to execute
+        dry_run: If True, only show what would be executed
+        description: Human-readable description of the command
+        stream_output: If True, stream output in real-time (useful for long-running commands)
     """
-    Get the short hash of the current commit
+    if not dry_run:
+        try:
+            if stream_output:
+                # Use popen for real-time output streaming
+                import subprocess
+                cmd_str = str(cmd)
+                print(f"Executing: {cmd_str}")
+                print("-" * 60)
+                
+                # Start the process with real-time output
+                process = subprocess.Popen(
+                    cmd_str,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                    shell=True
+                )
+                
+                # Stream output line by line
+                output_lines = []
+                while True:
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
+                        break
+                    if line:
+                        # Print the line immediately and store it
+                        print(line.rstrip())
+                        output_lines.append(line.rstrip())
+                
+                # Wait for process to complete
+                return_code = process.wait()
+                print("-" * 60)
+                
+                if return_code != 0:
+                    raise ProcessExecutionError(cmd_str, return_code, "", "\n".join(output_lines))
+                
+                return "\n".join(output_lines)
+            else:
+                # Use normal Plumbum execution for quick commands
+                return cmd()
+        except ProcessExecutionError as e:
+            raise
+    else:
+        # Show the exact command that would be executed
+        cmd_str = str(cmd)
+        if description:
+            print(f"[DRY-RUN] {description}")
+            print(f"[DRY-RUN] Command: {cmd_str}")
+        else:
+            print(f"[DRY-RUN] {cmd_str}")
+        
+        if stream_output:
+            print(f"[DRY-RUN] (This command would stream output in real-time)")
+        
+        return ""
+
+
+def get_current_commit_hash(dry_run=False):
+    """
+    Get the short hash of the current commit using Plumbum
     Returns the commit hash or None if there's an error
     """
+    if dry_run:
+        return get_fake_commit_hash()
+    
     try:
-        result = subprocess.run(
-            ['git', 'rev-parse', '--short', 'HEAD'],
-            capture_output=True, text=True, check=True
-        )
-        return result.stdout.strip()
-    except subprocess.SubprocessError as e:
+        return git["rev-parse", "--short", "HEAD"]().strip()
+    except ProcessExecutionError as e:
         print(f"Error getting current commit hash: {e}")
         return None
 
 
-def get_last_tag():
+def get_last_tag(dry_run=False):
     """
-    Get the name of the last tag in the git repository
+    Get the name of the last tag in the git repository using Plumbum
     Returns the tag name or None if no tags exist
     """
+    if dry_run:
+        return get_fake_tag()
+    
     try:
-        result = subprocess.run(
-            ['git', 'describe', '--tags', '--abbrev=0'],
-            capture_output=True, text=True, check=True
-        )
-        return result.stdout.strip()
-    except subprocess.SubprocessError:
-        # If there are no tags or error occurs
+        return git["describe", "--tags", "--abbrev=0"]().strip()
+    except ProcessExecutionError:
         print("No tags found or error getting tags")
         return None
 
 
-def get_recent_commits(since_tag=None):
+def get_recent_commits(since_tag=None, dry_run=False):
     """
-    Get all commit messages since the specified tag or from the tag immediately before the first one in the current series
+    Get all commit messages since the specified tag using Plumbum
     Returns a list of tuples containing (commit_hash, commit_message)
     """
+    if dry_run:
+        return get_fake_commits()
+    
     try:
         if since_tag:
-            # Use the provided tag
             start_tag = since_tag
         else:
             # Try to determine the current major.minor version from version.py
@@ -82,19 +223,14 @@ def get_recent_commits(since_tag=None):
             except Exception as e:
                 print(f"Error reading version.py: {e}")
                 
-            # Get all tags in chronological order (oldest to newest)
+            # Get all tags in chronological order using Plumbum
             try:
-                result = subprocess.run(
-                    ['git', 'tag', '--sort=creatordate'],
-                    capture_output=True, text=True, check=True
-                )
-                all_tags_unfiltered = result.stdout.strip().split('\n')
+                all_tags_unfiltered = git["tag", "--sort=creatordate"]().strip().split('\n')
                 
                 # Filter out tags with -docker or -cli, and prioritize SCLogAnalyzer tags
                 all_tags = [tag for tag in all_tags_unfiltered 
                            if tag and "-docker" not in tag and "-cli" not in tag]
                 
-                # Log how many tags were filtered
                 print(f"Found {len(all_tags_unfiltered)} total tags, {len(all_tags)} after filtering")
                 
                 start_tag = None
@@ -126,29 +262,26 @@ def get_recent_commits(since_tag=None):
                 else:
                     print("Could not determine version or no tags found")
                     start_tag = get_last_tag()
-            except subprocess.SubprocessError as e:
+            except ProcessExecutionError as e:
                 print(f"Error getting tags: {e}")
                 start_tag = get_last_tag()
                 
-        # If we have a starting tag, get commits since that tag, otherwise fall back to last 5 commits
+        # Get commits using Plumbum
         if start_tag:
-            cmd = ['git', 'log', f'{start_tag}..HEAD', '--pretty=format:%h|||%s']
+            cmd = git["log", f'{start_tag}..HEAD', "--pretty=format:%h|||%s"]
             print(f"Getting commits from {start_tag} to HEAD")
         else:
-            # Fallback to last 5 commits if no tag is found
-            cmd = ['git', 'log', '-5', '--pretty=format:%h|||%s']
+            cmd = git["log", "-5", "--pretty=format:%h|||%s"]
             print("No starting tag found, getting last 5 commits")
             
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, check=True
-        )
+        result = cmd()
         commits = []
-        for line in result.stdout.strip().split('\n'):
+        for line in result.strip().split('\n'):
             if line and '|||' in line:
                 hash_val, message = line.split('|||', 1)
                 commits.append((hash_val.strip(), message.strip()))
         return commits
-    except subprocess.SubprocessError as e:
+    except ProcessExecutionError as e:
         print(f"Error fetching git commits: {e}")
         return []
 
@@ -158,18 +291,15 @@ def update_commit_messages(content, commits):
     Update the COMMIT_MESSAGES list in version.py
     Organizes commits by version tag to show all changes since major.minor.0
     """
-    # Get all tags and their commit hashes to identify version boundaries
+    # Get all tags and their commit hashes using Plumbum
     try:
-        result = subprocess.run(
-            ['git', 'tag', '--format=%(refname:short)|||%(objectname:short)'],
-            capture_output=True, text=True, check=True
-        )
+        result = git["tag", "--format=%(refname:short)|||%(objectname:short)"]()
         tag_info = {}
-        for line in result.stdout.strip().split('\n'):
+        for line in result.strip().split('\n'):
             if line and '|||' in line:
                 tag, hash_val = line.split('|||', 1)
                 tag_info[hash_val.strip()] = tag.strip()
-    except subprocess.SubprocessError:
+    except ProcessExecutionError:
         tag_info = {}
     
     # Get current version info
@@ -245,20 +375,20 @@ def increase_version(content, key='MINOR', save=False):
     return content, old_value, new_value
 
 
-def increment_version(increment=None):
+def increment_version(increment=None, dry_run=False):
     """
-    Increment the minor version in version.py
+    Increment the minor version in version.py using Plumbum
     Uses the current commit hash for the patch version
     """
     try:
         with open(VERSION_FILE, 'r', encoding='utf-8') as file:
             content = file.read()
         
-        # Find and increment the MINOR version
+        # Find and increment the RELEASE version
         content, old_minor, new_minor = increase_version(content, 'RELEASE', bool(increment))
         
-        # Get current commit hash
-        commit_hash = get_current_commit_hash()
+        # Get current commit hash using Plumbum
+        commit_hash = get_current_commit_hash(dry_run=dry_run)
         
         # Update the PATCH version with current commit hash
         if commit_hash:
@@ -275,15 +405,18 @@ def increment_version(increment=None):
         else:
             print("Warning: Unable to get current commit hash, PATCH version not updated")
         
-        # Get and update commit messages starting from the first tag of the current major.minor version
-        # Calling without parameters triggers automatic tag detection based on current version
+        # Get and update commit messages
         print("Getting commits from the first tag of the current major.minor version")
-        commits = get_recent_commits()
+        commits = get_recent_commits(dry_run=dry_run)
         if commits:
             content = update_commit_messages(content, commits)
             
-        with open(VERSION_FILE, 'w', encoding='utf-8') as file:
-            file.write(content)
+        if not dry_run:
+            with open(VERSION_FILE, 'w', encoding='utf-8') as file:
+                file.write(content)
+        else:
+            data = get_realistic_fake_data()
+            print(f"[DRY-RUN] Update version.py: RELEASE {data['old_release']} → {data['new_release']}, PATCH → {data['commit_hash']}")
         
         print(f"Version incremented from {old_minor} to {new_minor}")
         return True
@@ -308,117 +441,204 @@ def get_version():
         return None
 
 
-def commit_and_push_changes(version, push=False):
+def commit_and_push_changes(version, push=False, dry_run=False):
     """
-    Commit version.py changes and push to repository
+    Commit version.py changes and push to repository using Plumbum
     """
     try:
-        subprocess.run(['git', 'add', str(VERSION_FILE)], check=True)
-        subprocess.run(['git', 'commit', '-m', f"Increment version to {version}"], check=True)
+        # Use realistic version for dry-run mode
+        if dry_run:
+            data = get_realistic_fake_data()
+            display_version = data['full_new_version']
+        else:
+            display_version = version
+            
+        run_command(git["add", str(VERSION_FILE)], 
+                   dry_run=dry_run, description=f"Stage version.py changes")
+        run_command(git["commit", "-m", f"[chore]Increment version to {display_version}"], 
+                   dry_run=dry_run, description=f"Commit version {display_version}")
         
-        print(f"Changes committed for version {version}")
+        print(f"Changes committed for version {display_version}")
         
         if push:
             print("Pushing changes to remote repository...")
-            subprocess.run(['git', 'push'], check=True)
+            run_command(git["push"], 
+                       dry_run=dry_run, description="Push to remote repository")
         else:
             print("Skipping push to remote repository. Use --push to push changes.")
         
         return True
-    except subprocess.SubprocessError as e:
+    except ProcessExecutionError as e:
         print(f"Error committing/pushing changes: {e}")
         return False
 
 
-def create_and_push_tag(version, is_test=False, push=False):
+def get_latest_tag(dry_run=False):
+    """Get the latest tag using Plumbum"""
+    if dry_run:
+        return get_fake_tag()
+    
+    try:
+        return git["describe", "--tags", "--abbrev=0"]().strip()
+    except ProcessExecutionError:
+        print("No tags found. Proceeding with build.")
+        return None
+
+
+def get_commit_hash(ref, dry_run=False):
+    """Get commit hash for a reference using Plumbum"""
+    if dry_run:
+        return get_fake_commit_hash()
+    
+    try:
+        return git["rev-list", "-n", "1", ref]().strip()
+    except ProcessExecutionError:
+        return None
+
+
+def get_head_commit(dry_run=False):
+    """Get HEAD commit hash using Plumbum"""
+    if dry_run:
+        return get_fake_commit_hash()
+    
+    try:
+        return git["rev-parse", "HEAD"]().strip()
+    except ProcessExecutionError:
+        return None
+
+
+def should_auto_increment_and_push(dry_run=False):
     """
-    Create a git tag and push it to the repository, solo si hay commits nuevos desde el último tag
-    Además, aborta si el único commit nuevo es un bump de versión.
+    Determine if we should automatically increment version AND push
+    Returns: (should_increment: bool, should_push: bool, reason: str)
+    """
+    # En dry-run mode, saltarse todas las validaciones y simular éxito
+    if dry_run:
+        return True, True, "Found 3 non-chore commits - increment and push (simulated)"
+        
+    try:
+        # Check 1: Are there uncommitted .py files?
+        status_output = git["status", "--porcelain"]()
+        lines = status_output.strip().split('\n') if status_output.strip() else []
+        py_changes = [line for line in lines if line and line[-3:] == '.py']
+        py_changes = [line for line in py_changes 
+                     if not any(exclude in line for exclude in ['build.py', 'build_plumbum.py'])]
+        
+        if py_changes:
+            return True, False, "Uncommitted .py files found - increment only"
+        
+        # Check 2: Are there new commits since last tag?
+        latest_tag = get_latest_tag(dry_run=dry_run)
+        if not latest_tag:
+            return True, False, "No tags found - increment only"
+            
+        tag_commit = get_commit_hash(latest_tag, dry_run=dry_run)
+        head_commit = get_head_commit(dry_run=dry_run)
+        
+        if tag_commit == head_commit:
+            return False, False, "No new commits since last tag"
+        
+        # Check 3: Are there non-[chore] commits?
+        try:
+            messages = git["log", f'{latest_tag}..HEAD', "--pretty=format:%s"]().strip().split('\n')
+            messages = [msg.strip() for msg in messages if msg.strip()]
+            
+            non_chore_commits = [msg for msg in messages if not msg.lower().startswith('[chore]')]
+            
+            if not non_chore_commits:
+                return False, False, "Only [chore] commits since last tag"
+            
+            return True, True, f"Found {len(non_chore_commits)} non-chore commits - increment and push"
+            
+        except ProcessExecutionError:
+            return True, False, "Error checking commits - increment only"
+            
+    except ProcessExecutionError as e:
+        print(f"Error in auto-detection: {e}")
+        return True, False, "Error in detection - increment only"
+
+
+def create_and_push_tag(version, is_test=False, push=False, dry_run=False):
+    """
+    Create a git tag and push it to the repository using Plumbum
     """
     try:
-        tag_version = f"test-{version}" if is_test else version
+        # Use realistic version for dry-run mode
+        if dry_run:
+            data = get_realistic_fake_data()
+            display_version = data['full_new_version']
+            tag_version = f"test-{display_version}" if is_test else display_version
+        else:
+            tag_version = f"test-{version}" if is_test else version
 
-        latest_tag = get_latest_tag()
-        if latest_tag:
-            tag_commit = get_commit_hash(latest_tag)
-            head_commit = get_head_commit()
+        latest_tag = get_latest_tag(dry_run=dry_run)
+        # Skip commit validations in dry-run mode
+        if latest_tag and not dry_run:
+            tag_commit = get_commit_hash(latest_tag, dry_run=dry_run)
+            head_commit = get_head_commit(dry_run=dry_run)
             if tag_commit and head_commit and tag_commit == head_commit:
                 print(f"[ABORT] No se crea el tag '{tag_version}' porque no hay commits nuevos desde el último tag ({latest_tag}).")
                 return False
-            # Nueva comprobación: abortar si el único commit nuevo es un bump de versión
-            result = subprocess.run([
-                'git', 'log', f'{latest_tag}..HEAD', '--pretty=format:%s'
-            ], capture_output=True, text=True, check=True)
-            messages = [msg.strip() for msg in result.stdout.strip().split('\n') if msg.strip()]
+            
+            # Check if only commit is a version bump (skip in dry-run mode)
+            messages = git["log", f'{latest_tag}..HEAD', "--pretty=format:%s"]().strip().split('\n')
+            messages = [msg.strip() for msg in messages if msg.strip()]
             if len(messages) == 1 and messages[0].lower().startswith('increment version to'):
                 print(f"[ABORT] No se crea el tag '{tag_version}' porque el único commit nuevo desde el último tag es un bump de versión.")
                 return False
 
         print(f"Creating tag: {tag_version}")
-        subprocess.run(['git', 'tag', '-a', tag_version, '-m', f"Version {tag_version}"], check=True)
+        run_command(git["tag", "-a", tag_version, "-m", f"Version {tag_version}"], 
+                   dry_run=dry_run, description=f"Create tag {tag_version}")
 
         if push:
             print(f"Pushing tag {tag_version} to remote repository...")
-            subprocess.run(['git', 'push', 'origin', tag_version], check=True)
+            run_command(git["push", "origin", tag_version], 
+                       dry_run=dry_run, description=f"Push tag {tag_version}")
         else:
             print(f"Tag {tag_version} created. Use --push to push it to the remote repository.")
 
         return True
-    except subprocess.SubprocessError as e:
+    except ProcessExecutionError as e:
         print(f"Error creating/pushing tag: {e}")
         return False
 
 
 def activate_venv():
     """
-    Activate the virtual environment
+    Activate the virtual environment using Plumbum
     """
     venv_path = ROOT_DIR / "venv"
-    
-    if os.name == 'nt':  # Windows
-        activate_script = venv_path / "Scripts" / "activate.bat"
-        if not activate_script.exists():
-            print("Virtual environment not found. Creating...")
-            try:
-                subprocess.run(["python", "-m", "venv", str(venv_path)], check=True)
-                print("Virtual environment created.")
-            except subprocess.SubprocessError as e:
-                print(f"Error creating virtual environment: {e}")
-                return False
-                
-        print("Activating virtual environment...")
-        os.environ['VIRTUAL_ENV'] = str(venv_path)
-        os.environ['PATH'] = f"{venv_path / 'Scripts'}{os.pathsep}{os.environ['PATH']}"
-    else:  # Unix/Linux/Mac
-        activate_script = venv_path / "bin" / "activate"
-        if not activate_script.exists():
-            print("Virtual environment not found. Creating...")
-            try:
-                subprocess.run(["python", "-m", "venv", str(venv_path)], check=True)
-                print("Virtual environment created.")
-            except subprocess.SubprocessError as e:
-                print(f"Error creating virtual environment: {e}")
-                return False
-                
-        print("Activating virtual environment...")
-        activate_cmd = f"source {activate_script}"
-        subprocess.run(activate_cmd, shell=True, executable="/bin/bash")
+    activate_script = venv_path / "Scripts" / "activate.bat"
+    if not activate_script.exists():
+        print("Virtual environment not found. Creating...")
+        try:
+            python["-m", "venv", str(venv_path)]()
+            print("Virtual environment created.")
+        except ProcessExecutionError as e:
+            print(f"Error creating virtual environment: {e}")
+            return False
+            
+    print("Activating virtual environment...")
+    os.environ['VIRTUAL_ENV'] = str(venv_path)
+    os.environ['PATH'] = f"{venv_path / 'Scripts'}{os.pathsep}{os.environ['PATH']}"
     
     return True
 
 
-def install_requirements():
+def install_requirements(dry_run=False):
     """
-    Install Python requirements from requirements.txt
+    Install Python requirements from requirements.txt using Plumbum
     """
     requirements_file = ROOT_DIR / "requirements.txt"
     if requirements_file.exists():
         try:
             print("Installing requirements...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)], check=True)
+            run_command(pip["install", "-r", str(requirements_file)], 
+                       dry_run=dry_run, description="Install Python requirements", stream_output=True)
             print("Requirements installed successfully")
             return True
-        except subprocess.SubprocessError as e:
+        except ProcessExecutionError as e:
             print(f"Error installing requirements: {e}")
             return False
     else:
@@ -426,170 +646,196 @@ def install_requirements():
         return False
 
 
-def build_executables(build_all=False, windowed=True):
+def build_pyinstaller_command(target_file, name, windowed=True):
     """
-    Build executables using PyInstaller
+    Build PyInstaller command using Plumbum's elegant syntax
+    """
+    cmd = pyinstaller["--onefile", "--clean"]
+    
+    # Add mode
+    if windowed:
+        cmd = cmd["--windowed"]
+    else:
+        cmd = cmd["--console"]
+    
+    # Add data files
+    cmd = cmd["--add-data", f"{CONFIG_TEMPLATE};."]
+    cmd = cmd["--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_red.png'};assets"]
+    cmd = cmd["--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets"]
+    cmd = cmd["--add-data", f"{SRC_DIR / 'assets' / 'SCLogAnalyzer.ico'};assets"]
+    
+    # Add binaries
+    cmd = cmd["--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};."]
+    cmd = cmd["--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};."]
+    
+    # Add icon and name
+    cmd = cmd["--icon", "src/assets/SCLogAnalyzer.ico"]
+    cmd = cmd["--name", name, target_file]
+    
+    return cmd
+
+
+def build_executables(windowed=True, dry_run=False):
+    """
+    Build executables using PyInstaller with Plumbum
     """
     if not DIST_DIR.exists():
         DIST_DIR.mkdir(parents=True)
+    
     try:
-        # Construir SIEMPRE SCLogAnalyzer.exe
+        # Always build SCLogAnalyzer.exe
         print("Building SCLogAnalyzer GUI app...")
-        pyinstaller_mode = "--windowed" if windowed else "--console"
-        subprocess.run([
-            "pyinstaller", "--onefile", pyinstaller_mode, "--clean",
-            "--add-data", f"{CONFIG_TEMPLATE};.",
-            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_red.png'};assets",
-            "--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets",
-            "--add-data", f"{SRC_DIR / 'assets' / 'SCLogAnalyzer.ico'};assets",
-            "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};.",
-            "--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};.",
-            "--icon", "src/assets/SCLogAnalyzer.ico",
-            "--name", "SCLogAnalyzer", f"{SRC_DIR / 'gui.py'}"
-        ], check=True)
-        # Solo construir los otros si build_all=True
-        if build_all:
-            print("Building log_analyzer executable...")
-            subprocess.run([
-                "pyinstaller", "--onefile", "--console", "--clean",
-                "--add-data", f"{CONFIG_TEMPLATE};.",
-                "--name", "log_analyzer", f"{SRC_DIR / 'log_analyzer.py'}"
-            ], check=True)
-            print("Building StatusBoardBot executable...")
-            subprocess.run([
-                "pyinstaller", "--onefile", "--console", "--clean",
-                "--add-data", f"{SRC_DIR / 'bot' / 'config.json.template'};.",
-                "--name", "StatusBoardBot", f"{SRC_DIR / 'bot' / 'bot.py'}"
-            ], check=True)
+        cmd = build_pyinstaller_command(f"{SRC_DIR / 'gui.py'}", "SCLogAnalyzer", windowed=windowed)
+        run_command(cmd, dry_run=dry_run, description="Build SCLogAnalyzer executable", stream_output=True)
+               
         return True
-    except subprocess.SubprocessError as e:
+    except ProcessExecutionError as e:
         print(f"Error building executables: {e}")
         return False
 
 
-def create_zip_files():
+def build_nuitka_command(target_file, windowed=True):
     """
-    Create ZIP files for distribution using Python's zipfile module
+    Build Nuitka command using Plumbum's elegant syntax
+    Equivalent to the command in build_nuitka.bat
+    """
+    cmd = nuitka["--standalone", "--follow-imports", "--onefile"]
+    
+    # Add mode
+    if windowed:
+        cmd = cmd["--windows-console-mode=disable"]
+    
+    # Add package includes (using = syntax)
+    packages = ["wx", "pyzbar", "watchdog", "_distutils_hack", "setuptools"]
+    for package in packages:
+        cmd = cmd[f"--include-package={package}"]
+    
+    # Add data files (using = syntax)
+    cmd = cmd[f"--include-data-files={CONFIG_TEMPLATE}=config.json.template"]
+    
+    # Add pyzbar data directory (using = syntax)
+    pyzbar_path = ROOT_DIR / "venv" / "Lib" / "site-packages" / "pyzbar"
+    cmd = cmd[f"--include-data-dir={pyzbar_path}=pyzbar"]
+    
+    # Add icon and output settings (using = syntax)
+    cmd = cmd[f"--windows-icon-from-ico={SRC_DIR / 'assets' / 'SCLogAnalyzer.ico'}"]
+    cmd = cmd[f"--output-dir={NUITKA_BUILD_DIR}"]
+    cmd = cmd[target_file]
+    
+    return cmd
+
+
+def build_nuitka_executable(windowed=True, dry_run=False):
+    """
+    Build executable using Nuitka with Plumbum
+    Replicates the functionality of build_nuitka.bat
     """
     try:
-        readme_dir = ROOT_DIR / "dist" / "readme"
-        # Helper to add files and folders recursively
-        def add_to_zip(zipf, path, arcname=None):
-            path = Path(path)
-            if path.is_file():
-                zipf.write(path, arcname or path.name)
-            elif path.is_dir():
-                for sub in path.rglob("*"):
-                    if sub.is_file():
-                        rel = sub.relative_to(path.parent if arcname is None else Path(arcname).parent)
-                        zipf.write(sub, str(rel))
-        # log_analyzer.zip
-        exe = DIST_DIR / "log_analyzer.exe"
-        if exe.exists():
-            print("Creating log_analyzer.zip...")
-            with zipfile.ZipFile(DIST_DIR / "log_analyzer.zip", "w", zipfile.ZIP_DEFLATED) as zipf:
-                zipf.write(exe, exe.name)
-                if readme_dir.exists():
-                    add_to_zip(zipf, readme_dir, "readme")
-        # StatusBoardBot.zip
-        exe = DIST_DIR / "StatusBoardBot.exe"
-        if exe.exists():
-            print("Creating StatusBoardBot.zip...")
-            with zipfile.ZipFile(DIST_DIR / "StatusBoardBot.zip", "w", zipfile.ZIP_DEFLATED) as zipf:
-                zipf.write(exe, exe.name)
-        # SCLogAnalyzer.zip
-        exe = DIST_DIR / "SCLogAnalyzer.exe"
-        if exe.exists():
-            print("Creating SCLogAnalyzer.zip...")
-            with zipfile.ZipFile(DIST_DIR / "SCLogAnalyzer.zip", "w", zipfile.ZIP_DEFLATED) as zipf:
-                zipf.write(exe, exe.name)
-                if readme_dir.exists():
-                    add_to_zip(zipf, readme_dir, "readme")
+        # Create nuitka-build directory
+        if not NUITKA_BUILD_DIR.exists():
+            NUITKA_BUILD_DIR.mkdir(parents=True)
+            print(f"Created {NUITKA_BUILD_DIR} directory")
+        
+        if not DIST_DIR.exists():
+            DIST_DIR.mkdir(parents=True)
+            print(f"Created {DIST_DIR} directory")
+        
+        # Build with Nuitka
+        print("Building SCLogAnalyzer with Nuitka...")
+        cmd = build_nuitka_command(f"{SRC_DIR / 'gui.py'}", windowed=windowed)
+        run_command(cmd, dry_run=dry_run, description="Build with Nuitka", stream_output=True)
+        
+        # Copy the final executable to dist folder with better name
+        if not dry_run:
+            source_exe = NUITKA_BUILD_DIR / "gui.exe"
+            target_exe = DIST_DIR / "SCLogAnalyzer-nuitka.exe"
+            
+            if source_exe.exists():
+                shutil.copy2(source_exe, target_exe)
+                print(f"\nBuild successful! Executable is at {target_exe}")
+            else:
+                print("\nBuild failed. gui.exe not found in nuitka-build directory.")
+                return False
+        else:
+            print(f"[DRY-RUN] Copy gui.exe to dist/SCLogAnalyzer-nuitka.exe")
+        
         return True
-    except Exception as e:
-        print(f"Error creating ZIP files: {e}")
+        
+    except ProcessExecutionError as e:
+        print(f"Error building with Nuitka: {e}")
         return False
 
 
-def get_latest_tag():
-    result = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], capture_output=True, text=True)
-    if result.returncode != 0:
-        print("No tags found. Proceeding with build.")
-        return None
-    return result.stdout.strip()
-
-
-def get_commit_hash(ref):
-    result = subprocess.run(["git", "rev-list", "-n", "1", ref], capture_output=True, text=True)
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
-
-
-def get_head_commit():
-    result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
-
-
-latest_tag = get_latest_tag()
-if latest_tag:
-    tag_commit = get_commit_hash(latest_tag)
-    head_commit = get_head_commit()
-    if tag_commit and head_commit and tag_commit == head_commit:
-        print(f"Warning: No new commits since last tag ({latest_tag}), pero se permite el build local.")
 
 
 def main():
     """
-    Main function to run the build process
+    Main function to run the build process using Plumbum
     """
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Build SC Log Analyzer')
+    parser = argparse.ArgumentParser(description='Build SC Log Analyzer with Plumbum')
     parser.add_argument('--push', '-p', action='store_true', help='Push changes to remote repository')
     parser.add_argument('--increment', '-i', action='store_true', help='Increment version')
-    parser.add_argument('--build', '-b', action='store_true', help='Build executables')
-    parser.add_argument('--all', '-a', action='store_true', help='Perform all steps')
+    parser.add_argument('--build', '-b', action='store_true', help='Build executables with PyInstaller')
+    parser.add_argument('--nuitka', '-n', action='store_true', help='Build executable with Nuitka')
     parser.add_argument('--test', '-t', action='store_true', help='Mark as test version')
     parser.add_argument('--skip-venv', action='store_true', help='Skip virtual environment activation')
     parser.add_argument('--skip-requirements', action='store_true', help='Skip installing requirements')
-    parser.add_argument('--zip', action='store_true', help='Create ZIP files for distribution after build (default: off)')
-    parser.add_argument('--build-all', action='store_true', help='Build all executables (log_analyzer, StatusBoardBot, SCLogAnalyzer)')
-    parser.add_argument('--console', '-c', action='store_true', help='Build SCLogAnalyzer.exe in console mode (default: windowed mode)')
+    parser.add_argument('--console', '-c', action='store_true', help='Build executable in console mode')
+    parser.add_argument('--dry-run', '-d', action='store_true', 
+                       help='Show commands that would be executed without running them')
     args = parser.parse_args()
     
-    # If no specific actions are specified, enable all
-    if not (args.increment or args.build):
-        args.increment = True
+    # Add dry-run info
+    if args.dry_run:
+        print("[DRY-RUN MODE] Showing commands that would be executed")
+        print("=" * 60)
     
-    if args.all:
-        args.increment = True
-        args.push = True
-      # Step 1: Increment version if requested
+    # Smart default behavior: auto-increment and optionally auto-push
+    if not (args.increment or args.build or args.nuitka):
+        should_increment, should_push, reason = should_auto_increment_and_push(dry_run=args.dry_run)
+        print(f"Auto-detection: {reason}")
+        
+        if should_increment:
+            args.increment = True
+            if should_push and not args.push:  # Only set if not explicitly specified
+                args.push = True
+                print("Auto-enabling push due to non-chore commits and clean working directory")
+        else:
+            print("No action needed - no new non-chore commits found")
+            return 0
+    
+        
+    # Step 1: Increment version if requested
     version = None
     if args.increment:
         print("=== Step 1: Incrementing version ===")
         
-        # Verificar 1: No debe haber archivos .py modificados (excluyendo build.py)
-        result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, check=True)
-        lines = result.stdout.strip().split('\n')
-        py_changes = [line for line in lines if line and line[-3:] == '.py']
-        py_changes = [line for line in py_changes if not line.endswith('src/build.py') and not line.endswith('src\\build.py')]
-        if py_changes:
-            print("[ABORT] No se incrementa la versión porque hay archivos .py con cambios sin commitear (excluyendo build.py).")
-            return 1
-        
-        # Verificar 2: Debe haber commits nuevos desde el último tag
-        latest_tag = get_latest_tag()
-        if latest_tag:
-            tag_commit = get_commit_hash(latest_tag)
-            head_commit = get_head_commit()
-            if tag_commit and head_commit and tag_commit == head_commit:
-                print(f"[ABORT] No se incrementa la versión porque no hay commits nuevos desde el último tag ({latest_tag}).")
+        # Check for modified .py files (excluding build.py) - Skip in dry-run mode
+        if not args.dry_run:
+            try:
+                status_output = git["status", "--porcelain"]()
+                lines = status_output.strip().split('\n')
+                py_changes = [line for line in lines if line and line[-3:] == '.py']
+                py_changes = [line for line in py_changes if not line.endswith('src/build.py') and not line.endswith('src\\build.py') and not line.endswith('src/build_plumbum.py')]
+                if py_changes:
+                    print("[ABORT] No se incrementa la versión porque hay archivos .py con cambios sin commitear (excluyendo build.py).")
+                    return 1
+            except ProcessExecutionError as e:
+                print(f"Error checking git status: {e}")
                 return 1
         
-        increment_version(args.increment)
+        # Check for new commits since last tag - Skip in dry-run mode
+        if not args.dry_run:
+            latest_tag = get_latest_tag(dry_run=args.dry_run)
+            if latest_tag:
+                tag_commit = get_commit_hash(latest_tag, dry_run=args.dry_run)
+                head_commit = get_head_commit(dry_run=args.dry_run)
+                if tag_commit and head_commit and tag_commit == head_commit:
+                    print(f"[ABORT] No se incrementa la versión porque no hay commits nuevos desde el último tag ({latest_tag}).")
+                    return 1
+        
+        increment_version(args.increment, dry_run=args.dry_run)
         
         # Get the current version
         version = get_version()
@@ -600,15 +846,15 @@ def main():
         print(f"Current version: {version}")
         
         # Commit and push changes
-        if not commit_and_push_changes(version, args.push):
+        if not commit_and_push_changes(version, args.push, dry_run=args.dry_run):
             print("Warning: Failed to commit/push changes")
         
-        # Only create and push tag if --push is specified
+        # Create and push tag if --push is specified
         if args.push:
-            if not create_and_push_tag(version, args.test, args.push):
+            if not create_and_push_tag(version, args.test, args.push, dry_run=args.dry_run):
                 print("Warning: Failed to create/push tag")
         else:
-            print("Note: Tag is only created when --push is used. No tag will be created in this run.")
+            print("Note: Tag is only created when --push is used.")
     
     # Step 2: Build executables if requested
     if args.build:
@@ -622,37 +868,37 @@ def main():
         
         # Install requirements
         if not args.skip_requirements:
-            if not install_requirements():
+            if not install_requirements(dry_run=args.dry_run):
                 print("Warning: Failed to install requirements")
         
-        # Build ejecutables: solo todos si --build-all o --all
-        if not build_executables(args.build_all or args.all, windowed=not args.console):
+        # Build executables
+        if not build_executables(windowed=not args.console, dry_run=args.dry_run):
             print("Error: Failed to build executables")
             return 1
-        # Create ZIP files SOLO si --zip
-        if args.zip:
-            if not create_zip_files():
-                print("Warning: Failed to create ZIP files")
     
-    print("\nBuild process completed successfully!")
+    # Step 3: Build with Nuitka if requested
+    if args.nuitka:
+        print("\n=== Step 3: Building with Nuitka ===")
+        
+        # Activate virtual environment
+        if not args.skip_venv:
+            if not activate_venv():
+                print("Error: Failed to activate virtual environment. Exiting.")
+                return 1
+        
+        # Install requirements
+        if not args.skip_requirements:
+            if not install_requirements(dry_run=args.dry_run):
+                print("Warning: Failed to install requirements")
+        
+        # Build with Nuitka
+        if not build_nuitka_executable(windowed=not args.console, dry_run=args.dry_run):
+            print("Error: Failed to build with Nuitka")
+            return 1
+                
+    print("\nBuild process completed successfully with Plumbum!")
     return 0
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--push', '-p', action='store_true')
-    parser.add_argument('--all', '-a', action='store_true')
-    args, unknown = parser.parse_known_args()
-
-    # --- Evitar warning de commits en build local ---
-    def show_commit_warning():
-        if args.push or args.all:
-            latest_tag = get_latest_tag()
-            if latest_tag:
-                tag_commit = get_commit_hash(latest_tag)
-                head_commit = get_head_commit()
-                if tag_commit and head_commit and tag_commit == head_commit:
-                    print(f"Warning: No new commits since last tag ({latest_tag}), pero se permite el build local.")
-    show_commit_warning()
     sys.exit(main())
