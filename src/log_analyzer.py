@@ -893,9 +893,7 @@ class LogFileHandler(FileSystemEventHandler):
                 if  pattern_name in self.google_sheets_mapping:
                     self.update_data_queue(data, pattern_name)
                 self.send_realtime_event(data, pattern_name)            
-                scraping_events = self.config_manager.get('scraping', ['actor_death'])
-                if pattern_name in scraping_events:
-                    self.async_profile_scraping(data)
+                self.async_profile_scraping(data, pattern_name)
     
             return True, data
         return False, None
@@ -983,7 +981,7 @@ class LogFileHandler(FileSystemEventHandler):
         
         return True
 
-    def async_profile_scraping(self, data):
+    def async_profile_scraping(self, data, pattern_name):
         """
         Async profile scraping for actor_death events - Plan MEGA SIMPLE implementation.
         
@@ -992,8 +990,9 @@ class LogFileHandler(FileSystemEventHandler):
                         Can include an 'action' field with "get", "killer", or "victim".
         """
         try:
-            # Si no hay datos, crear un diccionario vacío con action="get"
-            if not data.get('action') == 'get':
+
+            scraping_events = self.config_manager.get('scraping', ['actor_death'])
+            if not pattern_name in scraping_events and data.get('action') != 'get':
                 return
             # Si no hay acción especificada, determinarla según los datos
             if 'action' not in data:

@@ -474,33 +474,3 @@ def scrape_profile_async(player_name: str, metadata: dict = None):
     thread = threading.Thread(target=scrape, args=[metadata], daemon=True)
     thread.start()
 
-def async_profile_request(player_name: str, action="get", data=None):
-    """
-    Async profile request function that handles different actions.
-    
-    Args:
-        player_name (str): The player name to process
-        action (str): The action to perform ("get", "analyze", etc.)
-        data (dict): Optional data context for the request
-        
-    Returns:
-        dict: Result of the profile request operation
-    """
-    message_bus.publish(
-        content=f"Processing profile request for {player_name} with action={action}",
-        level=MessageLevel.INFO,
-        metadata={"source": "profile_request"}
-    )
-    
-    if action == "get":
-        # Perform profile scraping and analysis
-        result = scrape_profile_async(player_name, data or {})
-        return result
-    else:
-        error_msg = f"Unsupported action: {action}"
-        message_bus.publish(
-            content=error_msg,
-            level=MessageLevel.ERROR,
-            metadata={"source": "profile_request"}
-        )
-        raise ValueError(error_msg)

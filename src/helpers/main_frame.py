@@ -1106,9 +1106,8 @@ class LogAnalyzerFrame(wx.Frame):
                         'player_name': player_name,
                         'action': 'get',
                         'timestamp': datetime.datetime.now().isoformat(),
-                        'source': 'manual_request'
                     }
-                    self.monitoring_service.event_handler.async_profile_scraping(data)
+                    self.monitoring_service.event_handler.async_profile_scraping(data,'manual_request')
                 except Exception as e:
                     wx.CallAfter(wx.MessageBox, f"Error al procesar la solicitud de perfil:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
             threading.Thread(target=do_request, daemon=True).start()
