@@ -941,7 +941,8 @@ class LogFileHandler(FileSystemEventHandler):
         # Check if this pattern should be sent as realtime
         if pattern_name not in self.config_manager.get('realtime', []):
             return False
-            
+        # Convert all data to strings
+
         # Get timestamp from data
         timestamp = data.get('timestamp')
         
@@ -965,7 +966,7 @@ class LogFileHandler(FileSystemEventHandler):
             'timestamp': timestamp,
             'type': pattern_name,
             'content': content,
-            'raw_data': data
+            'raw_data': {k: str(v) if v is not None else '' for k, v in data.items()}
         }
         
         # Emit the event for RealtimeBridge to capture
