@@ -412,6 +412,142 @@ def increment_version(increment=None, dry_run=False):
         return False
 
 
+def increment_minor_version(maturity, dry_run=False):
+    """
+    Increment the minor version in version.py and reset release to 0
+    Updates maturity and uses current commit hash for patch version
+    Returns the calculated version string
+    """
+    try:
+        # Read current version values first
+        spec = importlib.util.spec_from_file_location("version", VERSION_FILE)
+        version_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(version_module)
+        
+        current_major = version_module.MAJOR
+        current_minor = version_module.MINOR
+        
+        # Calculate new values
+        new_minor = current_minor + 1
+        if new_minor > 99:
+            new_minor = 0
+        
+        # Get commit hash
+        commit_hash = get_current_commit_hash(dry_run=dry_run)
+        
+        # Calculate the version that will be created
+        calculated_version = f"v{current_major}.{new_minor}.0-{commit_hash}-{maturity}"
+        
+        if not dry_run:
+            # Read file and make actual changes
+            with open(VERSION_FILE, 'r', encoding='utf-8') as file:
+                content = file.read()
+            
+            # Increment MINOR version
+            content, old_minor, new_minor = increase_version(content, 'MINOR', True)
+            
+            # Reset RELEASE to 0
+            content = re.sub(r'RELEASE = \d+', 'RELEASE = 0', content)
+            
+            # Update MATURITY
+            content = re.sub(r'MATURITY = [\'"].*?[\'"]', f'MATURITY = "{maturity}"', content)
+            
+            # Update PATCH with current commit hash
+            if commit_hash:
+                patch_pattern = re.compile(r'PATCH = [\'"]?([^\'"]+)[\'"]?')
+                patch_match = patch_pattern.search(content)
+                if patch_match:
+                    old_patch = patch_match.group(1)
+                    content = content.replace(f'PATCH = "{old_patch}"' if '"' in patch_match.group(0) else f"PATCH = '{old_patch}'", f'PATCH = "{commit_hash}"')
+            
+            # Update commit messages
+            commits = get_recent_commits(dry_run=dry_run)
+            if commits:
+                content = update_commit_messages(content, commits)
+                
+            # Write the file
+            with open(VERSION_FILE, 'w', encoding='utf-8') as file:
+                file.write(content)
+        else:
+            print(f"[DRY-RUN] Update version.py: MINOR {current_minor} → {new_minor}, RELEASE → 0, MATURITY → {maturity}")
+        
+        print(f"Minor version incremented from {current_minor} to {new_minor}, release reset to 0, maturity set to {maturity}")
+        
+        return calculated_version
+            
+    except Exception as e:
+        print(f"Error incrementing minor version: {e}")
+        return False
+
+
+def increment_major_version(maturity, dry_run=False):
+    """
+    Increment the major version in version.py and reset minor and release to 0
+    Updates maturity and uses current commit hash for patch version
+    Returns the calculated version string
+    """
+    try:
+        # Read current version values first
+        spec = importlib.util.spec_from_file_location("version", VERSION_FILE)
+        version_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(version_module)
+        
+        current_major = version_module.MAJOR
+        
+        # Calculate new values
+        new_major = current_major + 1
+        if new_major > 99:
+            new_major = 0
+        
+        # Get commit hash
+        commit_hash = get_current_commit_hash(dry_run=dry_run)
+        
+        # Calculate the version that will be created
+        calculated_version = f"v{new_major}.0.0-{commit_hash}-{maturity}"
+        
+        if not dry_run:
+            # Read file and make actual changes
+            with open(VERSION_FILE, 'r', encoding='utf-8') as file:
+                content = file.read()
+            
+            # Increment MAJOR version
+            content, old_major, new_major = increase_version(content, 'MAJOR', True)
+            
+            # Reset MINOR and RELEASE to 0
+            content = re.sub(r'MINOR = \d+', 'MINOR = 0', content)
+            content = re.sub(r'RELEASE = \d+', 'RELEASE = 0', content)
+            
+            # Update MATURITY
+            content = re.sub(r'MATURITY = [\'"].*?[\'"]', f'MATURITY = "{maturity}"', content)
+            
+            # Update PATCH with current commit hash
+            if commit_hash:
+                patch_pattern = re.compile(r'PATCH = [\'"]?([^\'"]+)[\'"]?')
+                patch_match = patch_pattern.search(content)
+                if patch_match:
+                    old_patch = patch_match.group(1)
+                    content = content.replace(f'PATCH = "{old_patch}"' if '"' in patch_match.group(0) else f"PATCH = '{old_patch}'", f'PATCH = "{commit_hash}"')
+            
+            # Update commit messages
+            commits = get_recent_commits(dry_run=dry_run)
+            if commits:
+                content = update_commit_messages(content, commits)
+                
+            # Write the file
+            with open(VERSION_FILE, 'w', encoding='utf-8') as file:
+                file.write(content)
+        else:
+            print(f"[DRY-RUN] Update version.py: MAJOR {current_major} → {new_major}, MINOR → 0, RELEASE → 0, MATURITY → {maturity}")
+        
+        print(f"Major version incremented from {current_major} to {new_major}, minor and release reset to 0, maturity set to {maturity}")
+        
+        return calculated_version
+            
+    except Exception as e:
+        print(f"Error incrementing major version: {e}")
+        return False
+
+
 def get_version():
     """
     Get the current version from version.py
@@ -432,12 +568,8 @@ def commit_and_push_changes(version, push=False, dry_run=False):
     Commit version.py changes and push to repository using Plumbum
     """
     try:
-        # Use realistic version for dry-run mode
-        if dry_run:
-            data = get_realistic_fake_data()
-            display_version = data['full_new_version']
-        else:
-            display_version = version
+        # Use the version that was calculated by the increment functions
+        display_version = version
             
         run_command(git["add", str(VERSION_FILE)], 
                    dry_run=dry_run, description=f"Stage version.py changes")
@@ -549,13 +681,8 @@ def create_and_push_tag(version, is_test=False, push=False, dry_run=False):
     Create a git tag and push it to the repository using Plumbum
     """
     try:
-        # Use realistic version for dry-run mode
-        if dry_run:
-            data = get_realistic_fake_data()
-            display_version = data['full_new_version']
-            tag_version = f"test-{display_version}" if is_test else display_version
-        else:
-            tag_version = f"test-{version}" if is_test else version
+        # Use the version that was calculated by the increment functions
+        tag_version = f"test-{version}" if is_test else version
 
         latest_tag = get_latest_tag(dry_run=dry_run)
         # Skip commit validations in dry-run mode
@@ -762,6 +889,10 @@ def main():
     parser = argparse.ArgumentParser(description='Build SC Log Analyzer with Plumbum')
     parser.add_argument('--push', '-p', action='store_true', help='Push changes to remote repository')
     parser.add_argument('--increment', '-i', action='store_true', help='Increment version')
+    parser.add_argument('--minor', type=str, metavar='MATURITY', 
+                       help='Increment minor version and set maturity (e.g., --minor alpha)')
+    parser.add_argument('--major', type=str, metavar='MATURITY', 
+                       help='Increment major version and set maturity (e.g., --major beta)')
     parser.add_argument('--build', '-b', action='store_true', help='Build executables with PyInstaller')
     parser.add_argument('--nuitka', '-n', action='store_true', help='Build executable with Nuitka')
     parser.add_argument('--test', '-t', action='store_true', help='Mark as test version')
@@ -777,8 +908,15 @@ def main():
         print("[DRY-RUN MODE] Showing commands that would be executed")
         print("=" * 60)
     
+    # Validar que solo se use una operación de versión a la vez
+    version_ops = [args.increment, args.minor, args.major]
+    version_ops_count = sum(1 for op in version_ops if op)
+    if version_ops_count > 1:
+        print("Error: Solo se puede usar una operación de versión a la vez (--increment, --minor, --major)")
+        return 1
+    
     # Smart default behavior: auto-increment and optionally auto-push
-    if not (args.increment or args.build or args.nuitka):
+    if not (args.increment or args.minor or args.major or args.build or args.nuitka):
         should_increment, should_push, reason = should_auto_increment_and_push(dry_run=args.dry_run)
         print(f"Auto-detection: {reason}")
         
@@ -792,10 +930,10 @@ def main():
             return 0
     
         
-    # Step 1: Increment version if requested
+    # Step 1: Version operations
     version = None
     if args.increment:
-        print("=== Step 1: Incrementing version ===")
+        print("=== Step 1: Incrementing version (RELEASE) ===")
         
         # Check for modified .py files (excluding build.py) - Skip in dry-run mode
         if not args.dry_run:
@@ -827,6 +965,96 @@ def main():
         version = get_version()
         if not version:
             print("Error: Failed to get version. Exiting.")
+            return 1
+        
+        print(f"Current version: {version}")
+        
+        # Commit and push changes
+        if not commit_and_push_changes(version, args.push, dry_run=args.dry_run):
+            print("Warning: Failed to commit/push changes")
+        
+        # Create and push tag if --push is specified
+        if args.push:
+            if not create_and_push_tag(version, args.test, args.push, dry_run=args.dry_run):
+                print("Warning: Failed to create/push tag")
+        else:
+            print("Note: Tag is only created when --push is used.")
+    
+    elif args.minor:
+        print(f"=== Step 1: Incrementing minor version (MATURITY: {args.minor}) ===")
+        
+        # Check for modified .py files (excluding build.py) - Skip in dry-run mode
+        if not args.dry_run:
+            try:
+                status_output = git["status", "--porcelain"]()
+                lines = status_output.strip().split('\n')
+                py_changes = [line for line in lines if line and line[-3:] == '.py']
+                py_changes = [line for line in py_changes if not line.endswith('src/build.py') and not line.endswith('src\\build.py') and not line.endswith('src/build_plumbum.py')]
+                if py_changes:
+                    print("[ABORT] No se incrementa la versión porque hay archivos .py con cambios sin commitear (excluyendo build.py).")
+                    return 1
+            except ProcessExecutionError as e:
+                print(f"Error checking git status: {e}")
+                return 1
+        
+        # Check for new commits since last tag - Skip in dry-run mode
+        if not args.dry_run:
+            latest_tag = get_latest_tag(dry_run=args.dry_run)
+            if latest_tag:
+                tag_commit = get_commit_hash(latest_tag, dry_run=args.dry_run)
+                head_commit = get_head_commit(dry_run=args.dry_run)
+                if tag_commit and head_commit and tag_commit == head_commit:
+                    print(f"[ABORT] No se incrementa la versión porque no hay commits nuevos desde el último tag ({latest_tag}).")
+                    return 1
+        
+        version = increment_minor_version(args.minor, dry_run=args.dry_run)
+        if not version:
+            print("Error: Failed to increment minor version")
+            return 1
+        
+        print(f"Current version: {version}")
+        
+        # Commit and push changes
+        if not commit_and_push_changes(version, args.push, dry_run=args.dry_run):
+            print("Warning: Failed to commit/push changes")
+        
+        # Create and push tag if --push is specified
+        if args.push:
+            if not create_and_push_tag(version, args.test, args.push, dry_run=args.dry_run):
+                print("Warning: Failed to create/push tag")
+        else:
+            print("Note: Tag is only created when --push is used.")
+    
+    elif args.major:
+        print(f"=== Step 1: Incrementing major version (MATURITY: {args.major}) ===")
+        
+        # Check for modified .py files (excluding build.py) - Skip in dry-run mode
+        if not args.dry_run:
+            try:
+                status_output = git["status", "--porcelain"]()
+                lines = status_output.strip().split('\n')
+                py_changes = [line for line in lines if line and line[-3:] == '.py']
+                py_changes = [line for line in py_changes if not line.endswith('src/build.py') and not line.endswith('src\\build.py') and not line.endswith('src/build_plumbum.py')]
+                if py_changes:
+                    print("[ABORT] No se incrementa la versión porque hay archivos .py con cambios sin commitear (excluyendo build.py).")
+                    return 1
+            except ProcessExecutionError as e:
+                print(f"Error checking git status: {e}")
+                return 1
+        
+        # Check for new commits since last tag - Skip in dry-run mode
+        if not args.dry_run:
+            latest_tag = get_latest_tag(dry_run=args.dry_run)
+            if latest_tag:
+                tag_commit = get_commit_hash(latest_tag, dry_run=args.dry_run)
+                head_commit = get_head_commit(dry_run=args.dry_run)
+                if tag_commit and head_commit and tag_commit == head_commit:
+                    print(f"[ABORT] No se incrementa la versión porque no hay commits nuevos desde el último tag ({latest_tag}).")
+                    return 1
+        
+        version = increment_major_version(args.major, dry_run=args.dry_run)
+        if not version:
+            print("Error: Failed to increment major version")
             return 1
         
         print(f"Current version: {version}")
