@@ -146,14 +146,6 @@ def extract_enhanced_profile_data(soup):
                         else:
                             enlisted_str = text
                     profile_data['enlisted'] = enlisted_str
-                    # Intentar parsear a datetime
-                    try:
-                        # Ejemplo formato: 'Aug 7, 2018'
-                        dt = datetime.datetime.strptime(enlisted_str, '%b %d, %Y')
-                        profile_data['enlisted_dt'] = dt
-                    except Exception:
-                        profile_data['enlisted_dt'] = None
-                    break
         except Exception:
             pass
         
