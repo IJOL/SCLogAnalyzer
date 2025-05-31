@@ -6,11 +6,102 @@ Maintains full compatibility with existing code - same function signature and ev
 Uses robust HTML structure parsing instead of fragile regex patterns
 """
 
+import os
 import threading
 import requests
 from bs4 import BeautifulSoup
 from .message_bus import message_bus, MessageLevel
 import datetime
+
+
+def detect_organization_status(soup):
+    """
+    Detecta el estado de la organización del jugador basado en la estructura HTML
+    
+    Args:
+        soup: BeautifulSoup object del HTML del perfil
+        
+    Returns:
+        dict: {
+            'status': 'None'|'Visible'|'Redacted'|'Unknown',
+            'name': str,
+            'visibility_class': str
+        }
+    """
+    try:
+        # Buscar el div principal de organización
+        org_div = soup.select_one('div.main-org.right-col')
+        if not org_div:
+            return {'status': 'Unknown', 'name': 'Unknown', 'visibility_class': ''}
+        
+        # Extraer clase de visibilidad
+        visibility_class = ''
+        for cls in org_div.get('class', []):
+            if cls.startswith('visibility-'):
+                visibility_class = cls
+                break
+        
+        # NUEVA LÓGICA: Detectar estado basado en clase de visibilidad PRIMERO
+        # Caso 1: Sin organización (visibility- sin letra o clase vacía)
+        if visibility_class == 'visibility-' or not visibility_class:
+            empty_div = org_div.select_one('div.empty')
+            if empty_div and 'NO MAIN ORG FOUND' in empty_div.get_text():
+                return {'status': 'None', 'name': 'None', 'visibility_class': visibility_class}
+        
+        # Caso 2: Organización visible (visibility-V)
+        elif visibility_class == 'visibility-V':
+            org_link = org_div.select_one('a.value')
+            if org_link:
+                org_name = org_link.get_text(strip=True)
+                if org_name:  # Solo si tiene nombre válido
+                    return {'status': 'Visible', 'name': org_name, 'visibility_class': visibility_class}
+        
+        # Caso 3: Organización redacted/privada (visibility-R)
+        elif visibility_class == 'visibility-R':
+            # Verificar si tiene imagen redacted como indicador adicional
+            redacted_img = org_div.select_one('img[src*="redacted"]')
+            if redacted_img:
+                return {'status': 'Redacted', 'name': 'Redacted', 'visibility_class': visibility_class}
+            
+            # También detectar por patrón de elementos con solo espacios
+            info_div = org_div.select_one('div.info')
+            if info_div:
+                # Buscar elementos con clase data que contengan solo espacios
+                data_elements = info_div.select('[class*="data"]')
+                if len(data_elements) > 0:
+                    # Si hay elementos data pero sin contenido útil, es redacted
+                    return {'status': 'Redacted', 'name': 'Redacted', 'visibility_class': visibility_class}
+        
+        # Fallback: Intentar detección por contenido (para casos no estándar)
+        # Caso 4: Sin organización (como "aaa")
+        empty_div = org_div.select_one('div.empty')
+        if empty_div and 'NO MAIN ORG FOUND' in empty_div.get_text():
+            return {'status': 'None', 'name': 'None', 'visibility_class': visibility_class}
+        
+        # Caso 5: Organización visible (fallback)
+        org_link = org_div.select_one('a.value')
+        if org_link:
+            org_name = org_link.get_text(strip=True)
+            if org_name:  # Solo si tiene nombre válido
+                return {'status': 'Visible', 'name': org_name, 'visibility_class': visibility_class}
+        
+        # Caso 6: Organización redacted/privada (fallback)
+        info_div = org_div.select_one('div.info')
+        if info_div:
+            text_content = info_div.get_text(strip=True)
+            if 'REDACTED' in text_content.upper() or 'PRIVATE' in text_content.upper():
+                return {'status': 'Redacted', 'name': 'Redacted', 'visibility_class': visibility_class}
+            
+            # Si tiene info pero está vacía o solo espacios, podría ser redacted
+            if len(text_content) == 0 or text_content.isspace():
+                return {'status': 'Redacted', 'name': 'Redacted', 'visibility_class': visibility_class}
+        
+        # Caso por defecto: Unknown
+        return {'status': 'Unknown', 'name': 'Unknown', 'visibility_class': visibility_class}
+        
+    except Exception as e:
+        # En caso de error, devolver estado desconocido
+        return {'status': 'Unknown', 'name': 'Unknown', 'visibility_class': ''}
 
 
 def extract_enhanced_profile_data(soup):
@@ -25,7 +116,8 @@ def extract_enhanced_profile_data(soup):
         'main_org_sid': 'Unknown',
         'main_org_rank': 'Unknown',
         'enlisted': 'Unknown',
-        'enlisted_dt': None  # Nuevo campo: datetime.datetime o None
+        'main_org_name': 'Unknown',      # Nombre de la organización principal
+        'main_org_status': 'Unknown',    # None|Visible|Redacted|Unknown
     }
     
     try:
@@ -96,10 +188,21 @@ def extract_enhanced_profile_data(soup):
         except Exception:
             pass
         
+        # 6.5. Organization Status Detection (Nueva funcionalidad)
+        try:
+            org_status = detect_organization_status(soup)
+            profile_data['main_org_status'] = org_status['status']
+            profile_data['main_org_name'] = org_status['name']
+        except Exception:
+            pass
+        
         # 7. Location
         try:
-            labels = soup.find_all('span', class_='label')
-            for label in labels:
+            # Buscar TODOS los labels con "Location" sin restricciones de selector
+            # Esto evita capturar la location del usuario logueado y busca específicamente
+            # en el perfil del jugador que se está visualizando
+            all_labels = soup.find_all('span', class_='label')
+            for label in all_labels:
                 if 'Location' in label.get_text():
                     value_elem = label.find_next('strong', class_='value')
                     if value_elem:
@@ -178,7 +281,7 @@ def scrape_profile_async(player_name: str, metadata: dict = None):
                 # Emitir evento actor_profile (misma signatura que antes)
                 message_bus.emit('actor_profile', 
                                   player_name, 
-                                  metadata.get('main_org_sid'), 
+                                  metadata.get('main_org_name'), 
                                   metadata.get('enlisted'), metadata)
         except Exception as e:
             # Fail silently según el plan
