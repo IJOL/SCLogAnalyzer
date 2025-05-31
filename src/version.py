@@ -1,10 +1,10 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 10
-RELEASE = 4
-MATURITY = "attritus"  # "alpha", "beta", or "final"
-PATCH = "413df9b"
+MINOR = 11
+RELEASE = 0
+MATURITY = "laminas"  # "alpha", "beta", or "final"
+PATCH = "d275e6e"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,21 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.10.x series,
+    "d275e6e: fix: Correct SQL syntax for hash_value generated column in SupabaseManager",
+    "e8eb473: chore: Unified version increment function to handle release, minor, and major increments",
+    "7ab7255: fix: Add 'actor_profile' to regex keys in ConfigDialog for message filtering",
+    "f3f4b8b: chore: Add functions to increment major and minor versions in version.py",
+    "1bf7a1e: fix: Update actor_profile and player_death message formats for consistency",
+    "2e1f064: feat: Enhance organization status detection in profile scraping",
+    "eb3fed3: chore: Add 'perfiles/' to .gitignore to exclude profile directories from version control",
+    "5b2000b: fix: Convert all data to strings in raw_data for consistent handling",
+    "fe0a877: fix: Remove datetime parsing for enlisted date in profile data extraction",
+    "b96c9aa: fix: Correct commit message formatting and improve non-chore commit filtering logic",
+    "78a038e: chore: Remove obsolete build script and related commands",
+    "2408732: [chore] Update commit message handling and improve formatting in build script",
+
+    # Version v0.10.4-413df9b-attritus-docker,
+    "ec336a0: [chore]Increment version to v0.10.4-413df9b-attritus",
     "413df9b: [feat] Add Profile Request button and implement profile request handling",
     "f5a3bb2: [fix] Improve actor death event handling and action determination in profile scraping",
     "9d06062: [feat] Enhance profile scraping functionality and integrate with log analyzer for actor events",
