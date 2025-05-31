@@ -441,7 +441,7 @@ def commit_and_push_changes(version, push=False, dry_run=False):
             
         run_command(git["add", str(VERSION_FILE)], 
                    dry_run=dry_run, description=f"Stage version.py changes")
-        run_command(git["commit", "-m", f"[chore]Increment version to {display_version}"], 
+        run_command(git["commit", "-m", f"[chore] Increment version to {display_version}"], 
                    dry_run=dry_run, description=f"Commit version {display_version}")
         
         print(f"Changes committed for version {display_version}")
@@ -529,7 +529,7 @@ def should_auto_increment_and_push(dry_run=False):
             messages = git["log", f'{latest_tag}..HEAD', "--pretty=format:%s"]().strip().split('\n')
             messages = [msg.strip() for msg in messages if msg.strip()]
             
-            non_chore_commits = [msg for msg in messages if not msg.lower().startswith('[chore]')]
+            non_chore_commits = [msg for msg in messages if not msg.lower().startswith('[chore]') or not msg.lower().startswith('chore:')]
             
             if not non_chore_commits:
                 return False, False, "Only [chore] commits since last tag"
