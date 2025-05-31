@@ -52,12 +52,12 @@
         "mode_change": "🎮🔄 Game Mode changed: {mode} {status} at {timestamp}",
         "connection_flow" : "📡🔗 {partner}: in range",
         "vip": "👑🌟 VIP detected: {vip}",
-        "actor_profile": "🧑‍🚀📋 {player_name}: {org} {enlisted} {action} {username}\n{all}"
+        "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n{all}"
     },
     "discord": {
-        "player_death": "☠️🔥 {username} :skull: **{killer} -> {victim}** *{mode}* with {weapon} in {zone} with {damage_type}",
+        "player_death": "{username} :skull: **{killer} -> {victim}** *{mode}* with {weapon} in {zone} with {damage_type}",
         "startup": "🚀 *Startup Alert* **{username}** {script_version}",
         "vip": "👑🌟 VIP detected: {vip}",
-        "actor_profile": "🧑‍🚀📋 {player_name}: {org} {enlisted} {action} {username}\n{all}"
+        "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n{all}"
     }
 }
