@@ -429,7 +429,7 @@ class SupabaseManager:
             # Add hash_value generated column only if all required fields are present
             if hash_fields_present:
                 columns.append("hash_value TEXT GENERATED ALWAYS AS"
-                " (MD5(COALESCE(username, '') || COALESCE(killer, '') || COALESCE(victim, '') || COALESCE(extract(epoch from \"timestamp\")::TEXT, '')))  STORED")
+                " (MD5(COALESCE(username, '') || COALESCE(killer, '') || COALESCE(victim, '') || COALESCE( \"timestamp\"::TEXT, '')))  STORED")
                 log_message(f"Added hash_value computed column to {table_name} as all required fields are present", "DEBUG")
             else:
                 log_message(f"Skipped hash_value column for {table_name} as some required fields are missing", "DEBUG")
