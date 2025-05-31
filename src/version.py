@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 10
-RELEASE = 3
+RELEASE = 4
 MATURITY = "attritus"  # "alpha", "beta", or "final"
-PATCH = "27ef38a"
+PATCH = "413df9b"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -16,16 +16,27 @@ def get_version():
 
 # Recent commit messages
 COMMIT_MESSAGES = [
-    # Commits for v0.10.x series
+    # Commits for v0.10.x series,
+    "413df9b: [feat] Add Profile Request button and implement profile request handling",
+    "f5a3bb2: [fix] Improve actor death event handling and action determination in profile scraping",
+    "9d06062: [feat] Enhance profile scraping functionality and integrate with log analyzer for actor events",
+    "3216861: [chore] Update requirements to remove version constraints for consistency",
+    "918f85f: [fix] Update statistics messages to include \"Current Month\" suffix and adjust data fetching logic",
+    "26d074a: [chore] Refactor build process to use Plumbum for command execution, enhance version management, and add Nuitka build support",
+    "305d862: [chore] Add __version__ assignment f",
+
+    # Version v0.10.3-27ef38a-attritus-docker,
+    "e4ba561: [chore] Refactor build script to exclude build.py from version increment checks and improve commit validation logic",
+    "797d373: Increment version to v0.10.3-27ef38a-attritus",
     "27ef38a: [fix] Enhance SupabaseDataProvider to conditionally order view results by kdr_live and update log message",
     "bc41e70: [fix] Refactor data fetching logic to simplify table existence check and remove redundant message bus notifications",
     "a3dfa15: [feature] Update tab configurations and add views for current and previous month summaries",
     "dc13d5c: Enhance build script to exclude changes in build.py from version increment and tagging processes",
 
-    # Version v0.10.2-f86d692-attritus-docker
+    # Version v0.10.2-f86d692-attritus-docker,
     "d11c738: Increment version to v0.10.2-f86d692-attritus",
 
-    # Version v0.10.1-ff89999-attritus-docker
+    # Version v0.10.1-ff89999-attritus-docker,
     "f86d692: Increment version to v0.10.1-ff89999-attritus",
     "ff89999: Refactor config utility functions to streamline template path retrieval and update icon loading in UI components",
     "c36e6d4: Fix asset path for SCLogAnalyzer icon in build_executables function",
@@ -35,7 +46,7 @@ COMMIT_MESSAGES = [
     "aaf7a26: Remove reconnect button handler and streamline username handling in RealtimeBridge",
     "58a979a: Fix username change event emission to include previous username",
 
-    # Version v0.10.0-b9b1a83-attritus-docker
+    # Version v0.10.0-b9b1a83-attritus-docker,
     "0502dbd: Increment version to v0.10.0-b9b1a83-attritus",
     "b9b1a83: Decrement minor version number in get_recent_commits function",
     "3e07073: Update version information to reflect new release details",
@@ -46,10 +57,10 @@ COMMIT_MESSAGES = [
     "0d4ab16: Refactor icon path handling to use get_application_path for consistency across modules",
     "7e99c9f: Enhance tag creation to only proceed if there are new commits since the last tag",
 
-    # Version v0.9.15-267a777-pyam-exhang-docker
+    # Version v0.9.15-267a777-pyam-exhang-docker,
     "6c6f162: Increment version to v0.9.15-267a777-pyam-exhang",
 
-    # Version v0.9.14-8b2ad66-pyam-exhang-docker
+    # Version v0.9.14-8b2ad66-pyam-exhang-docker,
     "267a777: Increment version to v0.9.14-8b2ad66-pyam-exhang",
     "8b2ad66: Refactor build process to use src/gui.py for executable creation and improve readability of pyinstaller command",
     "cec5d1a: Increment version to v0.9.13-35b1d49-pyam-exhang",
@@ -62,21 +73,21 @@ COMMIT_MESSAGES = [
     "854c921: Update monitoring button labels for clarity during monitoring state changes",
     "44704e3: Refactor LogAnalyzerFrame to separate main and debug button sizers for improved UI organization",
 
-    # Version v0.9.12-bf90a3d-pyam-exhang-docker
+    # Version v0.9.12-bf90a3d-pyam-exhang-docker,
     "429fa1e: Increment version to v0.9.12-bf90a3d-pyam-exhang",
     "bf90a3d: Update .gitignore to exclude SCLogAnalyzer build directory and enhance build.py with zipfile support for distribution",
     "50f7235: Add venv310/ to .gitignore to exclude Python virtual environment files",
     "f9aa33c: Refactor NotificationManager to use wx for notifications and implement NotificationPopup class",
 
-    # Version v0.9.11-87fde04-pyam-exhang-docker
+    # Version v0.9.11-87fde04-pyam-exhang-docker,
     "8bf2bf4: Increment version to v0.9.11-87fde04-pyam-exhang",
     "87fde04: Add winotify to requirements for Windows notifications",
 
-    # Version v0.9.10-c6c8874-pyam-exhang-docker
+    # Version v0.9.10-c6c8874-pyam-exhang-docker,
     "8c64c32: Increment version to v0.9.10-c6c8874-pyam-exhang",
     "c6c8874: Enable notifications by default in LogAnalyzerFrame and NotificationManager",
 
-    # Version v0.9.9-9d84add-pyam-exhang-docker
+    # Version v0.9.9-9d84add-pyam-exhang-docker,
     "f3d19c3: Increment version to v0.9.9-9d84add-pyam-exhang",
     "9d84add: Update update_commit_messages to maintain original commit order",
     "ee6400c: Refactor NotificationManager to use MessageRateLimiter for notification rate limiting and remove redundant rate limiting logic",
@@ -92,33 +103,33 @@ COMMIT_MESSAGES = [
     "667f8f9: Enhance ConnectedUsersPanel: add 'Mode' column and update presence handling in RealtimeBridge",
     "3c48709: Clear current shard when exiting from SC_Default mode in LogFileHandler",
 
-    # Version v0.9.8-d69176d-pyam-exhang-docker
+    # Version v0.9.8-d69176d-pyam-exhang-docker,
     "ed646bf: Increment version to v0.9.8-d69176d-pyam-exhang",
     "d69176d: Update instructions: centralize plan storage in planes.instructions.md and enhance markdown response requirements for plan changes",
     "9f9a728: Emit force_realtime_reconnect event after state reset in LogFileHandler for improved reconnection handling",
     "1654e6a: Delegate broadcast_ping_missing handling to the main thread using wx.CallAfter for UI safety",
 
-    # Version v0.9.7-4abec3d-pyam-exhang-docker
+    # Version v0.9.7-4abec3d-pyam-exhang-docker,
     "27fac49: Increment version to v0.9.7-4abec3d-pyam-exhang",
     "4abec3d: Enhance private lobby handling: Add 'Private' label to UI and update dynamic labels; implement blocking for private lobby recording in LogFileHandler.",
     "357cdfa: Enhance shard/version update handling: Add 'private' argument to support lobby visibility in ConnectedUsersPanel and RealtimeBridge; implement private lobby recording block in LogFileHandler.",
     "1919fde: Enhance Connected Users Panel: Add user filter checkboxes with images and update filtering logic; modify RealtimeBridge to support user-based message filtering.",
 
-    # Version v0.9.6-df04d86-pyam-exhang-docker
+    # Version v0.9.6-df04d86-pyam-exhang-docker,
     "a3cc1a9: Increment version to v0.9.6-df04d86-pyam-exhang",
-    "df04d86: Enhance UI: Adjust column widths for 'Shard' and 'VersiÃ³n' in Connected Users panel; format last active timestamp in RealtimeBridge",
+    "df04d86: Enhance UI: Adjust column widths for 'Shard' and 'Versión' in Connected Users panel; format last active timestamp in RealtimeBridge",
     "f86edcc: Add 'stalled' message filter checkbox to UI and backend integration",
     "25fc4b7: Update tag creation logic to only execute with --push flag",
     "f9759f6: Add functions to retrieve latest tag and commit information for build process",
 
-    # Version v0.9.5-ab074f6-pyam-exhang-docker
+    # Version v0.9.5-ab074f6-pyam-exhang-docker,
     "4f17c78: Increment version to v0.9.5-ab074f6-pyam-exhang",
     "ab074f6: Add connection icons to PyInstaller build for enhanced visual feedback",
 
-    # Version v0.9.4-90e97ef-pyam-exhang-docker
+    # Version v0.9.4-90e97ef-pyam-exhang-docker,
     "91c79f5: Increment version to v0.9.4-90e97ef-pyam-exhang",
 
-    # Version v0.9.3-fca6a9e-pyam-exhang-docker
+    # Version v0.9.3-fca6a9e-pyam-exhang-docker,
     "90e97ef: Increment version to v0.9.3-fca6a9e-pyam-exhang",
     "fca6a9e: Enhance DPI awareness in GUI and apply font scaling in TabCreator for better UI consistency",
     "e510a0b: Add reconnection lock to RealtimeBridge to prevent concurrent reconnect attempts",
@@ -129,15 +140,15 @@ COMMIT_MESSAGES = [
     "bd43e10: Add project structure and guidelines documentation for SCLogAnalyzer",
     "9f8582d: Add check for uncommitted .py changes before build process",
 
-    # Version v0.9.2-dca18a4-pyam-exhang-docker
+    # Version v0.9.2-dca18a4-pyam-exhang-docker,
     "06f1f25: Increment version to v0.9.2-dca18a4-pyam-exhang",
     "dca18a4: Enhance RealtimeBridge and ConnectedUsersPanel to improve ping handling and reconnection logic",
 
-    # Version v0.9.1-54d7108-pyam-exhang-docker
+    # Version v0.9.1-54d7108-pyam-exhang-docker,
     "5e8265c: Increment version to v0.9.1-54d7108-pyam-exhang",
     "54d7108: Fix RealtimeBridge event data logging to use 'event_data' key and set log level to DEBUG",
 
-    # Version v0.9.0-4480e51-pyam-exhang-docker
+    # Version v0.9.0-4480e51-pyam-exhang-docker,
     "1126fde: Increment version to v0.9.0-4480e51-pyam-exhang",
     "4480e51: Enhance RealtimeBridge to track user activity and improve presence synchronization with ping broadcasts",
     "5708151: Refactor test CLI to support multiprocessing for simulated users and enhance RealtimeBridge integration",
@@ -150,5 +161,5 @@ COMMIT_MESSAGES = [
     "f7fccd5: Add stdout redirection control: implement environment variable check and enable/disable functions",
     "b9aa870: Fix mutex check output: restore stdout before error message for clarity",
     "364b342: Add filters for current mode and shard in ConnectedUsersPanel; update log entry handling to include mode",
-    "339eff6: Enhance leaderboard display: align numeric columns, add totals for kills and deaths, and include last update timestamp",
+    "339eff6: Enhance leaderboard display: align numeric columns, add totals for kills and deaths, and include last update timestamp"
 ]
