@@ -139,6 +139,8 @@ class ConfigDialog(wx.Frame):
         regex_keys.append("startup")
         regex_keys.append("shard_info")
         regex_keys.append("vip")
+        regex_keys.append("actor_profile")
+
         self.messages_grid = self.add_tab(notebook, "Messages", "messages", regex_keys)
         self.discord_grid = self.add_tab(notebook, "Discord Messages", "discord", regex_keys)
         self.colors_grid = self.add_colors_tab(notebook, "Colors", self.config_data.get("colors", {}))  # Add colors tab
