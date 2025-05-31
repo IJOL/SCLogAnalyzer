@@ -361,190 +361,128 @@ def increase_version(content, key='MINOR', save=False):
     return content, old_value, new_value
 
 
-def increment_version(increment=None, dry_run=False):
+def increment_version_unified(increment_type, maturity=None, dry_run=False):
     """
-    Increment the minor version in version.py using Plumbum
-    Uses the current commit hash for the patch version
+    Función unificada para incrementar versiones
+    
+    Args:
+        increment_type: 'release', 'minor', 'major'
+        maturity: string de madurez (requerido para minor/major)
+        dry_run: modo de prueba
+    
+    Returns:
+        calculated_version string, True (para release), o False en caso de error
     """
-    try:
-        with open(VERSION_FILE, 'r', encoding='utf-8') as file:
-            content = file.read()
-        
-        # Find and increment the RELEASE version
-        content, old_minor, new_minor = increase_version(content, 'RELEASE', bool(increment))
-        
-        # Get current commit hash using Plumbum
-        commit_hash = get_current_commit_hash(dry_run=dry_run)
-        
-        # Update the PATCH version with current commit hash
-        if commit_hash:
-            patch_pattern = re.compile(r'PATCH = [\'"]?([^\'"]+)[\'"]?')
-            patch_match = patch_pattern.search(content)
-            
-            if patch_match:
-                old_patch = patch_match.group(1)
-                # Use quotes around the commit hash as it's a string
-                content = content.replace(f'PATCH = "{old_patch}"' if '"' in patch_match.group(0) else f"PATCH = '{old_patch}'", f'PATCH = "{commit_hash}"')
-                print(f'Patch version set to commit hash: "{commit_hash}"')
-            else:
-                print("Could not find PATCH version in version.py")
-        else:
-            print("Warning: Unable to get current commit hash, PATCH version not updated")
-        
-        # Get and update commit messages
-        print("Getting commits from the first tag of the current major.minor version")
-        commits = get_recent_commits(dry_run=dry_run)
-        if commits:
-            content = update_commit_messages(content, commits)
-            
-        if not dry_run:
-            with open(VERSION_FILE, 'w', encoding='utf-8') as file:
-                file.write(content)
-        else:
-            data = get_realistic_fake_data()
-            print(f"[DRY-RUN] Update version.py: RELEASE {data['old_release']} → {data['new_release']}, PATCH → {data['commit_hash']}")
-        
-        print(f"Version incremented from {old_minor} to {new_minor}")
-        return True
-            
-    except Exception as e:
-        print(f"Error incrementing version: {e}")
+    # Validar parámetros
+    if increment_type not in ['release', 'minor', 'major']:
+        print(f"Error: increment_type debe ser 'release', 'minor' o 'major', recibido: {increment_type}")
         return False
-
-
-def increment_minor_version(maturity, dry_run=False):
-    """
-    Increment the minor version in version.py and reset release to 0
-    Updates maturity and uses current commit hash for patch version
-    Returns the calculated version string
-    """
+    
+    if increment_type in ['minor', 'major'] and not maturity:
+        print(f"Error: maturity es requerido para incremento {increment_type}")
+        return False
+    
     try:
-        # Read current version values first
+        # Leer valores actuales de version.py
         spec = importlib.util.spec_from_file_location("version", VERSION_FILE)
         version_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(version_module)
         
         current_major = version_module.MAJOR
         current_minor = version_module.MINOR
+        current_release = version_module.RELEASE
         
-        # Calculate new values
-        new_minor = current_minor + 1
-        if new_minor > 99:
+        # Calcular nuevos valores según el tipo de incremento
+        if increment_type == 'release':
+            new_major = current_major
+            new_minor = current_minor
+            new_release = current_release + 1
+            if new_release > 99:
+                new_release = 0
+            calculated_version = None  # Para release, no calculamos versión completa
+        elif increment_type == 'minor':
+            new_major = current_major
+            new_minor = current_minor + 1
+            if new_minor > 99:
+                new_minor = 0
+            new_release = 0
+        elif increment_type == 'major':
+            new_major = current_major + 1
+            if new_major > 99:
+                new_major = 0
             new_minor = 0
+            new_release = 0
         
-        # Get commit hash
+        # Obtener commit hash
         commit_hash = get_current_commit_hash(dry_run=dry_run)
         
-        # Calculate the version that will be created
-        calculated_version = f"v{current_major}.{new_minor}.0-{commit_hash}-{maturity}"
+        # Calcular versión para minor/major
+        if increment_type in ['minor', 'major']:
+            calculated_version = f"v{new_major}.{new_minor}.{new_release}-{commit_hash}-{maturity}"
         
         if not dry_run:
-            # Read file and make actual changes
+            # Leer archivo y hacer cambios reales
             with open(VERSION_FILE, 'r', encoding='utf-8') as file:
                 content = file.read()
             
-            # Increment MINOR version
-            content, old_minor, new_minor = increase_version(content, 'MINOR', True)
+            # Aplicar cambios según el tipo
+            if increment_type == 'release':
+                content, old_release, new_release = increase_version(content, 'RELEASE', True)
+            elif increment_type == 'minor':
+                content, old_minor, new_minor = increase_version(content, 'MINOR', True)
+                content = re.sub(r'RELEASE = \d+', 'RELEASE = 0', content)
+                content = re.sub(r'MATURITY = [\'"].*?[\'"]', f'MATURITY = "{maturity}"', content)
+            elif increment_type == 'major':
+                content, old_major, new_major = increase_version(content, 'MAJOR', True)
+                content = re.sub(r'MINOR = \d+', 'MINOR = 0', content)
+                content = re.sub(r'RELEASE = \d+', 'RELEASE = 0', content)
+                content = re.sub(r'MATURITY = [\'"].*?[\'"]', f'MATURITY = "{maturity}"', content)
             
-            # Reset RELEASE to 0
-            content = re.sub(r'RELEASE = \d+', 'RELEASE = 0', content)
-            
-            # Update MATURITY
-            content = re.sub(r'MATURITY = [\'"].*?[\'"]', f'MATURITY = "{maturity}"', content)
-            
-            # Update PATCH with current commit hash
+            # Actualizar PATCH con commit hash
             if commit_hash:
                 patch_pattern = re.compile(r'PATCH = [\'"]?([^\'"]+)[\'"]?')
                 patch_match = patch_pattern.search(content)
                 if patch_match:
                     old_patch = patch_match.group(1)
                     content = content.replace(f'PATCH = "{old_patch}"' if '"' in patch_match.group(0) else f"PATCH = '{old_patch}'", f'PATCH = "{commit_hash}"')
+                    if increment_type == 'release':
+                        print(f'Patch version set to commit hash: "{commit_hash}"')
+            else:
+                print("Warning: Unable to get current commit hash, PATCH version not updated")
             
-            # Update commit messages
+            # Obtener y actualizar commit messages
+            if increment_type == 'release':
+                print("Getting commits from the first tag of the current major.minor version")
             commits = get_recent_commits(dry_run=dry_run)
             if commits:
                 content = update_commit_messages(content, commits)
                 
-            # Write the file
+            # Escribir archivo
             with open(VERSION_FILE, 'w', encoding='utf-8') as file:
                 file.write(content)
         else:
-            print(f"[DRY-RUN] Update version.py: MINOR {current_minor} → {new_minor}, RELEASE → 0, MATURITY → {maturity}")
+            # Modo dry-run
+            if increment_type == 'release':
+                data = get_realistic_fake_data()
+                print(f"[DRY-RUN] Update version.py: RELEASE {data['old_release']} → {data['new_release']}, PATCH → {data['commit_hash']}")
+            elif increment_type == 'minor':
+                print(f"[DRY-RUN] Update version.py: MINOR {current_minor} → {new_minor}, RELEASE → 0, MATURITY → {maturity}")
+            elif increment_type == 'major':
+                print(f"[DRY-RUN] Update version.py: MAJOR {current_major} → {new_major}, MINOR → 0, RELEASE → 0, MATURITY → {maturity}")
         
-        print(f"Minor version incremented from {current_minor} to {new_minor}, release reset to 0, maturity set to {maturity}")
-        
-        return calculated_version
+        # Imprimir resultado
+        if increment_type == 'release':
+            print(f"Version incremented from {current_release} to {new_release}")
+            return True
+        elif increment_type == 'minor':
+            print(f"Minor version incremented from {current_minor} to {new_minor}, release reset to 0, maturity set to {maturity}")
+            return calculated_version
+        elif increment_type == 'major':
+            print(f"Major version incremented from {current_major} to {new_major}, minor and release reset to 0, maturity set to {maturity}")
+            return calculated_version
             
     except Exception as e:
-        print(f"Error incrementing minor version: {e}")
-        return False
-
-
-def increment_major_version(maturity, dry_run=False):
-    """
-    Increment the major version in version.py and reset minor and release to 0
-    Updates maturity and uses current commit hash for patch version
-    Returns the calculated version string
-    """
-    try:
-        # Read current version values first
-        spec = importlib.util.spec_from_file_location("version", VERSION_FILE)
-        version_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(version_module)
-        
-        current_major = version_module.MAJOR
-        
-        # Calculate new values
-        new_major = current_major + 1
-        if new_major > 99:
-            new_major = 0
-        
-        # Get commit hash
-        commit_hash = get_current_commit_hash(dry_run=dry_run)
-        
-        # Calculate the version that will be created
-        calculated_version = f"v{new_major}.0.0-{commit_hash}-{maturity}"
-        
-        if not dry_run:
-            # Read file and make actual changes
-            with open(VERSION_FILE, 'r', encoding='utf-8') as file:
-                content = file.read()
-            
-            # Increment MAJOR version
-            content, old_major, new_major = increase_version(content, 'MAJOR', True)
-            
-            # Reset MINOR and RELEASE to 0
-            content = re.sub(r'MINOR = \d+', 'MINOR = 0', content)
-            content = re.sub(r'RELEASE = \d+', 'RELEASE = 0', content)
-            
-            # Update MATURITY
-            content = re.sub(r'MATURITY = [\'"].*?[\'"]', f'MATURITY = "{maturity}"', content)
-            
-            # Update PATCH with current commit hash
-            if commit_hash:
-                patch_pattern = re.compile(r'PATCH = [\'"]?([^\'"]+)[\'"]?')
-                patch_match = patch_pattern.search(content)
-                if patch_match:
-                    old_patch = patch_match.group(1)
-                    content = content.replace(f'PATCH = "{old_patch}"' if '"' in patch_match.group(0) else f"PATCH = '{old_patch}'", f'PATCH = "{commit_hash}"')
-            
-            # Update commit messages
-            commits = get_recent_commits(dry_run=dry_run)
-            if commits:
-                content = update_commit_messages(content, commits)
-                
-            # Write the file
-            with open(VERSION_FILE, 'w', encoding='utf-8') as file:
-                file.write(content)
-        else:
-            print(f"[DRY-RUN] Update version.py: MAJOR {current_major} → {new_major}, MINOR → 0, RELEASE → 0, MATURITY → {maturity}")
-        
-        print(f"Major version incremented from {current_major} to {new_major}, minor and release reset to 0, maturity set to {maturity}")
-        
-        return calculated_version
-            
-    except Exception as e:
-        print(f"Error incrementing major version: {e}")
+        print(f"Error incrementing {increment_type} version: {e}")
         return False
 
 
@@ -959,7 +897,7 @@ def main():
                     print(f"[ABORT] No se incrementa la versión porque no hay commits nuevos desde el último tag ({latest_tag}).")
                     return 1
         
-        increment_version(args.increment, dry_run=args.dry_run)
+        increment_version_unified('release', dry_run=args.dry_run)
         
         # Get the current version
         version = get_version()
@@ -1007,7 +945,7 @@ def main():
                     print(f"[ABORT] No se incrementa la versión porque no hay commits nuevos desde el último tag ({latest_tag}).")
                     return 1
         
-        version = increment_minor_version(args.minor, dry_run=args.dry_run)
+        version = increment_version_unified('minor', maturity=args.minor, dry_run=args.dry_run)
         if not version:
             print("Error: Failed to increment minor version")
             return 1
@@ -1052,7 +990,7 @@ def main():
                     print(f"[ABORT] No se incrementa la versión porque no hay commits nuevos desde el último tag ({latest_tag}).")
                     return 1
         
-        version = increment_major_version(args.major, dry_run=args.dry_run)
+        version = increment_version_unified('major', maturity=args.major, dry_run=args.dry_run)
         if not version:
             print("Error: Failed to increment major version")
             return 1
