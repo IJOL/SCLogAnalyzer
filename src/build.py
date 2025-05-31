@@ -301,7 +301,7 @@ def update_commit_messages(content, commits):
                 tag_info[hash_val.strip()] = tag.strip()
     except ProcessExecutionError:
         tag_info = {}
-    
+
     # Get current version info
     current_version = None
     try:
@@ -315,49 +315,35 @@ def update_commit_messages(content, commits):
                 current_version = f"v{major}.{minor}"
     except Exception:
         pass
-        
+
     # Format the commits as a Python list of strings
-    commits_str = "[\n"
-    
-    # Add a header comment for clarity
+    commits_lines = []
     if current_version:
-        commits_str += f"    # Commits for {current_version}.x series\n"
-    
-    # Track what version we're currently adding commits for
+        commits_lines.append(f"    # Commits for {current_version}.x series")
     current_tag_section = None
-    
-    # Mantenemos el orden original (más reciente primero)
     commits_reversed = commits  # commits ya está en orden más reciente primero
-    
     for hash_val, message in commits_reversed:
-        # Check if this commit has a tag to mark a version boundary
         if hash_val in tag_info:
             tag = tag_info[hash_val]
-            # Add a section header for this version
-            commits_str += f"\n    # Version {tag}\n"
+            commits_lines.append(f"\n    # Version {tag}")
             current_tag_section = tag
-        
-        # Escape quotes in the message
         escaped_message = message.replace('"', '\\"')
-        
-        # Add the commit with appropriate indentation
-        commits_str += f'    "{hash_val}: {escaped_message}",\n'
-    
-    commits_str += "]"
-    
-    # Regular expression to find the COMMIT_MESSAGES declaration
-    commit_pattern = re.compile(r'COMMIT_MESSAGES = \[.*?\]', re.DOTALL)
+        commits_lines.append(f'    "{hash_val}: {escaped_message}"')
+    # Unir las líneas con comas, pero sin coma final extra
+    commits_str = "[\n" + ",\n".join(commits_lines) + "\n]"
+
+    # Regex robusto: busca desde 'COMMIT_MESSAGES' hasta un ']' que esté solo en una línea (fin de la lista)
+    commit_pattern = re.compile(r'COMMIT_MESSAGES\s*=\s*\[.*?^\s*\]\s*', re.DOTALL | re.MULTILINE)
     commit_match = commit_pattern.search(content)
-    
+
     if commit_match:
-        # Replace existing COMMIT_MESSAGES
-        content = content.replace(commit_match.group(0), f"COMMIT_MESSAGES = {commits_str}")
+        # Replace existing COMMIT_MESSAGES y cualquier texto residual tras el cierre
+        content = content.replace(commit_match.group(0), f"COMMIT_MESSAGES = {commits_str}\n")
         print("Updated commit messages in version.py")
     else:
         # Add COMMIT_MESSAGES if it doesn't exist
         content += f"\n\n# Recent commit messages\nCOMMIT_MESSAGES = {commits_str}\n"
         print("Added commit messages to version.py")
-    
     return content
 
 
