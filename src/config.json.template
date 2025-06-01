@@ -52,12 +52,20 @@
         "mode_change": "🎮🔄 Game Mode changed: {mode} {status} at {timestamp}",
         "connection_flow" : "📡🔗 {partner}: in range",
         "vip": "👑🌟 VIP detected: {vip}",
-        "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n{all}"
-    },
+        "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n {all}"
+     },
+    "notifications_enabled": true,
+    "notifications_events": ["vip"],
+    "notifications_duration": 5,
+    "rate_limit_timeout": 300,
+    "rate_limit_max_duplicates": 1,
+    "auto_reconnection": true,
+    "data_provider_max_retries": 3,
+    "data_provider_retry_delay": 1.0,
     "discord": {
         "player_death": "{username} :skull: **{killer} -> {victim}** *{mode}* with {weapon} in {zone} with {damage_type}",
         "startup": "🚀 *Startup Alert* **{username}** {script_version}",
         "vip": "👑🌟 VIP detected: {vip}",
-        "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n{all}"
+        "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n {all}"
     }
 }
