@@ -7,6 +7,7 @@ from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
 # Eliminar import incorrecto de get_async_client y usar el singleton supabase_manager
 from .supabase_manager import supabase_manager
+from .realtime_bridge import RealtimeBridge # Import RealtimeBridge class
 
 # --- 1. Add checkbox images for filtering ---
 CHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_OTHER, (16, 16))
@@ -115,10 +116,10 @@ class ConnectedUsersPanel(wx.Panel):
         filter_sizer.Add(shard_filter_sizer, 0, 0)
 
         # Checkbox para filtrar mensajes 'stalled' solo si el jugador está online (columna derecha)
-        from .realtime_bridge import _realtime_bridge_instance
+        bridge = RealtimeBridge.get_instance()
         stalled_filter_value = False
-        if _realtime_bridge_instance:
-            stalled_filter_value = getattr(_realtime_bridge_instance, 'filter_stalled_if_online', False)
+        if bridge:
+            stalled_filter_value = getattr(bridge, 'filter_stalled_if_online', False)
         self.stalled_filter_checkbox = wx.CheckBox(self, label="Ocultar mensajes 'stalled' si el jugador está online")
         self.stalled_filter_checkbox.SetValue(stalled_filter_value)
         self.stalled_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_stalled_filter_changed)
@@ -135,6 +136,7 @@ class ConnectedUsersPanel(wx.Panel):
         self.shared_logs.InsertColumn(4, "Contenido", width=300)
         self.shared_logs.InsertColumn(5, "Shard", width=100)
         self.shared_logs.InsertColumn(6, "Modo", width=100)
+        self.shared_logs.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.on_log_item_right_click) # Bind right click
         main_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
         
         # Botones de control
@@ -364,6 +366,91 @@ class ConnectedUsersPanel(wx.Panel):
     def on_clear_logs(self, event):
         """Maneja el evento de clic en el botón limpiar logs"""
         self.shared_logs.DeleteAllItems()
+        bridge_instance = RealtimeBridge.get_instance()
+        if bridge_instance:
+            bridge_instance.update_content_exclusions(clear_all=True)
+
+    def on_log_item_right_click(self, event):
+        menu = wx.Menu()
+        bridge_instance = RealtimeBridge.get_instance()
+
+        clicked_idx = event.GetIndex()
+        if clicked_idx == -1:
+            # Click was not on an item
+            menu.Destroy()
+            return
+
+        # Get the actual content from the 'Contenido' column (index 4)
+        actual_content_to_filter = self.shared_logs.GetItemText(clicked_idx, 4)
+        # Display a shortened version in the menu
+        clicked_content_display = (actual_content_to_filter[:50] + '...') if len(actual_content_to_filter) > 50 else actual_content_to_filter
+
+        active_exclusions = []
+        if bridge_instance:
+            active_exclusions = bridge_instance.get_active_content_exclusions()
+        else:
+            # Si el bridge no está disponible, mostrar un menú simple con error y salir.
+            menu_error = wx.Menu()
+            menu_error.Append(wx.ID_ANY, "Error: Servicio de filtros no disponible").Enable(False)
+            self.shared_logs.PopupMenu(menu_error, event.GetPoint())
+            menu_error.Destroy()
+            menu.Destroy() # Destruir el menú principal también
+            return
+        
+        # Opción "Filtrar: [contenido del ítem clickeado]" - siempre presente
+        filter_item = menu.Append(wx.ID_ANY, f"Filtrar: {clicked_content_display}")
+        if actual_content_to_filter in active_exclusions:
+            filter_item.Enable(False)
+        else:
+            self.Bind(wx.EVT_MENU, lambda evt, c=actual_content_to_filter: self.on_toggle_filter_state(c, add=True), filter_item)
+
+        # Listar TODOS los filtros activos para permitir quitarlos (incluye el del ítem clickeado si está filtrado)
+        if active_exclusions:
+            # Añadir separador si la opción "Filtrar" (del ítem clickeado) ya se añadió Y hay filtros activos para listar.
+            if menu.GetMenuItemCount() > 0 and not menu.FindItemByPosition(menu.GetMenuItemCount()-1).IsSeparator():
+                 menu.AppendSeparator() # Separador ANTES de la lista de "Quitar filtro"
+            
+            for ex_content in active_exclusions:
+                ex_display = (ex_content[:50] + '...') if len(ex_content) > 50 else ex_content
+                menu_item = menu.Append(wx.ID_ANY, f"Quitar filtro: {ex_display}")
+                self.Bind(wx.EVT_MENU, lambda evt, c=ex_content: self.on_toggle_filter_state(c, add=False), menu_item)
+        
+        # Añadir "Borrar todos" si hay CUALQUIER filtro activo
+        if active_exclusions: 
+            # Añadir separador ANTES de "Borrar todos" solo si el último ítem añadido NO es ya un separador.
+            if menu.GetMenuItemCount() > 0:
+                last_item_is_separator = False
+                try:
+                    if menu.FindItemByPosition(menu.GetMenuItemCount() - 1).IsSeparator():
+                        last_item_is_separator = True
+                except wx.WXAssertionError: 
+                    pass 
+                
+                if not last_item_is_separator:
+                    menu.AppendSeparator()
+            
+            clear_all_item = menu.Append(wx.ID_ANY, "Borrar todos")
+            self.Bind(wx.EVT_MENU, self.on_clear_all_content_filters, clear_all_item)
+
+        if menu.GetMenuItemCount() > 0:
+            client_point = event.GetPoint() # Coordinates relative to self.shared_logs
+            self.shared_logs.PopupMenu(menu, client_point) # Use self.shared_logs and client_point
+
+        menu.Destroy()
+
+    def on_toggle_filter_state(self, content, add):
+        bridge_instance = RealtimeBridge.get_instance()
+        if bridge_instance:
+            bridge_instance.update_content_exclusions(content_to_exclude=content, add=add)
+        # else:
+            # YA NO SE PUBLICA AL MESSAGE_BUS DESDE AQUÍ SI EL BRIDGE NO ESTÁ
+
+    def on_clear_all_content_filters(self, event):
+        bridge_instance = RealtimeBridge.get_instance()
+        if bridge_instance:
+            bridge_instance.update_content_exclusions(clear_all=True)
+        # else:
+            # YA NO SE PUBLICA AL MESSAGE_BUS DESDE AQUÍ SI EL BRIDGE NO ESTÁ
 
     def _show_reconnect_and_alert(self):
         # Mostrar botón solo si debug o fallo de pings

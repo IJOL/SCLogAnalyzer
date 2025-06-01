@@ -48,6 +48,12 @@ class RealtimeBridge:
     El filtro de mensajes 'stalled' es controlado por la UI pero reside como propiedad en el backend (esta clase).
     La UI debe modificar el atributo 'filter_stalled_if_online' en la instancia singleton para activar/desactivar el filtro en tiempo real.
     """
+    @staticmethod
+    def get_instance():
+        # Asume que _realtime_bridge_instance está definido a nivel de módulo
+        # y se asigna en __init__ de RealtimeBridge
+        return _realtime_bridge_instance
+
     def __init__(self, supabase_client, config_manager, use_singleton=True):
         if use_singleton:
             global _realtime_bridge_instance
@@ -84,6 +90,7 @@ class RealtimeBridge:
         # Nuevo: filtro de mensajes 'stalled' controlado por la UI
         self.filter_stalled_if_online = True  # Controlado por la UI, usado solo aquí
         self.filter_broadcast_usernames = set()  # Controlado por la UI, usado solo aquí
+        self.excluded_remote_content = set() # Para filtro de contenido
         
         
         # Nuevo: Lock de reconexión y estado
@@ -516,12 +523,24 @@ class RealtimeBridge:
         """Maneja los mensajes broadcast de eventos en tiempo real recibidos de otros usuarios.
         Aplica el filtro de 'stalled' si está activado en el singleton (controlado por la UI, almacenado en self).
         Aplica el filtro de usuarios online si filter_broadcast_usernames no está vacío (controlado por la UI).
+        Aplica filtro de contenido excluido.
         """
         try:
             # Extraer datos del mensaje
             broadcast_data = payload.get('payload', {})
             username = broadcast_data.get('username','Unknown')
             event_data = broadcast_data.get('event_data', payload)
+
+            # --- FILTRO DE CONTENIDO EXCLUIDO ---
+            event_content = event_data.get('content') # O event_data['metadata'].get('content') según estructura
+            if event_content and event_content in self.excluded_remote_content:
+                # Opcional: loguear a DEBUG si se quiere saber que algo se filtró, pero el plan dice no loguear
+                # message_bus.publish(
+                #     content=f"Evento remoto filtrado de {username} por exclusión de contenido: {event_content[:70]}...",
+                #     level=MessageLevel.DEBUG,
+                #     metadata={\"source\": \"realtime_bridge\", \"filtered_content\": event_content}
+                # )
+                return # No emitir este evento en el bus de mensajes local
 
             # --- FILTRO DE USUARIO ONLINE ---
             if self.filter_broadcast_usernames:
@@ -753,3 +772,25 @@ class RealtimeBridge:
         finally:
             self._reconnect_in_progress = False
             self._reconnect_lock.release()
+
+    def update_content_exclusions(self, content_to_exclude=None, clear_all=False, add=True):
+        if clear_all:
+            if self.excluded_remote_content: # Solo actuar si realmente había algo que limpiar
+                self.excluded_remote_content.clear()
+                # NINGÚN LOG AQUÍ
+        elif content_to_exclude:
+            if add:
+                if content_to_exclude not in self.excluded_remote_content:
+                    self.excluded_remote_content.add(content_to_exclude)
+                    message_bus.publish(
+                        content=f"Filtro de contenido remoto añadido: '{content_to_exclude[:70]}...'",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "realtime_bridge"}
+                    )
+            else: 
+                if content_to_exclude in self.excluded_remote_content:
+                    self.excluded_remote_content.discard(content_to_exclude)
+                    # NINGÚN LOG AQUÍ
+
+    def get_active_content_exclusions(self):
+        return sorted(list(self.excluded_remote_content))
