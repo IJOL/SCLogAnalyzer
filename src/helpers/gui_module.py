@@ -112,10 +112,11 @@ class KeyValueGrid(wx.Panel):
         }
 
 
-class ConfigDialog(wx.Frame):
-    """Resizable, non-modal dialog for editing configuration options."""
+class ConfigDialog(wx.Dialog):
+    """Resizable, modal dialog for editing configuration options."""
     def __init__(self, parent, config_manager):
-        super().__init__(parent, title="Edit Configuration", size=(600, 400))
+        super().__init__(parent, title="Edit Configuration", size=(600, 400),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.config_manager = config_manager
         self.app_name = "SCLogAnalyzer"
         self.app_path = f'"{os.path.join(get_application_path(), "SCLogAnalyzer.exe")}" --start-hidden'
@@ -330,20 +331,19 @@ class ConfigDialog(wx.Frame):
         old_datasource = old_config.get('datasource', 'googlesheets')
         new_datasource = new_config.get('datasource', 'googlesheets')
         
-        if old_datasource != new_datasource:
-            # Re-use existing datasource change handling
+        if old_datasource != new_datasource:            # Re-use existing datasource change handling
             message_bus.emit("datasource_changed", old_datasource, new_datasource)
 
     def on_accept(self, event):
         """Handle the Accept button click."""
         self.save_config()
         self.config_saved = True  # Mark that config was saved
-        self.Destroy()
+        self.EndModal(wx.ID_OK)
 
     def on_close(self, event):
         """Handle the Cancel button click."""
         self.config_saved = False  # Mark that config was not saved
-        self.Destroy()
+        self.EndModal(wx.ID_CANCEL)
 
     def add_vips_tab(self, notebook, title, vips_string):
         """Add the VIPs tab to the config dialog notebook (multiline TextCtrl, comma or LF separated input, always shown as LF-separated)."""

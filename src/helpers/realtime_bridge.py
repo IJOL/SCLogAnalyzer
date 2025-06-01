@@ -542,7 +542,7 @@ class RealtimeBridge:
                         users_online = list(state.keys())
                 except Exception:
                     pass
-                player = event_data.get('content','').split(':')[0]
+                player = event_data.get('raw_data',{}).get('player')
                 if player and player in users_online:
                     return  # SUPRIMIR el mensaje
 

@@ -522,36 +522,29 @@ class LogAnalyzerFrame(wx.Frame):
                 
             # Log state change
             message_bus.publish(
-                content=f"Discord integration {'enabled' if new_state else 'disabled'}",
-                level=MessageLevel.INFO
+                content=f"Discord integration {'enabled' if new_state else 'disabled'}",            level=MessageLevel.INFO
             )
-    
+
     def on_edit_config(self, event):
         """Open the configuration dialog."""
-        if not hasattr(self, 'config_dialog') or not self.config_dialog:
-            self.config_dialog = ConfigDialog(self, self.config_manager)
+        config_dialog = ConfigDialog(self, self.config_manager)
         
-        # Ensure the config dialog is within the main window's screen boundaries
-        main_window_position = self.GetScreenPosition()
-        main_window_size = self.GetSize()
-        config_dialog_size = self.config_dialog.GetSize()
-
-        # Get the display geometry for the screen containing the main window
-        display_index = wx.Display.GetFromWindow(self)
-        display_geometry = wx.Display(display_index).GetGeometry()
-
-        # Calculate the new position within the display bounds
-        new_x = max(display_geometry.GetLeft(), 
-                    min(main_window_position.x + (main_window_size.x - config_dialog_size.x) // 2, 
-                        display_geometry.GetRight() - config_dialog_size.x))
-        new_y = max(display_geometry.GetTop(), 
-                    min(main_window_position.y + (main_window_size.y - config_dialog_size.y) // 2, 
-                        display_geometry.GetBottom() - config_dialog_size.y))
+        # Center the dialog on the parent window
+        config_dialog.Centre(wx.BOTH)
         
-        self.config_dialog.SetPosition(wx.Point(new_x, new_y))
+        # Show the dialog modally
+        result = config_dialog.ShowModal()
         
-        # Show the dialog non-modally
-        self.config_dialog.Show()
+        # Handle the result if needed
+        if result == wx.ID_OK:
+            # Configuration was saved successfully
+            pass
+        else:
+            # Configuration was cancelled
+            pass
+            
+        # Clean up
+        config_dialog.Destroy()
     
     def on_test_data_provider(self, event):
         """Handle the Test Data Provider button click."""
