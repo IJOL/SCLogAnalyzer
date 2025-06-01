@@ -82,7 +82,7 @@ def scrape_profile_async(player_name: str, metadata: dict = None):
                 # Emitir evento actor_profile (misma signatura que antes)
                 message_bus.emit('actor_profile', 
                                 player_name, 
-                                metadata.get('main_org_name'), 
+                                metadata.get('main_org_sid'), 
                                 metadata.get('enlisted'), 
                                 metadata)
             else:

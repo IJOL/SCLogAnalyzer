@@ -10,55 +10,113 @@ from typing import Dict, List, Optional, Callable, Any
 
 def detect_organization_status(soup: BeautifulSoup, log_callback: Optional[Callable] = None) -> Dict[str, str]:
     """
-    Detecta el estado de la organización del perfil.
+    Detecta el estado de la organización del perfil basado en la estructura HTML.
     
     Args:
         soup: BeautifulSoup object del HTML del perfil
-        log_callback: Función opcional para logging (log_callback(message, level, metadata))
+        log_callback: Función opcional para logging
     
     Returns:
         Dict con status, name y visibility_class
     """
     try:
-        # Buscar información de la organización principal
-        org_info = {'status': 'Unknown', 'name': 'Unknown', 'visibility_class': ''}
+        if log_callback:
+            log_callback("Iniciando detección de estado de organización", "DEBUG", {"source": "org_detector"})
         
-        # Buscar enlaces de organización
-        org_links = soup.find_all('a', href=True)
-        for link in org_links:
-            href = link.get('href', '')
-            if '/orgs/' in href or '/citizens/' in href:
-                # Verificar si es un enlace de organización válido
-                if 'spectrum-id' in href:
-                    # Organización visible
-                    org_name = link.get_text(strip=True)
-                    if org_name and org_name != 'Unknown':
-                        org_info['status'] = 'Visible'
-                        org_info['name'] = org_name
-                        org_info['visibility_class'] = 'visible'
-                        break
+        # Buscar el div principal de organización
+        org_div = soup.select_one('div.main-org.right-col')
+        if not org_div:
+            result = {'status': 'Unknown', 'name': 'Unknown', 'visibility_class': ''}
+            if log_callback:
+                log_callback("No se encontró div principal de organización", "DEBUG", {"source": "org_detector"})
+            return result
         
-        # Buscar organizaciones censuradas (redactadas)
-        if org_info['status'] == 'Unknown':
-            redacted_elements = soup.find_all(class_='redacted')
-            for element in redacted_elements:
-                parent = element.parent
-                if parent and any(keyword in parent.get_text().lower() 
-                                for keyword in ['organization', 'org', 'affiliation']):
-                    org_info['status'] = 'Redacted'
-                    org_info['name'] = 'Redacted'
-                    org_info['visibility_class'] = 'redacted'
-                    break
+        # Extraer clase de visibilidad
+        visibility_class = ''
+        for cls in org_div.get('class', []):
+            if cls.startswith('visibility-'):
+                visibility_class = cls
+                break
         
         if log_callback:
-            log_callback(f"Organization status detected: {org_info['status']}", "DEBUG", 
-                        {"source": "org_detector"})
+            log_callback(f"Clase de visibilidad detectada: {visibility_class}", "DEBUG", 
+                        {"source": "org_detector", "visibility_class": visibility_class})
         
-        return org_info
+        # Caso 1: Sin organización (visibility- sin letra o clase vacía)
+        if visibility_class == 'visibility-' or not visibility_class:
+            empty_div = org_div.select_one('div.empty')
+            if empty_div and 'NO MAIN ORG FOUND' in empty_div.get_text():
+                result = {'status': 'None', 'name': 'None', 'visibility_class': visibility_class}
+                if log_callback:
+                    log_callback(f"Estado de organización detectado: {result['status']} - {result['name']}", "INFO", 
+                                {"source": "org_detector", "status": result['status']})
+                return result
+        
+        # Caso 2: Organización visible (visibility-V)
+        elif visibility_class == 'visibility-V':
+            org_link = org_div.select_one('a.value')
+            if org_link:
+                org_name = org_link.get_text(strip=True)
+                if org_name:  # Solo si tiene nombre válido
+                    result = {'status': 'Visible', 'name': org_name, 'visibility_class': visibility_class}
+                    if log_callback:
+                        log_callback(f"Estado de organización detectado: {result['status']} - {result['name']}", "INFO", 
+                                    {"source": "org_detector", "status": result['status']})
+                    return result
+        
+        # Caso 3: Organización redacted/privada (visibility-R)
+        elif visibility_class == 'visibility-R':
+            # Verificar si tiene imagen redacted como indicador adicional
+            redacted_img = org_div.select_one('img[src*="redacted"]')
+            if redacted_img:
+                result = {'status': 'Redacted', 'name': 'Redacted', 'visibility_class': visibility_class}
+                if log_callback:
+                    log_callback(f"Estado de organización detectado: {result['status']} - {result['name']}", "INFO", 
+                                {"source": "org_detector", "status": result['status']})
+                return result
+            
+            # También detectar por patrón de elementos con solo espacios
+            info_div = org_div.select_one('div.info')
+            if info_div:
+                data_elements = info_div.select('[class*="data"]')
+                if len(data_elements) > 0:
+                    result = {'status': 'Redacted', 'name': 'Redacted', 'visibility_class': visibility_class}
+                    if log_callback:
+                        log_callback(f"Estado de organización detectado: {result['status']} - {result['name']}", "INFO", 
+                                    {"source": "org_detector", "status": result['status']})
+                    return result
+        
+        # Fallback: Intentar detección por contenido
+        # Caso 4: Sin organización (fallback)
+        empty_div = org_div.select_one('div.empty')
+        if empty_div and 'NO MAIN ORG FOUND' in empty_div.get_text():
+            result = {'status': 'None', 'name': 'None', 'visibility_class': visibility_class}
+            if log_callback:
+                log_callback(f"Estado de organización detectado (fallback): {result['status']} - {result['name']}", "INFO", 
+                            {"source": "org_detector", "status": result['status']})
+            return result
+        
+        # Caso 5: Organización visible (fallback)
+        org_link = org_div.select_one('a.value')
+        if org_link:
+            org_name = org_link.get_text(strip=True)
+            if org_name:
+                result = {'status': 'Visible', 'name': org_name, 'visibility_class': visibility_class}
+                if log_callback:
+                    log_callback(f"Estado de organización detectado (fallback): {result['status']} - {result['name']}", "INFO", 
+                                {"source": "org_detector", "status": result['status']})
+                return result
+        
+        # Caso por defecto: Unknown
+        result = {'status': 'Unknown', 'name': 'Unknown', 'visibility_class': visibility_class}
+        if log_callback:
+            log_callback(f"Estado de organización detectado: {result['status']} - {result['name']}", "INFO", 
+                        {"source": "org_detector", "status": result['status']})
+        return result
         
     except Exception as e:
         if log_callback:
-            log_callback(f"Error detecting organization status: {str(e)}", "ERROR", 
+            log_callback(f"Error detectando estado de organización: {str(e)}", "ERROR", 
                         {"source": "org_detector", "error": str(e)})
         return {'status': 'Unknown', 'name': 'Unknown', 'visibility_class': ''}
 
@@ -89,7 +147,9 @@ def extract_profile_data(html_content: str, log_callback: Optional[Callable] = N
         'display_name': 'Unknown',
         'title_rank': 'Unknown',
         'location': 'Unknown',
-        'fluency': [],
+        'fluency': 'Unknown',
+        'organization': 'Unknown',          # Añadido para Organization general  
+        'organization_rank': 'Unknown',     # Añadido para Organization Rank
         'main_org_sid': 'Unknown',
         'main_org_rank': 'Unknown',
         'enlisted': 'Unknown',
@@ -181,14 +241,27 @@ def extract_profile_data(html_content: str, log_callback: Optional[Callable] = N
         except Exception:
             pass
         
-        # 6. Organization Rank
+        # 6. Organization Name (from basic extraction)
+        try:
+            labels = soup.find_all('span', class_='label')
+            for label in labels:
+                if 'Organization' in label.get_text() and 'rank' not in label.get_text().lower():
+                    value_elem = label.find_next('strong', class_='value')
+                    if value_elem:
+                        profile_data['organization'] = value_elem.get_text(strip=True)
+                        break
+        except Exception:
+            pass
+        
+        # 6.1. Organization Rank
         try:
             labels = soup.find_all('span', class_='label')
             for label in labels:
                 if 'Organization rank' in label.get_text():
                     value_elem = label.find_next('strong', class_='value')
                     if value_elem:
-                        profile_data['main_org_rank'] = value_elem.get_text(strip=True)
+                        profile_data['organization_rank'] = value_elem.get_text(strip=True)
+                        profile_data['main_org_rank'] = value_elem.get_text(strip=True)  # Compatibility
                         break
         except Exception:
             pass
@@ -198,6 +271,10 @@ def extract_profile_data(html_content: str, log_callback: Optional[Callable] = N
             org_status = detect_organization_status(soup, log_callback)
             profile_data['main_org_status'] = org_status['status']
             profile_data['main_org_name'] = org_status['name']
+            
+            # Si no se extrajo organización básica, usar la del detector de estado
+            if profile_data['organization'] == 'Unknown' and org_status['name'] != 'Unknown':
+                profile_data['organization'] = org_status['name']
         except Exception:
             pass
         
@@ -218,9 +295,9 @@ def extract_profile_data(html_content: str, log_callback: Optional[Callable] = N
                         fluency_text = value_elem.get_text(separator=' ', strip=True)
                         # Separar por comas y limpiar cada idioma
                         languages = [lang.strip() for lang in fluency_text.split(',')]
-                        # Filtrar idiomas vacíos
+                        # Filtrar idiomas vacíos y unir con comas
                         languages = [lang for lang in languages if lang]
-                        profile_data['fluency'] = languages
+                        profile_data['fluency'] = ', '.join(languages)
                         break
         except Exception:
             pass
@@ -251,7 +328,7 @@ def extract_profile_data(html_content: str, log_callback: Optional[Callable] = N
                        {"source": "profile_parser", "error": str(e)})
     
     # Log resumen final de extracción
-    extracted_fields = [k for k, v in profile_data.items() if v not in ['Unknown', '', []]]
+    extracted_fields = [k for k, v in profile_data.items() if v not in ['Unknown', '']]
     total_fields = len(profile_data)
     if log_callback:
         log_callback(f"Extracción completada: {len(extracted_fields)}/{total_fields} campos extraídos exitosamente", 
@@ -314,5 +391,77 @@ def extract_location(html_content: str, log_callback: Optional[Callable] = None)
             log_callback(f"Error extrayendo ubicación: {str(e)}", "ERROR", 
                        {"source": "location_extractor", "error": str(e)})
         return 'Unknown'
+
+
+def fetch_profile_from_web(citizen_name: str) -> Optional[str]:
+    """Fetch profile HTML from web."""
+    import requests
+    
+    try:
+        url = f"https://robertsspaceindustries.com/citizens/{citizen_name}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        
+        response = requests.get(url, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            return response.text
+        else:
+            print(f"Failed to fetch {citizen_name}: HTTP {response.status_code}")
+            return None
+            
+    except Exception as e:
+        print(f"Error fetching {citizen_name}: {str(e)}")
+        return None
+
+
+def get_citizens_to_test() -> List[str]:
+    """Simple static list of citizens to test."""
+    return [
+        # From stored profiles in perfiles folder
+        "aaa",
+
+        # Additional test users
+        "CaptainRichard",
+        "Montoya", 
+        "TheNOOBIFIER1337",
+        "BoredGamer",
+        "CitizenKate"
+    ]
+
+
+if __name__ == "__main__":
+    import requests
+    import time
+    
+    print("Star Citizen Profile Parser - Simple Testing")
+    print("=" * 40)
+    
+    # Get citizens to test
+    citizens = get_citizens_to_test()
+    print(f"Testing {len(citizens)} citizens: {', '.join(citizens)}")
+    print()
+    
+    # Simple loop: fetch → extract → print
+    for i, citizen in enumerate(citizens, 1):
+        print(f"[{i}/{len(citizens)}] {citizen}:")
+        
+        # Fetch HTML
+        html = fetch_profile_from_web(citizen)
+        if not html:
+            print("  FAILED to fetch")
+            continue
+        
+        # Extract data
+        try:
+            data = extract_profile_data(html)
+            print(data)
+            
+        except Exception as e:
+            print(f"  FAILED to parse: {str(e)}")
+        
+        # Simple delay
+        if i < len(citizens):
+            time.sleep(1)
+        print()
 
 
