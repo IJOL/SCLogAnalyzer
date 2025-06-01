@@ -383,31 +383,14 @@ class MessageBus:
         Set a filter for a specific subscriber.
         
         Args:
-            subscriber_name: Name of the subscriber
-            filter_type: Type of filter (e.g., 'level', 'patterns')
-            filter_value: Value for the filter
+            subscriber_name: The name of the subscriber
+            filter_type: The type of filter (e.g., 'level', 'pattern_name')
+            filter_value: The value for the filter
         """
         if subscriber_name not in self.filters:
             self.filters[subscriber_name] = {}
-        
         self.filters[subscriber_name][filter_type] = filter_value
-    
-    def clear_filter(self, subscriber_name: str, filter_type: Optional[str] = None) -> None:
-        """
-        Clear filters for a subscriber.
-        
-        Args:
-            subscriber_name: Name of the subscriber
-            filter_type: Type of filter to clear, or None to clear all
-        """
-        if subscriber_name in self.filters:
-            if filter_type is None:
-                # Clear all filters
-                self.filters.pop(subscriber_name)
-            elif filter_type in self.filters[subscriber_name]:
-                # Clear specific filter
-                self.filters[subscriber_name].pop(filter_type)
-    
+
     def get_history(
         self, 
         max_messages: Optional[int] = None, 
@@ -415,35 +398,29 @@ class MessageBus:
         pattern_name: Optional[str] = None
     ) -> List[Message]:
         """
-        Get message history with optional filtering.
+        Get a copy of the message history, optionally filtered.
         
         Args:
-            max_messages: Maximum number of messages to return (most recent first)
+            max_messages: Maximum number of messages to return
             min_level: Minimum message level to include
-            pattern_name: Filter by pattern name
+            pattern_name: Only include messages matching this pattern name
             
         Returns:
-            List of messages from history matching the criteria
+            A list of messages from the history.
         """
-        # Start with all messages in reverse order (newest first)
-        filtered_history = list(reversed(self.message_history))
-        
-        # Apply filters
-        if min_level is not None:
-            filtered_history = [m for m in filtered_history if m.level.value >= min_level.value]
+        with self._lock:
+            history_copy = list(self.message_history) # Create a copy
             
-        if pattern_name is not None:
-            filtered_history = [m for m in filtered_history if m.pattern_name == pattern_name]
+        if min_level:
+            history_copy = [msg for msg in history_copy if msg.level.value >= min_level.value]
         
-        # Apply max messages limit
+        if pattern_name:
+            history_copy = [msg for msg in history_copy if msg.pattern_name == pattern_name]
+            
         if max_messages is not None:
-            filtered_history = filtered_history[:max_messages]
-            
-        return filtered_history
-    
-    def clear_history(self) -> None:
-        """Clear the message history."""
-        self.message_history.clear()
+            return history_copy[-max_messages:]
+        else:
+            return history_copy
 
     def emit(self, event_name, *args, **kwargs):
         """
@@ -597,54 +574,6 @@ def setup_console_handler(debug=False, replay_history=True):
     
     # Return the handler name so it can be unsubscribed later if needed
     return handler_name
-
-def log_message(content, level="INFO", pattern_name=None, metadata=None):
-    """
-    Send a message through the message bus or fallback to logging if not available.
-    This is a convenience function to be used by components that want to decouple
-    from direct message_bus usage.
-    
-    Args:
-        content: The message content
-        level: Message level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        pattern_name: Optional regex pattern name
-        metadata: Additional metadata
-    """
-    try:
-        # Map string level to MessageLevel enum
-        level_map = {
-            "DEBUG": MessageLevel.DEBUG,
-            "INFO": MessageLevel.INFO,
-            "WARNING": MessageLevel.WARNING,
-            "ERROR": MessageLevel.ERROR,
-            "CRITICAL": MessageLevel.CRITICAL
-        }
-        msg_level = level_map.get(level.upper(), MessageLevel.INFO)
-        
-        # Try to send message to bus
-        message_bus.publish(
-            content=content,
-            level=msg_level,
-            pattern_name=pattern_name,
-            metadata=metadata
-        )
-    except Exception as e:
-        # Fallback to standard logging if message bus not available
-        log_level = logging.INFO
-        if isinstance(level, str):
-            log_level = {
-                "DEBUG": logging.DEBUG,
-                "INFO": logging.INFO,
-                "WARNING": logging.WARNING,
-                "ERROR": logging.ERROR,
-                "CRITICAL": logging.CRITICAL
-            }.get(level.upper(), logging.INFO)
-        
-        # Add pattern name to message if provided
-        full_message = f"[{pattern_name}] {content}" if pattern_name else content
-        default_logger.log(log_level, full_message)
-
-# Funciones públicas para alternar la redirección en tiempo de ejecución
 
 def enable_stdout_redirect():
     """Redirige sys.stdout al message_bus (solo si no está desactivado globalmente)."""

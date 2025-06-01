@@ -147,8 +147,8 @@ class NotificationManager:
 
     def _load_config(self):
         self.notifications_enabled = self.config_manager.get('notifications_enabled', True)
-        self.notifications_events = set(self.config_manager.get('notifications_events', ["vip"]))
         self.notifications_duration = int(self.config_manager.get('notifications_duration', 5))
+        self.notifications_events = set(self.config_manager.get('notifications_events', ["vip"]))
 
     def reload_config(self):
         self._load_config()

@@ -17,6 +17,7 @@ import sys
 from version import get_version  # Using absolute import for module in parent directory
 from .config_utils import get_application_path, get_template_base_dir, get_template_path  # Direct import from same directory
 from .message_bus import message_bus, MessageLevel  # Direct import from same directory
+from .window_state_manager import is_app_in_startup, add_app_to_startup, remove_app_from_startup # SCLogAnalyzer: Added for startup management
 
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -615,91 +616,6 @@ class WindowsHelper:
             win32gui.SetForegroundWindow(hwnd)
             return hwnd
         return None
-
-class NumericValidator(wx.Validator):
-    """Custom numeric validator for text controls."""
-    def __init__(self, allow_float=True):
-        wx.Validator.__init__(self)
-        self.allow_float = allow_float
-        self.Bind(wx.EVT_CHAR, self.on_char)
-
-    def Clone(self):
-        return NumericValidator(self.allow_float)
-
-    def Validate(self, win):
-        text_ctrl = self.GetWindow()
-        text = text_ctrl.GetValue()
-        if not text:
-            return True  # Empty is valid
-        try:
-            if self.allow_float:
-                float(text)
-            else:
-                int(text)
-            return True
-        except ValueError:
-            return False
-
-    def on_char(self, event):
-        key = event.GetKeyCode()
-        text_ctrl = self.GetWindow()
-        current_text = text_ctrl.GetValue()
-
-        # Allow control keys (backspace, delete, arrow keys, etc.)
-        if key < wx.WXK_SPACE or key == wx.WXK_DELETE or key > 255:
-            event.Skip()
-            return
-
-        # Allow digits
-        if chr(key).isdigit():
-            event.Skip()
-            return
-
-        # Allow decimal point if float is allowed and not already in the text
-        if self.allow_float and chr(key) == '.' and '.' not in current_text:
-            event.Skip()
-            return
-
-        # Allow minus sign as first character if not already present
-        if chr(key) == '-' and current_text == '':
-            event.Skip()
-            return
-
-        # Block all other characters
-        return
-
-def is_app_in_startup(app_name):
-    """Check if the app is set to run at Windows startup."""
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_READ) as key:
-            try:
-                value = winreg.QueryValueEx(key, app_name)
-                return True
-            except FileNotFoundError:
-                return False
-    except Exception as e:
-        print(f"Error checking startup registry key: {e}")
-        return False
-
-def add_app_to_startup(app_name, app_path):
-    """Add the app to Windows startup."""
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_WRITE) as key:
-            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, app_path)
-            print(f"{app_name} added to Windows startup.")
-    except Exception as e:
-        print(f"Error adding app to startup: {e}")
-
-def remove_app_from_startup(app_name):
-    """Remove the app from Windows startup."""
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_WRITE) as key:
-            winreg.DeleteValue(key, app_name)
-            print(f"{app_name} removed from Windows startup.")
-    except FileNotFoundError:
-        print(f"{app_name} is not in Windows startup.")
-    except Exception as e:
-        print(f"Error removing app from startup: {e}")
 
 class TaskBarIcon(wx.adv.TaskBarIcon):
     def __init__(self, frame, tooltip="SC Log Analyzer"):

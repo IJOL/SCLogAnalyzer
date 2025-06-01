@@ -571,7 +571,7 @@ class RealtimeBridge:
                     pass
                 return
             elif self.notification_manager.notifications_enabled \
-                and event_data.get('type') in self.notification_manager.notifications_events: 
+                and event_data.get('type') in self.notification_manager.notifications_events:
                 message_bus.emit("show_windows_notification", event_data.get('content', ''))
 
 

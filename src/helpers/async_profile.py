@@ -12,7 +12,7 @@ from .message_bus import message_bus, MessageLevel
 import datetime
 
 # Import all functions from the standalone module
-from helpers.profile_parser_standalone import detect_organization_status, extract_profile_data
+from helpers.profile_parser_standalone import extract_profile_data
 
 def scrape_profile_async(player_name: str, metadata: dict = None):
     """Thread simple para scraping de perfil RSI - usa solo el módulo standalone"""
