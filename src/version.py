@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 11
-RELEASE = 1
+RELEASE = 2
 MATURITY = "laminas"  # "alpha", "beta", or "final"
-PATCH = "2f34d56"
+PATCH = "edae730"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,12 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.11.x series,
+    "edae730: feat: Integrate RealtimeBridge for content filtering in ConnectedUsersPanel, adding right-click menu options for managing filters",
+    "4a23f3e: fix: Add 'actor_profile' to notifications_events in config template for improved notification handling",
+    "c2be3cb: refactor: Remove unused functions and improve message bus filter documentation",
+
+    # Version v0.11.1-2f34d56-laminas-docker,
+    "f053a9e: [chore] Increment version to v0.11.1-2f34d56-laminas",
     "2f34d56: fix: Remove unused regex patterns and messages for player and ship events in config template",
     "30cb3df: fix: Correct formatting in actor_profile message and ensure consistent spacing",
     "fe3a83d: fix: Update ConfigDialog to be modal and improve dialog handling in main frame",
