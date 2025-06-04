@@ -936,7 +936,7 @@ class LogFileHandler(FileSystemEventHandler):
         Returns:
             bool: True if the event was sent, False if rate-limited or not a realtime pattern.
         """
-        if self.current_mode != "SC_Default":
+        if not message_bus.is_debug_mode() and self.current_mode != "SC_Default":
             return False
         # Check if this pattern should be sent as realtime
         if pattern_name not in self.config_manager.get('realtime', []):
@@ -990,9 +990,10 @@ class LogFileHandler(FileSystemEventHandler):
                         Can include an 'action' field with "get", "killer", or "victim".
         """
         try:
-            if self.current_mode != "SC_Default" and data.get('action') != 'get':
+            # if self.current_mode != "SC_Default" and data.get('action') != 'get':
+            if not message_bus.is_debug_mode() and (self.current_mode != "SC_Default" and data.get('action') != 'get'):
                 return
-            scraping_events = self.config_manager.get('scraping', ['actor_death'])
+            scraping_events = self.config_manager.get('scraping', ['player_death'])
             if not pattern_name in scraping_events and data.get('action') != 'get':
                 return
             # Si no hay acción especificada, determinarla según los datos
