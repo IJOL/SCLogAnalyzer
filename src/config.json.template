@@ -6,7 +6,7 @@
     "datasource": "googlesheets",
     "supabase_key": "",
     "realtime": ["actor_stall", "player_death", "vehicle_destruction","vip","actor_profile"],
-    "scraping": ["actor_death"],
+    "scraping": ["player_death"],
     "active_users_update_interval": 120,
     "auto_reconnection": true,
     "tabs": {
@@ -44,7 +44,7 @@
         "mode_change": "🎮🔄 Game Mode changed: {mode} {status} at {timestamp}",
         "connection_flow" : "📡🔗 {partner}: in range",
         "vip": "👑🌟 VIP detected: {vip}",
-        "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n {all}"
+        "actor_profile": "🧑‍🚀📋 {username} {action} {player_name}: {org} {enlisted} \n {all}"
      },
     "notifications_enabled": true,
     "notifications_events": ["vip","actor_profile"],
