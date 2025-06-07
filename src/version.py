@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 11
-RELEASE = 2
+RELEASE = 3
 MATURITY = "laminas"  # "alpha", "beta", or "final"
-PATCH = "edae730"
+PATCH = "9b2b76a"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,12 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.11.x series,
+    "9b2b76a: feat: Add 'Get Profile' option in ConnectedUsersPanel and integrate profile request handling via message bus",
+    "ce1542e: fix: Update scraping event from 'actor_death' to 'player_death' in config template and improve formatting in actor_profile message",
+    "5129c38: fix: Enhance mode checks in LogFileHandler to include debug mode condition",
+
+    # Version v0.11.2-edae730-laminas-docker,
+    "26efe73: [chore] Increment version to v0.11.2-edae730-laminas",
     "edae730: feat: Integrate RealtimeBridge for content filtering in ConnectedUsersPanel, adding right-click menu options for managing filters",
     "4a23f3e: fix: Add 'actor_profile' to notifications_events in config template for improved notification handling",
     "c2be3cb: refactor: Remove unused functions and improve message bus filter documentation",
