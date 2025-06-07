@@ -206,7 +206,17 @@ class LogFileHandler(FileSystemEventHandler):
         if output_message_format:
             output_message(None, output_message_format.format(**data), regex_pattern="actor_profile")
         self.send_discord_message(data, pattern_name="actor_profile")
-        self.send_realtime_event(data, pattern_name="actor_profile")
+        
+        # Determinar si es solicitud manual vs automática
+        action = data.get('action', '')
+        if action == 'get':
+            # Profile request manual: notificar solo localmente
+            if output_message_format:
+                content = output_message_format.format(**data)
+                message_bus.emit("show_windows_notification", content)
+        else:
+            # Profile automático (killer/victim): transmitir por realtime
+            self.send_realtime_event(data, pattern_name="actor_profile")
 
     def add_state_data(self, data):
         """
@@ -997,8 +1007,8 @@ class LogFileHandler(FileSystemEventHandler):
             scraping_events = self.config_manager.get('scraping', ['player_death'])
             if not pattern_name in scraping_events and data.get('action') != 'get':
                 return
-            # Si no hay acción especificada, determinarla según los datos
-            if 'action' not in data:
+            # Determinar si es patrón automático (en configuración scraping) o solicitud manual
+            if pattern_name in scraping_events:
                 # Extract killer and victim from the data
                 killer = data.get('killer')
                 victim = data.get('victim')
@@ -1026,7 +1036,7 @@ class LogFileHandler(FileSystemEventHandler):
                 # Añadir la acción determinada a los datos
                 data['action'] = action
             else:
-                # Si la acción ya está especificada (como "get"), usar player_name como target
+                # Solicitud manual (como "get"), usar player_name como target
                 target_player = data.get('player_name')
                 
             # Si hay target, hacer scraping asíncrono

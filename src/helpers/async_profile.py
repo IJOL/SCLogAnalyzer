@@ -70,7 +70,12 @@ def scrape_profile_async(player_name: str, metadata: dict = None):
                     metadata={"source": "profile_scraper", "extracted_count": len(extracted_fields), "player": player_name}
                 )
                 
-                metadata.update(profile_data)
+                # Incluir algunos datos selectos del evento original
+                profile_data.update({
+                    'username': metadata.get('username'),
+                    'action': metadata.get('action'),
+                    'timestamp': metadata.get('timestamp')
+                })
                 
                 # Log emisión de evento
                 message_bus.publish(
@@ -82,9 +87,9 @@ def scrape_profile_async(player_name: str, metadata: dict = None):
                 # Emitir evento actor_profile (misma signatura que antes)
                 message_bus.emit('actor_profile', 
                                 player_name, 
-                                metadata.get('main_org_sid'), 
-                                metadata.get('enlisted'), 
-                                metadata)
+                                profile_data.get('main_org_sid'), 
+                                profile_data.get('enlisted'), 
+                                profile_data)
             else:
                 message_bus.publish(
                     content=f"Error HTTP {response.status_code} al consultar perfil de {player_name}",
