@@ -7,6 +7,7 @@ import log_analyzer
 import win32event
 import win32api
 import winerror
+from datetime import datetime
 
 from .ui_components import TabCreator, DynamicLabels
 from .monitoring_service import MonitoringService
@@ -1077,33 +1078,24 @@ class LogAnalyzerFrame(wx.Frame):
         self.realtime_bridge.notification_manager.reload_config()
 
     def on_simulate_notification(self, event):
-        """Simula el envío de una notificación Windows para pruebas de UI/debug."""
-        message_bus.emit("show_windows_notification",
-            content="Esto es una notificación de prueba generada en modo debug."
-        )
+        # Muestra una notificación de prueba.
+        message_bus.publish('log_message', content='Esta es una notificación de prueba.', level=MessageLevel.INFO, metadata={'show_notification': True})
 
     def on_profile_request(self, event):
-        import threading
-        import datetime
         dlg = wx.TextEntryDialog(self, "Introduce el nombre del jugador:", "Profile Request")
         if dlg.ShowModal() == wx.ID_OK:
             player_name = dlg.GetValue().strip()
-            if not player_name:
-                wx.MessageBox("El nombre del jugador no puede estar vacío.", "Entrada inválida", wx.OK | wx.ICON_WARNING)
-                dlg.Destroy()
-                return
-            def do_request():
-                try:
-
-                    data = {
-                        'player_name': player_name,
-                        'action': 'get',
-                        'timestamp': datetime.datetime.now().isoformat(),
-                    }
-                    self.monitoring_service.event_handler.async_profile_scraping(data,'manual_request')
-                except Exception as e:
-                    wx.CallAfter(wx.MessageBox, f"Error al procesar la solicitud de perfil:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
-            threading.Thread(target=do_request, daemon=True).start()
+            if player_name:
+                event_data = {
+                    'player_name': player_name,
+                    'action': 'get',
+                    'timestamp': datetime.now().isoformat()
+                }
+                message_bus.emit(
+                    "request_profile",
+                    event_data,
+                    "manual_request"
+                )
         dlg.Destroy()
 
 def main():

@@ -159,6 +159,7 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, f"Skipping to the end of log file (position {self.last_position})")
         # Setup message bus listener for actor_profile events
         message_bus.on("actor_profile", self._on_actor_profile)
+        message_bus.on("request_profile", self.async_profile_scraping)
 
     def __getattr__(self, name):
         """

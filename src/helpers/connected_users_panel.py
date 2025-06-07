@@ -2,6 +2,7 @@
 import wx
 from datetime import datetime
 import wx.lib.embeddedimage as embeddedimage
+import re
 
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
@@ -370,6 +371,37 @@ class ConnectedUsersPanel(wx.Panel):
         if bridge_instance:
             bridge_instance.update_content_exclusions(clear_all=True)
 
+    def on_get_profile(self, event, idx):
+        log_content = self.shared_logs.GetItemText(idx, 4)
+        log_sender = self.shared_logs.GetItemText(idx, 2)
+
+        # Se corrige el error re.PatternError simplificando la lógica.
+        # Primero, se encuentran todos los nombres potenciales.
+        all_potential_players = re.findall(r'\b[A-Za-z0-9_-]{4,}\b', log_content)
+        # Luego, se excluye 'stalled' de la lista.
+        potential_players = [p for p in all_potential_players if p.lower() != 'stalled']
+        
+        target_player = next((p for p in potential_players if p.lower() != log_sender.lower()), None)
+
+        if target_player:
+            event_data = {
+                'player_name': target_player,
+                'action': 'get',
+                'timestamp': datetime.now().isoformat(),
+                'source': 'connected_users_panel_context_menu'
+            }
+            message_bus.emit(
+                "request_profile",
+                event_data,
+                "manual_request"
+            )
+        else:
+            # Usar el sistema de logs para mostrar una advertencia
+            message_bus.publish(
+                content="No other player name found in log content to request a profile.",
+                level=MessageLevel.WARNING
+            )
+
     def on_log_item_right_click(self, event):
         menu = wx.Menu()
         bridge_instance = RealtimeBridge.get_instance()
@@ -427,10 +459,17 @@ class ConnectedUsersPanel(wx.Panel):
                     pass 
                 
                 if not last_item_is_separator:
-                    menu.AppendSeparator()
-            
+                     menu.AppendSeparator()
+ 
             clear_all_item = menu.Append(wx.ID_ANY, "Borrar todos")
             self.Bind(wx.EVT_MENU, self.on_clear_all_content_filters, clear_all_item)
+
+        # --- Separador y nueva opción Get Profile ---
+        if menu.GetMenuItemCount() > 0:
+            menu.AppendSeparator()
+        
+        get_profile_item = menu.Append(wx.ID_ANY, "Get Profile")
+        self.Bind(wx.EVT_MENU, lambda evt: self.on_get_profile(evt, clicked_idx), get_profile_item)
 
         if menu.GetMenuItemCount() > 0:
             client_point = event.GetPoint() # Coordinates relative to self.shared_logs
