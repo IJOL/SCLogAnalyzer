@@ -23,6 +23,11 @@ DIST_DIR = ROOT_DIR / "dist"
 NUITKA_BUILD_DIR = ROOT_DIR / "nuitka-build"
 CONFIG_TEMPLATE = SRC_DIR / "config.json.template"
 
+# Default virtual environment directory name (can be overridden via CLI)
+DEFAULT_VENV_NAME = ".venv"
+# This will be overwritten after parsing CLI args, but provide default for function definitions
+VENV_DIR = ROOT_DIR / DEFAULT_VENV_NAME
+
 # Plumbum commands
 git = local["git"]
 pyinstaller = local["pyinstaller"]
@@ -659,7 +664,7 @@ def activate_venv():
     """
     Activate the virtual environment using Plumbum
     """
-    venv_path = ROOT_DIR / "venv"
+    venv_path = VENV_DIR
     activate_script = venv_path / "Scripts" / "activate.bat"
     if not activate_script.exists():
         print("Virtual environment not found. Creating...")
@@ -716,8 +721,8 @@ def build_pyinstaller_command(target_file, name, windowed=True):
     cmd = cmd["--add-data", f"{SRC_DIR / 'assets' / 'SCLogAnalyzer.ico'};assets"]
     
     # Add binaries
-    cmd = cmd["--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};."]
-    cmd = cmd["--add-binary", f"{ROOT_DIR / 'venv' / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};."]
+    cmd = cmd["--add-binary", f"{VENV_DIR / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};."]
+    cmd = cmd["--add-binary", f"{VENV_DIR / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};."]
     
     # Add icon and name
     cmd = cmd["--icon", "src/assets/SCLogAnalyzer.ico"]
@@ -765,7 +770,7 @@ def build_nuitka_command(target_file, windowed=True):
     cmd = cmd[f"--include-data-files={CONFIG_TEMPLATE}=config.json.template"]
     
     # Add pyzbar data directory (using = syntax)
-    pyzbar_path = ROOT_DIR / "venv" / "Lib" / "site-packages" / "pyzbar"
+    pyzbar_path = VENV_DIR / "Lib" / "site-packages" / "pyzbar"
     cmd = cmd[f"--include-data-dir={pyzbar_path}=pyzbar"]
     
     # Add icon and output settings (using = syntax)
@@ -817,8 +822,6 @@ def build_nuitka_executable(windowed=True, dry_run=False):
         return False
 
 
-
-
 def main():
     """
     Main function to run the build process using Plumbum
@@ -839,8 +842,15 @@ def main():
     parser.add_argument('--console', '-c', action='store_true', help='Build executable in console mode')
     parser.add_argument('--dry-run', '-d', action='store_true', 
                        help='Show commands that would be executed without running them')
+    parser.add_argument('--venv-dir', default=DEFAULT_VENV_NAME,
+                        help='Relative path/name of the virtual environment directory (default: .venv)')
     args = parser.parse_args()
     
+    global VENV_DIR
+
+    # Apply CLI venv selection
+    VENV_DIR = ROOT_DIR / args.venv_dir
+
     # Add dry-run info
     if args.dry_run:
         print("[DRY-RUN MODE] Showing commands that would be executed")
