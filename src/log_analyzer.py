@@ -97,8 +97,8 @@ class LogFileHandler(FileSystemEventHandler):
         
         # Initialize rate limiter
         self.rate_limiter = MessageRateLimiter(
-            timeout=self.rate_limit_timeout or 300,
-            max_duplicates=self.rate_limit_max_duplicates or 1
+            timeout=int(self.rate_limit_timeout or 300),
+            max_duplicates=int(self.rate_limit_max_duplicates or 1)
         )
         
         # Initialize core attributes from config
