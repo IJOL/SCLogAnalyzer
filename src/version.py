@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 12
-RELEASE = 1
+RELEASE = 2
 MATURITY = "valakkar"  # "alpha", "beta", or "final"
-PATCH = "f9b37e4"
+PATCH = "445801b"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,7 +17,13 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.12.x series,
+    "445801b: refactor: Update UltimateListCtrlAdapter to use native insert fix\n\n- Removed workaround for inserting items at position 0, now utilizing the native fix in UltimateListCtrl for improved performance.\n- Added a flag to control the workaround behavior for future testing.",
+
+    # Version v0.12.1-f9b37e4-valakkar-docker,
+    "0a3fb7e: [chore] Increment version to v0.12.1-f9b37e4-valakkar",
     "f9b37e4: fix: Remove unused remote log handling from ConnectedUsersPanel\n\n- Eliminated the add_remote_log method and its associated UI update logic, streamlining the ConnectedUsersPanel class.",
+
+    # Version v0.12.0-b53e6b7-valakkar-docker,
     "2710d72: [chore] Increment version to v0.12.0-b53e6b7-valakkar",
     "b53e6b7: fix: Update SharedLogsWidget to align with ConnectedUsersPanel structure\n\n- Removed specific column insertions from ConnectedUsersPanel\n- Adjusted column initialization in SharedLogsWidget to include 'Hora local' and 'Tipo'\n- Updated log entry handling to reflect new column indices",
     "fd50561: chore: Update .gitignore to include build-venv directory\n\n- Added build-venv to .gitignore to prevent virtual environment files from being tracked",
