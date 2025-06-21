@@ -662,8 +662,10 @@ def create_and_push_tag(version, is_test=False, push=False, dry_run=False):
 
 def activate_venv():
     """
-    Activate the virtual environment using Plumbum
+    Activate the virtual environment using Plumbum and update command references
     """
+    global pip, pyinstaller, python
+    
     venv_path = VENV_DIR
     activate_script = venv_path / "Scripts" / "activate.bat"
     if not activate_script.exists():
@@ -679,6 +681,23 @@ def activate_venv():
     os.environ['VIRTUAL_ENV'] = str(venv_path)
     os.environ['PATH'] = f"{venv_path / 'Scripts'}{os.pathsep}{os.environ['PATH']}"
     
+    # Update Plumbum command references to use venv executables
+    venv_python = venv_path / "Scripts" / "python.exe"
+    venv_pip = venv_path / "Scripts" / "pip.exe"
+    venv_pyinstaller = venv_path / "Scripts" / "pyinstaller.exe"
+    
+    if venv_python.exists():
+        python = local[str(venv_python)]
+        pip = local[str(venv_python)]["-m", "pip"]
+        print(f"Using venv python: {venv_python}")
+    
+    if venv_pyinstaller.exists():
+        pyinstaller = local[str(venv_pyinstaller)]
+        print(f"Using venv pyinstaller: {venv_pyinstaller}")
+    else:
+        # PyInstaller might not be installed yet, use pip to install it first
+        print(f"PyInstaller not found in {venv_pyinstaller}, will be installed with requirements")
+    
     return True
 
 
@@ -686,6 +705,8 @@ def install_requirements(dry_run=False):
     """
     Install Python requirements from requirements.txt using Plumbum
     """
+    global pyinstaller
+    
     requirements_file = ROOT_DIR / "requirements.txt"
     if requirements_file.exists():
         try:
@@ -693,12 +714,72 @@ def install_requirements(dry_run=False):
             run_command(pip["install", "-r", str(requirements_file)], 
                        dry_run=dry_run, description="Install Python requirements", stream_output=True)
             print("Requirements installed successfully")
+            
+            # Update PyInstaller reference after installation
+            venv_pyinstaller = VENV_DIR / "Scripts" / "pyinstaller.exe"
+            if not dry_run and venv_pyinstaller.exists():
+                pyinstaller = local[str(venv_pyinstaller)]
+                print(f"Updated to use venv pyinstaller: {venv_pyinstaller}")
+            elif dry_run:
+                # In dry-run, also update the reference for correct command display
+                pyinstaller = local[str(venv_pyinstaller)]
+                print(f"[DRY-RUN] Would update to use venv pyinstaller: {venv_pyinstaller}")
+            
             return True
         except ProcessExecutionError as e:
             print(f"Error installing requirements: {e}")
             return False
     else:
         print("Requirements file not found")
+        return False
+
+
+def apply_ultimatelistctrl_patch(dry_run=False):
+    """
+    Apply custom UltimateListCtrl patch for selection colors support
+    Downloads and replaces the file from our custom fork
+    """
+    import urllib.request
+    import urllib.error
+    
+    custom_file_url = "https://raw.githubusercontent.com/IJOL/Phoenix/custom-selection-renderer/wx/lib/agw/ultimatelistctrl.py"
+    target_path = VENV_DIR / "Lib" / "site-packages" / "wx" / "lib" / "agw" / "ultimatelistctrl.py"
+    backup_path = target_path.with_suffix(".py.original")
+    
+    if dry_run:
+        print(f"[DRY-RUN] Apply UltimateListCtrl patch")
+        print(f"[DRY-RUN] Download: {custom_file_url}")
+        print(f"[DRY-RUN] Backup: {target_path} -> {backup_path}")
+        print(f"[DRY-RUN] Replace: {target_path}")
+        return True
+    
+    try:
+        if not target_path.exists():
+            print(f"Warning: Target file not found: {target_path}")
+            return False
+        
+        # Create backup of original file
+        print(f"Creating backup: {backup_path}")
+        shutil.copy2(target_path, backup_path)
+        
+        # Download and replace with our custom version
+        print(f"Downloading custom UltimateListCtrl from fork...")
+        print(f"URL: {custom_file_url}")
+        
+        with urllib.request.urlopen(custom_file_url) as response:
+            content = response.read()
+        
+        with open(target_path, 'wb') as f:
+            f.write(content)
+        
+        print("Applied custom UltimateListCtrl with selection colors support")
+        return True
+        
+    except urllib.error.URLError as e:
+        print(f"Error downloading patch: {e}")
+        return False
+    except Exception as e:
+        print(f"Error applying patch: {e}")
         return False
 
 
@@ -1032,6 +1113,10 @@ def main():
         if not args.skip_requirements:
             if not install_requirements(dry_run=args.dry_run):
                 print("Warning: Failed to install requirements")
+            
+            # Apply UltimateListCtrl patch for enhanced selection colors
+            if not apply_ultimatelistctrl_patch(dry_run=args.dry_run):
+                print("Warning: Failed to apply UltimateListCtrl patch")
         
         # Build executables
         if not build_executables(windowed=not args.console, dry_run=args.dry_run):
@@ -1052,6 +1137,10 @@ def main():
         if not args.skip_requirements:
             if not install_requirements(dry_run=args.dry_run):
                 print("Warning: Failed to install requirements")
+            
+            # Apply UltimateListCtrl patch for enhanced selection colors
+            if not apply_ultimatelistctrl_patch(dry_run=args.dry_run):
+                print("Warning: Failed to apply UltimateListCtrl patch")
         
         # Build with Nuitka
         if not build_nuitka_executable(windowed=not args.console, dry_run=args.dry_run):
