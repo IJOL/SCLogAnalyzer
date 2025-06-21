@@ -135,9 +135,6 @@ class ConnectedUsersPanel(wx.Panel):
         # Lista de logs compartidos usando SharedLogsWidget
         from .shared_logs_widget import SharedLogsWidget
         self.shared_logs = SharedLogsWidget(self, max_logs=500)
-        # Añadir columnas adicionales específicas de ConnectedUsersPanel
-        self.shared_logs.InsertColumn(1, "Hora local", width=120)  # Insertar después de "Hora"
-        self.shared_logs.InsertColumn(4, "Tipo", width=100)  # Insertar después de "Contenido"
         main_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
         
         # Botones de control

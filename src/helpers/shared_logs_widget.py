@@ -18,12 +18,14 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         self._subscribe_to_events()
     
     def _init_columns(self):
-        """Inicializa las columnas de la lista"""
-        self.InsertColumn(0, "Hora", width=80)
-        self.InsertColumn(1, "Usuario", width=100)
-        self.InsertColumn(2, "Contenido", width=250)
-        self.InsertColumn(3, "Shard", width=80)
-        self.InsertColumn(4, "Modo", width=80)
+        """Inicializa las columnas de la lista (EXACTAMENTE igual que ConnectedUsersPanel original)"""
+        self.InsertColumn(0, "Hora", width=100)
+        self.InsertColumn(1, "Hora local", width=120)
+        self.InsertColumn(2, "Usuario", width=100)
+        self.InsertColumn(3, "Tipo", width=100)
+        self.InsertColumn(4, "Contenido", width=300)
+        self.InsertColumn(5, "Shard", width=100)
+        self.InsertColumn(6, "Modo", width=100)
         
         # Menú contexto
         self.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
@@ -72,12 +74,14 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         self._add_log_entry_to_ui(log_entry, 0)  # Insertar al principio
     
     def _add_log_entry_to_ui(self, log_entry, position):
-        """Añade un log entry a la UI (copiado de ConnectedUsersPanel)"""
+        """Añade un log entry a la UI (EXACTAMENTE igual que ConnectedUsersPanel original)"""
         index = self.InsertItem(position, log_entry['timestamp_str'])
-        self.SetItem(index, 1, str(log_entry.get('username', 'Unknown')))
-        self.SetItem(index, 2, str(log_entry.get('content', '')))
-        self.SetItem(index, 3, str(log_entry.get('shard', 'Unknown')))
-        self.SetItem(index, 4, str(log_entry.get('mode', 'Unknown')))
+        self.SetItem(index, 1, str(log_entry.get('hora_local_str', 'Desconocido')))
+        self.SetItem(index, 2, str(log_entry.get('username', 'Unknown')))
+        self.SetItem(index, 3, str(log_entry.get('log_type', 'Unknown')))
+        self.SetItem(index, 4, str(log_entry.get('content', '')))
+        self.SetItem(index, 5, str(log_entry.get('shard', 'Unknown')))
+        self.SetItem(index, 6, str(log_entry.get('mode', 'Unknown')))
         
         # Añadir a lista interna
         self.log_entries.insert(0, log_entry)
@@ -102,8 +106,8 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
             menu.Destroy()
             return
 
-        # Obtener contenido del ítem clickeado (columna "Contenido" es la #2, índice 2)
-        actual_content_to_filter = self.GetItemText(clicked_idx, 2)  # Columna "Contenido"
+        # Obtener contenido del ítem clickeado (columna "Contenido" es la #4, índice 4)
+        actual_content_to_filter = self.GetItemText(clicked_idx, 4)  # Columna "Contenido"
         clicked_content_display = (actual_content_to_filter[:50] + '...') if len(actual_content_to_filter) > 50 else actual_content_to_filter
 
         active_exclusions = []
@@ -192,8 +196,8 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
 
     def _on_get_profile(self, event, idx):
         """Solicita perfil del jugador (implementación real de ConnectedUsersPanel)"""
-        log_content = self.GetItemText(idx, 2)  # Columna "Contenido"
-        log_sender = self.GetItemText(idx, 1)   # Columna "Usuario"
+        log_content = self.GetItemText(idx, 4)  # Columna "Contenido" (índice 4)
+        log_sender = self.GetItemText(idx, 2)   # Columna "Usuario" (índice 2)
 
         # Implementación exacta del código real
         all_potential_players = re.findall(r'\b[A-Za-z0-9_-]{4,}\b', log_content)
