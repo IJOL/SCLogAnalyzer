@@ -34,7 +34,6 @@ class ConnectedUsersPanel(wx.Panel):
         
         # Suscribirse a eventos relevantes del MessageBus
         message_bus.on("users_online_updated", self.update_users_list)
-        message_bus.on("remote_realtime_event", self.add_remote_log)
         message_bus.on("shard_version_update", self.on_shard_version_update)
         message_bus.on("broadcast_ping_missing", lambda *a, **k: wx.CallAfter(self._on_broadcast_ping_missing))
         
@@ -319,39 +318,7 @@ class ConnectedUsersPanel(wx.Panel):
                 current_shard=self.current_shard
             )
         
-    def add_remote_log(self, username, log_data):
-        """Agrega un log remoto a la lista de logs compartidos"""
-        wx.CallAfter(self._add_ui_remote_log, username, log_data)
-        
-    def _add_ui_remote_log(self, username, log_data):
-        """Actualiza la UI con un nuevo log remoto"""
-        # Convertir formato específico de ConnectedUsersPanel al formato estándar
-        raw_data = log_data.get('raw_data', {})
-        
-        # Crear log_entry en formato estándar de SharedLogsWidget
-        log_entry = {
-            'username': username,
-            'content': log_data.get('content', ''),
-            'timestamp_str': raw_data.get('datetime', ''),
-            'timestamp': log_data.get('timestamp', ''),
-            'shard': raw_data.get('shard', 'Unknown'),
-            'mode': raw_data.get('mode', 'Unknown'),
-            'type': log_data.get('type', ''),
-            'raw_data': raw_data
-        }
-        
-        # Los filtros se aplican globalmente en RealtimeBridge
-        # → Todos los eventos que llegan aquí ya pasaron los filtros
-        
-        # Añadir log al widget usando su método interno
-        self.shared_logs._add_log_entry(log_entry)
-        
-        # Actualizar columnas adicionales específicas de ConnectedUsersPanel
-        index = 0  # Último ítem añadido
-        hora_local = raw_data.get('datetime', 'Desconocido')
-        log_type = log_data.get('type', 'Unknown')
-        self.shared_logs.SetItem(index, 1, str(hora_local))  # Hora local
-        self.shared_logs.SetItem(index, 4, str(log_type))    # Tipo
+
     
 
         
