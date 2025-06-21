@@ -249,6 +249,7 @@ class LogAnalyzerFrame(wx.Frame):
         # Add the log text area with fixed-width font and rich text support
         # Crear splitter para dividir la página
         from .shared_logs_widget import SharedLogsWidget
+        from .stalled_widget import StalledWidget
 
         log_splitter = wx.SplitterWindow(self.log_page, style=wx.SP_3D | wx.SP_LIVE_UPDATE)
 
@@ -264,11 +265,30 @@ class LogAnalyzerFrame(wx.Frame):
         self.log_text.SetForegroundColour(wx.Colour(0, 255, 0))  # Green text
         self.log_text.SetBackgroundColour(wx.Colour(0, 0, 0))  # Black background
 
-        # Widget de logs compartidos directamente en el splitter
-        self.shared_logs_widget = SharedLogsWidget(log_splitter, max_logs=500)
+        # Panel inferior para split horizontal
+        bottom_panel = wx.Panel(log_splitter)
+        bottom_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # Splitter horizontal para la zona inferior
+        bottom_splitter = wx.SplitterWindow(bottom_panel, style=wx.SP_3D | wx.SP_LIVE_UPDATE)
+        
+        # Widget Stalled (izquierda)
+        self.stalled_widget = StalledWidget(bottom_splitter)
+        
+        # Widget de logs compartidos (derecha)
+        self.shared_logs_widget = SharedLogsWidget(bottom_splitter, max_logs=500)
+        
+        # Configurar splitter horizontal
+        bottom_splitter.SplitVertically(self.stalled_widget, self.shared_logs_widget)
+        bottom_splitter.SetSashPosition(310)  # 310px para stalled widget
+        bottom_splitter.SetMinimumPaneSize(150)
+        
+        # Añadir splitter horizontal al panel inferior
+        bottom_sizer.Add(bottom_splitter, 1, wx.EXPAND)
+        bottom_panel.SetSizer(bottom_sizer)
 
-        # Configurar splitter con log_text arriba y shared_logs_widget abajo
-        log_splitter.SplitHorizontally(self.log_text, self.shared_logs_widget)
+        # Configurar splitter principal con log_text arriba y panel inferior abajo
+        log_splitter.SplitHorizontally(self.log_text, bottom_panel)
         
         # Calcular posición para 80% log_text, 20% shared_widget
         # Usar CallAfter para asegurar que el tamaño esté disponible
