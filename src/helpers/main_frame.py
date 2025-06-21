@@ -247,8 +247,14 @@ class LogAnalyzerFrame(wx.Frame):
         if self.debug_mode:
             log_page_sizer.Add(self.debug_button_sizer, 0, wx.EXPAND | wx.ALL, 2)
         # Add the log text area with fixed-width font and rich text support
+        # Crear splitter para dividir la página
+        from .shared_logs_widget import SharedLogsWidget
+
+        log_splitter = wx.SplitterWindow(self.log_page, style=wx.SP_3D | wx.SP_LIVE_UPDATE)
+
+        # Crear log_text directamente con el splitter como padre
         self.log_text = wx.TextCtrl(
-            self.log_page,
+            log_splitter,
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL | wx.TE_RICH2
         )
         fixed_font = wx.Font(
@@ -257,7 +263,22 @@ class LogAnalyzerFrame(wx.Frame):
         self.log_text.SetFont(fixed_font)
         self.log_text.SetForegroundColour(wx.Colour(0, 255, 0))  # Green text
         self.log_text.SetBackgroundColour(wx.Colour(0, 0, 0))  # Black background
-        log_page_sizer.Add(self.log_text, 1, wx.EXPAND | wx.ALL, 2)
+
+        # Widget de logs compartidos directamente en el splitter
+        self.shared_logs_widget = SharedLogsWidget(log_splitter, max_logs=500)
+
+        # Configurar splitter con log_text arriba y shared_logs_widget abajo
+        log_splitter.SplitHorizontally(self.log_text, self.shared_logs_widget)
+        
+        # Calcular posición para 80% log_text, 20% shared_widget
+        # Usar CallAfter para asegurar que el tamaño esté disponible
+        wx.CallAfter(self._set_initial_splitter_position, log_splitter)
+        
+        log_splitter.SetSashGravity(0.8)  # Al redimensionar: 80% para log_text, 20% para shared_widget
+        log_splitter.SetMinimumPaneSize(50)
+
+        # Añadir splitter al layout
+        log_page_sizer.Add(log_splitter, 1, wx.EXPAND | wx.ALL, 2)
 
         # Set the sizer for the log page
         self.log_page.SetSizer(log_page_sizer)
@@ -309,6 +330,13 @@ class LogAnalyzerFrame(wx.Frame):
             button.SetMinSize(min_size)
         sizer.Add(button, 0, wx.ALL, 1)
         return button
+    
+    def _set_initial_splitter_position(self, splitter):
+        """Establece la posición inicial del splitter para 80% log_text, 20% shared_widget"""
+        total_height = splitter.GetSize().height
+        if total_height > 100:  # Solo si el splitter ya tiene tamaño
+            position = int(total_height * 0.8)  # 80% para log_text
+            splitter.SetSashPosition(position)
     
     def __getattr__(self, name):
         """

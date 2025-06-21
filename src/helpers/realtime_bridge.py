@@ -92,6 +92,14 @@ class RealtimeBridge:
         self.filter_broadcast_usernames = set()  # Controlado por la UI, usado solo aquí
         self.excluded_remote_content = set() # Para filtro de contenido
         
+        # Filtros globales modo/shard (movidos desde ConnectedUsersPanel)
+        self.filter_by_current_mode = False
+        self.filter_by_current_shard = False
+        self.include_unknown_mode = True
+        self.include_unknown_shard = True
+        self.current_mode = "Unknown"
+        self.current_shard = "Unknown"
+        
         
         # Nuevo: Lock de reconexión y estado
         self._reconnect_lock = threading.Lock()
@@ -531,6 +539,10 @@ class RealtimeBridge:
             username = broadcast_data.get('username','Unknown')
             event_data = broadcast_data.get('event_data', payload)
 
+            # --- FILTROS GLOBALES MODO/SHARD ---
+            if not self._passes_global_filters(event_data):
+                return  # SUPRIMIR el mensaje
+
             # --- FILTRO DE CONTENIDO EXCLUIDO ---
             event_content = event_data.get('content') # O event_data['metadata'].get('content') según estructura
             if event_content and event_content in self.excluded_remote_content:
@@ -794,3 +806,34 @@ class RealtimeBridge:
 
     def get_active_content_exclusions(self):
         return sorted(list(self.excluded_remote_content))
+    
+    def update_mode_shard_filters(self, **kwargs):
+        """Actualiza filtros globales de modo/shard con kwargs elegantes"""
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        
+    def _passes_global_filters(self, event_data):
+        """Filtros globales de modo/shard (movidos desde ConnectedUsersPanel)"""
+        raw_data = event_data.get('raw_data', {})
+        unknown_values = [None, "", "Unknown"]
+        
+        # Filtro de modo
+        if self.filter_by_current_mode:
+            mode_value = raw_data.get('mode')
+            if mode_value in unknown_values:
+                if not self.include_unknown_mode:
+                    return False
+            elif mode_value != self.current_mode:
+                return False
+        
+        # Filtro de shard
+        if self.filter_by_current_shard:
+            shard_value = raw_data.get('shard')
+            if shard_value in unknown_values:
+                if not self.include_unknown_shard:
+                    return False
+            elif shard_value != self.current_shard:
+                return False
+        
+        return True

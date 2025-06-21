@@ -22,13 +22,9 @@ class ConnectedUsersPanel(wx.Panel):
         self.parent = parent
         self.config_manager = get_config_manager()
         
-        # Variables para almacenar los valores actuales
+        # Variables para almacenar los valores actuales (solo para UI)
         self.current_mode = "Unknown"
         self.current_shard = "Unknown"
-        self.filter_by_current_mode = False
-        self.filter_by_current_shard = False
-        self.include_unknown_mode = True
-        self.include_unknown_shard = True
         
         # Estado de los filtros de usuario (checkboxes)
         self.user_filter_states = {}  # username -> bool
@@ -81,11 +77,15 @@ class ConnectedUsersPanel(wx.Panel):
         # Panel de filtros clásico: debajo de 'Logs compartidos', alineado y escalonado como antes
         filter_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        # Filtros de modo (columna izquierda)
+        # Filtros de modo (columna izquierda) - obtener valores del RealtimeBridge
+        bridge = RealtimeBridge.get_instance()
+        filter_mode_value = bridge.filter_by_current_mode if bridge else False
+        include_unknown_mode_value = bridge.include_unknown_mode if bridge else True
+        
         mode_filter_sizer = wx.BoxSizer(wx.VERTICAL)
         mode_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.mode_filter_checkbox = wx.CheckBox(self, label="Filtrar por modo actual:")
-        self.mode_filter_checkbox.SetValue(self.filter_by_current_mode)
+        self.mode_filter_checkbox.SetValue(filter_mode_value)
         self.mode_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_mode_filter_changed)
         mode_row_sizer.Add(self.mode_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         self.mode_label = wx.StaticText(self, label=f"({self.current_mode})")
@@ -93,17 +93,20 @@ class ConnectedUsersPanel(wx.Panel):
         mode_filter_sizer.Add(mode_row_sizer, 0, wx.BOTTOM, 2)
         mode_unknown_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.include_unknown_mode_checkbox = wx.CheckBox(self, label="Incluir desconocidos")
-        self.include_unknown_mode_checkbox.SetValue(self.include_unknown_mode)
+        self.include_unknown_mode_checkbox.SetValue(include_unknown_mode_value)
         self.include_unknown_mode_checkbox.Bind(wx.EVT_CHECKBOX, self.on_include_unknown_mode_changed)
         mode_unknown_sizer.Add(self.include_unknown_mode_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
         mode_filter_sizer.Add(mode_unknown_sizer, 0, 0)
         filter_sizer.Add(mode_filter_sizer, 0, wx.RIGHT, 15)
 
-        # Filtros de shard (columna central)
+        # Filtros de shard (columna central) - obtener valores del RealtimeBridge
+        filter_shard_value = bridge.filter_by_current_shard if bridge else False
+        include_unknown_shard_value = bridge.include_unknown_shard if bridge else True
+        
         shard_filter_sizer = wx.BoxSizer(wx.VERTICAL)
         shard_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.shard_filter_checkbox = wx.CheckBox(self, label="Filtrar por shard actual:")
-        self.shard_filter_checkbox.SetValue(self.filter_by_current_shard)
+        self.shard_filter_checkbox.SetValue(filter_shard_value)
         self.shard_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_shard_filter_changed)
         shard_row_sizer.Add(self.shard_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         self.shard_label = wx.StaticText(self, label=f"({self.current_shard})")
@@ -111,7 +114,7 @@ class ConnectedUsersPanel(wx.Panel):
         shard_filter_sizer.Add(shard_row_sizer, 0, wx.BOTTOM, 2)
         shard_unknown_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.include_unknown_shard_checkbox = wx.CheckBox(self, label="Incluir desconocidos")
-        self.include_unknown_shard_checkbox.SetValue(self.include_unknown_shard)
+        self.include_unknown_shard_checkbox.SetValue(include_unknown_shard_value)
         self.include_unknown_shard_checkbox.Bind(wx.EVT_CHECKBOX, self.on_include_unknown_shard_changed)
         shard_unknown_sizer.Add(self.include_unknown_shard_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
         shard_filter_sizer.Add(shard_unknown_sizer, 0, 0)
@@ -129,16 +132,12 @@ class ConnectedUsersPanel(wx.Panel):
 
         main_sizer.Add(filter_sizer, 0, wx.ALL, 5)
 
-        # Lista de logs compartidos
-        self.shared_logs = UltimateListCtrlAdapter(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
-        self.shared_logs.InsertColumn(0, "Hora", width=100)
-        self.shared_logs.InsertColumn(1, "Hora local", width=120)
-        self.shared_logs.InsertColumn(2, "Usuario", width=100)
-        self.shared_logs.InsertColumn(3, "Tipo", width=100)
-        self.shared_logs.InsertColumn(4, "Contenido", width=300)
-        self.shared_logs.InsertColumn(5, "Shard", width=100)
-        self.shared_logs.InsertColumn(6, "Modo", width=100)
-        self.shared_logs.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.on_log_item_right_click) # Bind right click
+        # Lista de logs compartidos usando SharedLogsWidget
+        from .shared_logs_widget import SharedLogsWidget
+        self.shared_logs = SharedLogsWidget(self, max_logs=500)
+        # Añadir columnas adicionales específicas de ConnectedUsersPanel
+        self.shared_logs.InsertColumn(1, "Hora local", width=120)  # Insertar después de "Hora"
+        self.shared_logs.InsertColumn(4, "Tipo", width=100)  # Insertar después de "Contenido"
         main_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
         
         # Botones de control
@@ -275,23 +274,36 @@ class ConnectedUsersPanel(wx.Panel):
         # Actualizar username si es válido
         if username and username != "Unknown":
             self._my_username = username
-        # Actualizar etiquetas
+        # Actualizar etiquetas y filtros globales
         wx.CallAfter(self._update_filter_labels)
+        wx.CallAfter(self._update_global_filters)
     
     def on_mode_filter_changed(self, event):
-        self.filter_by_current_mode = self.mode_filter_checkbox.GetValue()
+        from .realtime_bridge import RealtimeBridge
+        bridge = RealtimeBridge.get_instance()
+        if bridge:
+            bridge.update_mode_shard_filters(filter_by_current_mode=self.mode_filter_checkbox.GetValue())
         self._update_filter_labels()
         
     def on_include_unknown_mode_changed(self, event):
-        self.include_unknown_mode = self.include_unknown_mode_checkbox.GetValue()
+        from .realtime_bridge import RealtimeBridge
+        bridge = RealtimeBridge.get_instance()
+        if bridge:
+            bridge.update_mode_shard_filters(include_unknown_mode=self.include_unknown_mode_checkbox.GetValue())
         self._update_filter_labels()
         
     def on_shard_filter_changed(self, event):
-        self.filter_by_current_shard = self.shard_filter_checkbox.GetValue()
+        from .realtime_bridge import RealtimeBridge
+        bridge = RealtimeBridge.get_instance()
+        if bridge:
+            bridge.update_mode_shard_filters(filter_by_current_shard=self.shard_filter_checkbox.GetValue())
         self._update_filter_labels()
         
     def on_include_unknown_shard_changed(self, event):
-        self.include_unknown_shard = self.include_unknown_shard_checkbox.GetValue()
+        from .realtime_bridge import RealtimeBridge
+        bridge = RealtimeBridge.get_instance()
+        if bridge:
+            bridge.update_mode_shard_filters(include_unknown_shard=self.include_unknown_shard_checkbox.GetValue())
         self._update_filter_labels()
         
     def _update_filter_labels(self):
@@ -299,6 +311,16 @@ class ConnectedUsersPanel(wx.Panel):
         self.mode_label.SetLabel(f"({self.current_mode})")
         self.shard_label.SetLabel(f"({self.current_shard})")
         self.Layout()  # Forzar actualización del layout
+    
+    def _update_global_filters(self):
+        """Actualiza los filtros globales en RealtimeBridge"""
+        from .realtime_bridge import RealtimeBridge
+        bridge = RealtimeBridge.get_instance()
+        if bridge:
+            bridge.update_mode_shard_filters(
+                current_mode=self.current_mode,
+                current_shard=self.current_shard
+            )
         
     def add_remote_log(self, username, log_data):
         """Agrega un log remoto a la lista de logs compartidos"""
@@ -306,79 +328,35 @@ class ConnectedUsersPanel(wx.Panel):
         
     def _add_ui_remote_log(self, username, log_data):
         """Actualiza la UI con un nuevo log remoto"""
-        # Obtener datos del log
+        # Convertir formato específico de ConnectedUsersPanel al formato estándar
         raw_data = log_data.get('raw_data', {})
-        timestamp = datetime.now()
-        if 'metadata' in log_data:
-            content = log_data['metadata'].get('content', '')
-            shard = log_data['metadata'].get('shard', 'Unknown')
-            log_type = log_data['metadata'].get('type', 'Unknown')
-        else:
-            content = log_data.get('content', '')
-            log_type = log_data.get('type', 'Unknown')
-            shard = raw_data.get('shard', 'Unknown')
         
-        # Extraer modo del raw_data si está disponible
-        mode = raw_data.get('mode', 'Unknown')
-        
-        # Extraer hora local del campo datetime del payload si está disponible
-        hora_local = raw_data.get('datetime', 'Desconocido')
-        hora_local_str = str(hora_local) if hora_local else 'Desconocido'
-        # Crear entrada de log temporal (sin almacenarla)
+        # Crear log_entry en formato estándar de SharedLogsWidget
         log_entry = {
-            'timestamp_str': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'hora_local_str': hora_local_str,
             'username': username,
-            'log_type': log_type,
-            'content': content,
-            'shard': shard,
-            'mode': mode
+            'content': log_data.get('content', ''),
+            'timestamp_str': raw_data.get('datetime', ''),
+            'timestamp': log_data.get('timestamp', ''),
+            'shard': raw_data.get('shard', 'Unknown'),
+            'mode': raw_data.get('mode', 'Unknown'),
+            'type': log_data.get('type', ''),
+            'raw_data': raw_data
         }
         
-        # Mostrar la entrada solo si pasa los filtros actuales
-        if self._passes_current_filters(log_entry):
-            self._add_log_entry_to_ui(log_entry, 0)  # Insertar al principio
+        # Los filtros se aplican globalmente en RealtimeBridge
+        # → Todos los eventos que llegan aquí ya pasaron los filtros
+        
+        # Añadir log al widget usando su método interno
+        self.shared_logs._add_log_entry(log_entry)
+        
+        # Actualizar columnas adicionales específicas de ConnectedUsersPanel
+        index = 0  # Último ítem añadido
+        hora_local = raw_data.get('datetime', 'Desconocido')
+        log_type = log_data.get('type', 'Unknown')
+        self.shared_logs.SetItem(index, 1, str(hora_local))  # Hora local
+        self.shared_logs.SetItem(index, 4, str(log_type))    # Tipo
     
-    def _add_log_entry_to_ui(self, log_entry, position):
-        index = self.shared_logs.InsertItem(position, log_entry['timestamp_str'])
-        self.shared_logs.SetItem(index, 1, str(log_entry['hora_local_str'] or 'Desconocido'))
-        self.shared_logs.SetItem(index, 2, str(log_entry['username'] or 'Unknown'))
-        self.shared_logs.SetItem(index, 3, str(log_entry['log_type'] or 'Unknown'))
-        self.shared_logs.SetItem(index, 4, str(log_entry['content'] or ''))
-        self.shared_logs.SetItem(index, 5, str(log_entry['shard'] or 'Unknown'))
-        self.shared_logs.SetItem(index, 6, str(log_entry['mode'] or 'Unknown'))
 
-    def _passes_current_filters(self, log_entry):
-        """Verifica si una entrada de log pasa los filtros actuales"""
-        # Lista de valores considerados como "desconocidos"
-        unknown_values = [None, "", "Unknown"]
-        
-        # Verificar filtro de modo
-        if self.filter_by_current_mode:
-            mode_value = log_entry.get('mode')
-            # Verificar si el modo es desconocido
-            if mode_value in unknown_values:
-                # Si el modo es desconocido y no estamos incluyendo desconocidos, rechazar
-                if not self.include_unknown_mode:
-                    return False
-            # Si el modo no es desconocido y es diferente al actual, rechazar
-            elif mode_value != self.current_mode:
-                return False
-        
-        # Verificar filtro de shard
-        if self.filter_by_current_shard:
-            shard_value = log_entry.get('shard')
-            # Verificar si el shard es desconocido
-            if shard_value in unknown_values:
-                # Si el shard es desconocido y no estamos incluyendo desconocidos, rechazar
-                if not self.include_unknown_shard:
-                    return False
-            # Si el shard no es desconocido y es diferente al actual, rechazar
-            elif shard_value != self.current_shard:
-                return False
-        
-        # Si pasa ambos filtros
-        return True
         
     def on_refresh(self, event):
         """Maneja el evento de clic en el botón refrescar"""
@@ -404,130 +382,15 @@ class ConnectedUsersPanel(wx.Panel):
         
     def on_clear_logs(self, event):
         """Maneja el evento de clic en el botón limpiar logs"""
-        self.shared_logs.DeleteAllItems()
+        self.shared_logs.clear_logs()  # Usar método del widget
+        # Mantener solo la lógica específica de ConnectedUsersPanel
         bridge_instance = RealtimeBridge.get_instance()
         if bridge_instance:
             bridge_instance.update_content_exclusions(clear_all=True)
 
-    def on_get_profile(self, event, idx):
-        log_content = self.shared_logs.GetItemText(idx, 4)
-        log_sender = self.shared_logs.GetItemText(idx, 2)
 
-        # Se corrige el error re.PatternError simplificando la lógica.
-        # Primero, se encuentran todos los nombres potenciales.
-        all_potential_players = re.findall(r'\b[A-Za-z0-9_-]{4,}\b', log_content)
-        # Luego, se excluye 'stalled' de la lista.
-        potential_players = [p for p in all_potential_players if p.lower() != 'stalled']
-        
-        target_player = next((p for p in potential_players if p.lower() != log_sender.lower()), None)
 
-        if target_player:
-            event_data = {
-                'player_name': target_player,
-                'action': 'get',
-                'timestamp': datetime.now().isoformat(),
-                'source': 'connected_users_panel_context_menu'
-            }
-            message_bus.emit(
-                "request_profile",
-                event_data,
-                "manual_request"
-            )
-        else:
-            # Usar el sistema de logs para mostrar una advertencia
-            message_bus.publish(
-                content="No other player name found in log content to request a profile.",
-                level=MessageLevel.WARNING
-            )
 
-    def on_log_item_right_click(self, event):
-        menu = wx.Menu()
-        bridge_instance = RealtimeBridge.get_instance()
-
-        clicked_idx = event.GetIndex()
-        if clicked_idx == -1:
-            # Click was not on an item
-            menu.Destroy()
-            return
-
-        # Get the actual content from the 'Contenido' column (index 4)
-        actual_content_to_filter = self.shared_logs.GetItemText(clicked_idx, 4)
-        # Display a shortened version in the menu
-        clicked_content_display = (actual_content_to_filter[:50] + '...') if len(actual_content_to_filter) > 50 else actual_content_to_filter
-
-        active_exclusions = []
-        if bridge_instance:
-            active_exclusions = bridge_instance.get_active_content_exclusions()
-        else:
-            # Si el bridge no está disponible, mostrar un menú simple con error y salir.
-            menu_error = wx.Menu()
-            menu_error.Append(wx.ID_ANY, "Error: Servicio de filtros no disponible").Enable(False)
-            self.shared_logs.PopupMenu(menu_error, event.GetPoint())
-            menu_error.Destroy()
-            menu.Destroy() # Destruir el menú principal también
-            return
-        
-        # Opción "Filtrar: [contenido del ítem clickeado]" - siempre presente
-        filter_item = menu.Append(wx.ID_ANY, f"Filtrar: {clicked_content_display}")
-        if actual_content_to_filter in active_exclusions:
-            filter_item.Enable(False)
-        else:
-            self.Bind(wx.EVT_MENU, lambda evt, c=actual_content_to_filter: self.on_toggle_filter_state(c, add=True), filter_item)
-
-        # Listar TODOS los filtros activos para permitir quitarlos (incluye el del ítem clickeado si está filtrado)
-        if active_exclusions:
-            # Añadir separador si la opción "Filtrar" (del ítem clickeado) ya se añadió Y hay filtros activos para listar.
-            if menu.GetMenuItemCount() > 0 and not menu.FindItemByPosition(menu.GetMenuItemCount()-1).IsSeparator():
-                 menu.AppendSeparator() # Separador ANTES de la lista de "Quitar filtro"
-            
-            for ex_content in active_exclusions:
-                ex_display = (ex_content[:50] + '...') if len(ex_content) > 50 else ex_content
-                menu_item = menu.Append(wx.ID_ANY, f"Quitar filtro: {ex_display}")
-                self.Bind(wx.EVT_MENU, lambda evt, c=ex_content: self.on_toggle_filter_state(c, add=False), menu_item)
-        
-        # Añadir "Borrar todos" si hay CUALQUIER filtro activo
-        if active_exclusions: 
-            # Añadir separador ANTES de "Borrar todos" solo si el último ítem añadido NO es ya un separador.
-            if menu.GetMenuItemCount() > 0:
-                last_item_is_separator = False
-                try:
-                    if menu.FindItemByPosition(menu.GetMenuItemCount() - 1).IsSeparator():
-                        last_item_is_separator = True
-                except wx.WXAssertionError: 
-                    pass 
-                
-                if not last_item_is_separator:
-                     menu.AppendSeparator()
- 
-            clear_all_item = menu.Append(wx.ID_ANY, "Borrar todos")
-            self.Bind(wx.EVT_MENU, self.on_clear_all_content_filters, clear_all_item)
-
-        # --- Separador y nueva opción Get Profile ---
-        if menu.GetMenuItemCount() > 0:
-            menu.AppendSeparator()
-        
-        get_profile_item = menu.Append(wx.ID_ANY, "Get Profile")
-        self.Bind(wx.EVT_MENU, lambda evt: self.on_get_profile(evt, clicked_idx), get_profile_item)
-
-        if menu.GetMenuItemCount() > 0:
-            client_point = event.GetPoint() # Coordinates relative to self.shared_logs
-            self.shared_logs.PopupMenu(menu, client_point) # Use self.shared_logs and client_point
-
-        menu.Destroy()
-
-    def on_toggle_filter_state(self, content, add):
-        bridge_instance = RealtimeBridge.get_instance()
-        if bridge_instance:
-            bridge_instance.update_content_exclusions(content_to_exclude=content, add=add)
-        # else:
-            # YA NO SE PUBLICA AL MESSAGE_BUS DESDE AQUÍ SI EL BRIDGE NO ESTÁ
-
-    def on_clear_all_content_filters(self, event):
-        bridge_instance = RealtimeBridge.get_instance()
-        if bridge_instance:
-            bridge_instance.update_content_exclusions(clear_all=True)
-        # else:
-            # YA NO SE PUBLICA AL MESSAGE_BUS DESDE AQUÍ SI EL BRIDGE NO ESTÁ
 
     def _show_reconnect_and_alert(self):
         # Mostrar botón solo si debug o fallo de pings
