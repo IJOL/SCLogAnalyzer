@@ -79,6 +79,12 @@ class UltimateListCtrlAdapter(ULC.UltimateListCtrl):
     """
     Adapter drop-in para wx.ListCtrl con soporte de colores de cabecera y alineación usando UltimateListCtrl.
     """
+    
+    # FLAG para controlar el workaround de inserción en posición 0
+    # True = usar workaround brutal (seguro pero lento)
+    # False = usar fix nativo en UltimateListCtrl (rápido pero experimental)
+    USE_INSERT_ZERO_WORKAROUND = False  # Cambiado a False para probar el fix nativo
+    
     def __init__(self, parent, id=wx.ID_ANY, pos=wx.DefaultPosition,
                  size=wx.DefaultSize, style=0, validator=wx.DefaultValidator,
                  name="listCtrl"):
@@ -296,53 +302,10 @@ class UltimateListCtrlAdapter(ULC.UltimateListCtrl):
         return super().GetItemCount()
     
     def InsertStringItem(self, index, label):
-        """Override para manejar correctamente la inserción en posición 0"""
-        if index == 0 and self.GetItemCount() > 0:
-            # UltimateListCtrl tiene problemas serios con inserción en posición 0
-            # Trabajamos alrededor del problema: guardamos todos los datos, limpiamos, y re-insertamos
-            return self._insert_at_top_workaround(label)
-        else:
-            return super().InsertStringItem(index, label)
+        """Override - ahora usa el fix nativo en UltimateListCtrl"""
+        return super().InsertStringItem(index, label)
     
-    def _insert_at_top_workaround(self, new_label):
-        """Workaround para inserción en posición 0"""
-        # Guardar el estado de selección actual
-        selected_items = []
-        for row in range(self.GetItemCount()):
-            if self.IsSelected(row):
-                selected_items.append(row)
-        
-        # Guardar todos los datos existentes
-        existing_data = []
-        for row in range(self.GetItemCount()):
-            row_data = []
-            for col in range(self.GetColumnCount()):
-                if col == 0:
-                    row_data.append(self.GetItemText(row))
-                else:
-                    item = self.GetItem(row, col)
-                    row_data.append(item.GetText())
-            existing_data.append(row_data)
-        
-        # Limpiar todo
-        self.DeleteAllItems()
-        
-        # Insertar la nueva fila primero
-        new_index = super().InsertStringItem(0, new_label)
-        
-        # Re-insertar todos los datos existentes
-        for i, row_data in enumerate(existing_data):
-            item_index = super().InsertStringItem(i + 1, row_data[0])
-            for col, cell_data in enumerate(row_data[1:], 1):
-                self.SetStringItem(item_index, col, cell_data)
-        
-        # Restaurar selecciones (desplazadas +1 por la nueva inserción)
-        for selected_row in selected_items:
-            new_selected_row = selected_row + 1  # La fila se ha desplazado hacia abajo
-            if new_selected_row < self.GetItemCount():
-                self.Select(new_selected_row, True)
-        
-        return new_index
+
     
     def Bind(self, event, handler, source=None, id=wx.ID_ANY, id2=wx.ID_ANY):
         """Override para interceptar y adaptar eventos de clic derecho"""
