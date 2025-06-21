@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 12
-RELEASE = 2
+RELEASE = 3
 MATURITY = "valakkar"  # "alpha", "beta", or "final"
-PATCH = "445801b"
+PATCH = "89ea2f0"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,8 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.12.x series,
+    "89ea2f0: feat: Add StalledWidget for real-time tracking of stalled users\n\n- Introduced StalledWidget to display information about stalled users with real-time updates.\n- Integrated StalledWidget into the main frame, enhancing the UI with a horizontal splitter for better organization of logs and stalled user data.\n- Implemented automatic TTL management and periodic UI refresh for improved user experience.",
+    "7d5e879: [chore] Increment version to v0.12.2-445801b-valakkar",
     "445801b: refactor: Update UltimateListCtrlAdapter to use native insert fix\n\n- Removed workaround for inserting items at position 0, now utilizing the native fix in UltimateListCtrl for improved performance.\n- Added a flag to control the workaround behavior for future testing.",
 
     # Version v0.12.1-f9b37e4-valakkar-docker,
