@@ -9,6 +9,7 @@ from .config_utils import get_config_manager
 # Eliminar import incorrecto de get_async_client y usar el singleton supabase_manager
 from .supabase_manager import supabase_manager
 from .realtime_bridge import RealtimeBridge # Import RealtimeBridge class
+from .ultimate_listctrl_adapter import UltimateListCtrlAdapter
 
 # --- 1. Add checkbox images for filtering ---
 CHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_OTHER, (16, 16))
@@ -50,19 +51,19 @@ class ConnectedUsersPanel(wx.Panel):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         
         # Agregar título
-        title = wx.StaticText(self, label="Usuarios conectados")
-        title_font = title.GetFont()
+        self.title = wx.StaticText(self, label="Usuarios conectados")
+        title_font = self.title.GetFont()
         title_font.SetPointSize(12)
         title_font.SetWeight(wx.FONTWEIGHT_BOLD)
-        title.SetFont(title_font)
-        main_sizer.Add(title, 0, wx.ALL, 5)
+        self.title.SetFont(title_font)
+        main_sizer.Add(self.title, 0, wx.ALL, 5)
         
         # Área de usuarios conectados
-        users_label = wx.StaticText(self, label="Usuarios online:")
-        main_sizer.Add(users_label, 0, wx.ALL, 5)
+        self.users_label = wx.StaticText(self, label="Usuarios online:")
+        main_sizer.Add(self.users_label, 0, wx.ALL, 5)
         
-        # Restore users_list as wx.ListCtrl with checkbox images
-        self.users_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
+        # Restore users_list as UltimateListCtrlAdapter with checkbox images
+        self.users_list = UltimateListCtrlAdapter(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.users_list.InsertColumn(0, "Filtrar", width=60)
         self.users_list.InsertColumn(1, "Usuario", width=100)
         self.users_list.InsertColumn(2, "Shard", width=150)
@@ -74,8 +75,8 @@ class ConnectedUsersPanel(wx.Panel):
         main_sizer.Add(self.users_list, 1, wx.EXPAND | wx.ALL, 5)
         
         # Área de logs compartidos
-        logs_label = wx.StaticText(self, label="Logs compartidos:")
-        main_sizer.Add(logs_label, 0, wx.ALL, 5)
+        self.logs_label = wx.StaticText(self, label="Logs compartidos:")
+        main_sizer.Add(self.logs_label, 0, wx.ALL, 5)
 
         # Panel de filtros clásico: debajo de 'Logs compartidos', alineado y escalonado como antes
         filter_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -129,7 +130,7 @@ class ConnectedUsersPanel(wx.Panel):
         main_sizer.Add(filter_sizer, 0, wx.ALL, 5)
 
         # Lista de logs compartidos
-        self.shared_logs = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
+        self.shared_logs = UltimateListCtrlAdapter(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.shared_logs.InsertColumn(0, "Hora", width=100)
         self.shared_logs.InsertColumn(1, "Hora local", width=120)
         self.shared_logs.InsertColumn(2, "Usuario", width=100)
@@ -176,6 +177,43 @@ class ConnectedUsersPanel(wx.Panel):
 
         # Establecer el sizer principal
         self.SetSizer(main_sizer)
+        
+        # Aplicar tema dark
+        self._apply_dark_theme()
+        
+    def _apply_dark_theme(self):
+        """Aplicar tema dark usando los mismos colores que el adapter"""
+        # Colores del tema dark (mismos que el adapter)
+        dark_row_bg = wx.Colour(80, 80, 80)        # Fondo panel
+        dark_row_fg = wx.Colour(230, 230, 230)     # Texto blanco
+        dark_header_bg = wx.Colour(64, 64, 64)     # Fondo botones
+        dark_header_fg = wx.Colour(240, 240, 240)  # Texto botones
+        
+        # Panel principal
+        self.SetBackgroundColour(dark_row_bg)
+        
+        # Todos los wx.StaticText
+        self.title.SetForegroundColour(dark_row_fg)
+        self.users_label.SetForegroundColour(dark_row_fg)
+        self.logs_label.SetForegroundColour(dark_row_fg)
+        self.mode_label.SetForegroundColour(dark_row_fg)
+        self.shard_label.SetForegroundColour(dark_row_fg)
+        self._alert_label.SetForegroundColour(dark_row_fg)
+        
+        # Todos los wx.CheckBox
+        self.mode_filter_checkbox.SetForegroundColour(dark_row_fg)
+        self.include_unknown_mode_checkbox.SetForegroundColour(dark_row_fg)
+        self.shard_filter_checkbox.SetForegroundColour(dark_row_fg)
+        self.include_unknown_shard_checkbox.SetForegroundColour(dark_row_fg)
+        self.stalled_filter_checkbox.SetForegroundColour(dark_row_fg)
+        
+        # Todos los wx.Button
+        self.refresh_btn.SetBackgroundColour(dark_header_bg)
+        self.refresh_btn.SetForegroundColour(dark_header_fg)
+        self.clear_logs_btn.SetBackgroundColour(dark_header_bg)
+        self.clear_logs_btn.SetForegroundColour(dark_header_fg)
+        self.reconnect_btn.SetBackgroundColour(dark_header_bg)
+        self.reconnect_btn.SetForegroundColour(dark_header_fg)
         
     def _update_ui_users_list(self):
         """Actualiza la UI con la lista de usuarios conectados"""

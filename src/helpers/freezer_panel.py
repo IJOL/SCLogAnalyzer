@@ -5,6 +5,7 @@ import json
 import datetime
 from .gui_module import WindowsHelper
 from .config_utils import get_application_path
+from .ultimate_listctrl_adapter import UltimateListCtrlAdapter
 
 FREEZER_DIR = os.path.abspath(os.path.join(get_application_path(), 'SCLogAnalyzer.freezer'))
 INDEX_FILE = os.path.join(FREEZER_DIR, 'freezer_index.json')
@@ -17,7 +18,7 @@ class FreezerPanel(wx.Panel):
 
     def _init_ui(self):
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.list_ctrl = wx.ListCtrl(self, style=wx.LC_REPORT|wx.BORDER_SUNKEN)
+        self.list_ctrl = UltimateListCtrlAdapter(self, style=wx.LC_REPORT|wx.BORDER_SUNKEN)
         self.list_ctrl.InsertColumn(0, "Name", width=120)
         self.list_ctrl.InsertColumn(1, "Description", width=200)
         self.list_ctrl.InsertColumn(2, "Timestamp", width=120)
@@ -33,6 +34,25 @@ class FreezerPanel(wx.Panel):
         self.SetSizer(sizer)
         self.btn_open.Bind(wx.EVT_BUTTON, self.on_open)
         self.btn_delete.Bind(wx.EVT_BUTTON, self.on_delete)
+        
+        # Aplicar tema dark
+        self._apply_dark_theme()
+
+    def _apply_dark_theme(self):
+        """Aplicar tema dark usando los mismos colores que el adapter"""
+        # Colores del tema dark (mismos que el adapter)
+        dark_row_bg = wx.Colour(80, 80, 80)        # Fondo panel
+        dark_header_bg = wx.Colour(64, 64, 64)     # Fondo botones
+        dark_header_fg = wx.Colour(240, 240, 240)  # Texto botones
+        
+        # Panel principal
+        self.SetBackgroundColour(dark_row_bg)
+        
+        # Todos los wx.Button
+        self.btn_open.SetBackgroundColour(dark_header_bg)
+        self.btn_open.SetForegroundColour(dark_header_fg)
+        self.btn_delete.SetBackgroundColour(dark_header_bg)
+        self.btn_delete.SetForegroundColour(dark_header_fg)
 
     def refresh_list(self):
         self.list_ctrl.DeleteAllItems()
