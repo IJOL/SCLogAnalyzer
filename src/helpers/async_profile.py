@@ -15,7 +15,7 @@ import datetime
 from helpers.profile_parser_standalone import extract_profile_data
 
 def scrape_profile_async(player_name: str, metadata: dict = None):
-    """Thread simple para scraping de perfil RSI - usa solo el módulo standalone"""
+    """Thread simple para scraping de perfil RSI con cache support"""
     metadata = metadata or {}
     
     def scrape(metadata):
@@ -72,7 +72,6 @@ def scrape_profile_async(player_name: str, metadata: dict = None):
                 
                 # Incluir algunos datos selectos del evento original
                 profile_data.update({
-                    'username': metadata.get('username'),
                     'action': metadata.get('action'),
                     'timestamp': metadata.get('timestamp')
                 })

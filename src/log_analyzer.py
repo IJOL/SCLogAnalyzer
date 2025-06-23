@@ -160,6 +160,7 @@ class LogFileHandler(FileSystemEventHandler):
         # Setup message bus listener for actor_profile events
         message_bus.on("actor_profile", self._on_actor_profile)
         message_bus.on("request_profile", self.async_profile_scraping)
+        message_bus.on("force_broadcast_profile", self._on_force_broadcast_profile)
 
     def __getattr__(self, name):
         """
@@ -185,6 +186,27 @@ class LogFileHandler(FileSystemEventHandler):
     
     def _on_actor_profile(self, player_name, org, enlisted, metadata=None):
         """Handler for actor_profile events from message bus"""
+        # Si es un perfil recibido por broadcast, usar origen específico
+        if metadata and metadata.get('origin') == 'broadcast_received':
+            origin = 'broadcast_received'
+            source_type = 'automatic'
+            requested_by = metadata.get('username', 'unknown')
+            source_user = metadata.get('username', 'unknown')
+        else:
+            # Determinar origen y tipo de la solicitud para perfiles normales
+            action = metadata.get('action', '') if metadata else ''
+            if action == 'get':
+                origin = 'manual'
+                source_type = 'manual'
+            elif action in ['killer', 'victim']:
+                origin = action
+                source_type = 'automatic'
+            else:
+                origin = 'automatic'
+                source_type = 'automatic'
+            requested_by = self.username
+            source_user = self.username
+        
         # Create data dict to match pattern used by other event handlers
         data = {
             'player_name': player_name,
@@ -199,16 +221,39 @@ class LogFileHandler(FileSystemEventHandler):
                                    if v is not None and 
                                         k not in ['source','timestamp','player_name', 'org', 'enlisted','action'] and 
                                         v not in ('None','Unknown','')])
+        
         # Add state data to the data dict   
         data = self.add_state_data(data)
+        
+        # Almacenar en cache
+        from helpers.profile_cache import ProfileCache
+        cache = ProfileCache.get_instance()
+        cache.add_profile(
+            player_name=player_name,
+            profile_data=data,
+            source_type=source_type,
+            origin=origin,
+            requested_by=requested_by,
+            source_user=source_user
+        )
+        
+        # Emitir evento profile_cached para que el widget se actualice
+        message_bus.emit("profile_cached", player_name, data)
+        
         # Use standard pattern: check if format exists in messages and output
         output_message_format = self.messages.get("actor_profile")
         if output_message_format:
             output_message(None, output_message_format.format(**data), regex_pattern="actor_profile")
+        
+        # Si es broadcast recibido, solo mostrar en log_text y terminar
+        if origin == 'broadcast_received':
+            return
+        
+        # Para perfiles normales, continuar con Discord y lógica adicional
         self.send_discord_message(data, pattern_name="actor_profile")
         
         # Determinar si es solicitud manual vs automática
-        action = data.get('action', '')
+        action = metadata.get('action', '') if metadata else ''
         if action == 'get':
             # Profile request manual: notificar solo localmente
             if output_message_format:
@@ -216,7 +261,24 @@ class LogFileHandler(FileSystemEventHandler):
                 message_bus.emit("show_windows_notification", content)
         else:
             # Profile automático (killer/victim): transmitir por realtime
-            self.send_realtime_event(data, pattern_name="actor_profile")
+            # Verificar si el perfil ya existía en cache antes de procesar
+            existing_profile = cache.get_profile(player_name)
+            
+            if not existing_profile:
+                # Es la primera vez que obtenemos este perfil -> broadcast
+                self.send_realtime_event(data, pattern_name="actor_profile")
+                message_bus.publish(
+                    content=f"Broadcasting new profile for {player_name}",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "log_analyzer"}
+                )
+            else:
+                # Ya teníamos el perfil en cache -> NO broadcast
+                message_bus.publish(
+                    content=f"Profile for {player_name} already in cache, skipping broadcast",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "log_analyzer"}
+                )
 
     def add_state_data(self, data):
         """
@@ -994,13 +1056,15 @@ class LogFileHandler(FileSystemEventHandler):
 
     def async_profile_scraping(self, data, pattern_name):
         """
-        Async profile scraping for actor_death events - Plan MEGA SIMPLE implementation.
+        Async profile scraping for actor_death events with cache support.
         
         Args:
             data (dict): The actor_death event data containing killer and victim.
                         Can include an 'action' field with "get", "killer", or "victim".
         """
         try:
+            from helpers.profile_cache import ProfileCache
+            
             # if self.current_mode != "SC_Default" and data.get('action') != 'get':
             if not message_bus.is_debug_mode() and (self.current_mode != "SC_Default" and data.get('action') != 'get'):
                 return
@@ -1041,12 +1105,30 @@ class LogFileHandler(FileSystemEventHandler):
                 
             # Si hay target, hacer scraping asíncrono
             if target_player:
-                scrape_profile_async(target_player, data)
-                message_bus.publish(
-                    content=f"Started profile scraping for {target_player} with action={data.get('action')}",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "log_analyzer"}
-                )
+                cache = ProfileCache.get_instance()
+                cached_profile = cache.get_profile(target_player)
+                
+                if cached_profile:
+                    message_bus.publish(
+                        content=f"Profile for {target_player} found in cache, serving from cache",
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "log_analyzer"}
+                    )
+                    
+                    # Emitir evento con datos de cache
+                    profile_data = cached_profile['profile_data']
+                    message_bus.emit('actor_profile', 
+                                    target_player, 
+                                    profile_data.get('main_org_sid'), 
+                                    profile_data.get('enlisted'), 
+                                    profile_data)
+                else:
+                    scrape_profile_async(target_player, data)
+                    message_bus.publish(
+                        content=f"Started profile scraping for {target_player} with action={data.get('action')}",
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "log_analyzer"}
+                    )
             
         except Exception as e:
             message_bus.publish(
@@ -1054,6 +1136,31 @@ class LogFileHandler(FileSystemEventHandler):
                 level=MessageLevel.ERROR,
                 metadata={"source": "log_analyzer"}
             )
+
+    def _on_force_broadcast_profile(self, player_name, profile_data):
+        """Handler for force_broadcast_profile events from message bus"""
+        # profile_data ya contiene todos los datos necesarios
+        data = profile_data.copy()
+        
+        # Asegurar que tenemos los campos básicos
+        data['player_name'] = player_name
+        data['org'] = profile_data.get('main_org_sid', 'Unknown')
+        data['enlisted'] = profile_data.get('enlisted', 'Unknown')
+        
+        # Marcar como broadcast forzado
+        data['action'] = 'force_broadcast'
+        
+        # Add state data to the data dict   
+        data = self.add_state_data(data)
+        
+        # SOLO HACER EL BROADCAST REAL - sin Discord ni log
+        self.send_realtime_event(data, pattern_name="actor_profile")
+        
+        message_bus.publish(
+            content=f"Force broadcast completed for profile {player_name}",
+            level=MessageLevel.INFO,
+            metadata={"source": "log_analyzer", "action": "force_broadcast"}
+        )
 
 
 def signal_handler(signum, frame):

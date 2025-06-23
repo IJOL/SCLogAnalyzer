@@ -10,6 +10,7 @@ from .config_utils import get_config_manager
 from .supabase_manager import supabase_manager
 from .realtime_bridge import RealtimeBridge # Import RealtimeBridge class
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from .profile_cache_widget import ProfileCacheWidget
 
 # --- 1. Add checkbox images for filtering ---
 CHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_OTHER, (16, 16))
@@ -42,23 +43,32 @@ class ConnectedUsersPanel(wx.Panel):
         
     def _init_ui(self):
         """Inicializa los componentes de la interfaz de usuario"""
-        # Crear layout principal
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        # Layout horizontal: Connected Users (izq) + Profile Cache (der)
+        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # Usar splitter window para mejor control de redimensionamiento
+        self.splitter = wx.SplitterWindow(self, style=wx.SP_LIVE_UPDATE | wx.SP_3D)
+        self.splitter.SetSashGravity(1.0)  # 1.0 = la derecha se comprime primero
+        self.splitter.SetMinimumPaneSize(300)  # Tamaño mínimo para ambos paneles
+        
+        # Panel izquierdo: Connected Users
+        left_panel = wx.Panel(self.splitter)
+        left_sizer = wx.BoxSizer(wx.VERTICAL)
         
         # Agregar título
-        self.title = wx.StaticText(self, label="Usuarios conectados")
+        self.title = wx.StaticText(left_panel, label="Usuarios conectados")
         title_font = self.title.GetFont()
         title_font.SetPointSize(12)
         title_font.SetWeight(wx.FONTWEIGHT_BOLD)
         self.title.SetFont(title_font)
-        main_sizer.Add(self.title, 0, wx.ALL, 5)
+        left_sizer.Add(self.title, 0, wx.ALL, 5)
         
         # Área de usuarios conectados
-        self.users_label = wx.StaticText(self, label="Usuarios online:")
-        main_sizer.Add(self.users_label, 0, wx.ALL, 5)
+        self.users_label = wx.StaticText(left_panel, label="Usuarios online:")
+        left_sizer.Add(self.users_label, 0, wx.ALL, 5)
         
         # Restore users_list as UltimateListCtrlAdapter with checkbox images
-        self.users_list = UltimateListCtrlAdapter(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
+        self.users_list = UltimateListCtrlAdapter(left_panel, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.users_list.InsertColumn(0, "Filtrar", width=60)
         self.users_list.InsertColumn(1, "Usuario", width=100)
         self.users_list.InsertColumn(2, "Shard", width=150)
@@ -67,11 +77,11 @@ class ConnectedUsersPanel(wx.Panel):
         self.users_list.InsertColumn(5, "Modo", width=100)
         self.users_list.InsertColumn(6, "Última actividad", width=150)
         self.users_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_user_filter_toggle)
-        main_sizer.Add(self.users_list, 1, wx.EXPAND | wx.ALL, 5)
+        left_sizer.Add(self.users_list, 1, wx.EXPAND | wx.ALL, 5)
         
         # Área de logs compartidos
-        self.logs_label = wx.StaticText(self, label="Logs compartidos:")
-        main_sizer.Add(self.logs_label, 0, wx.ALL, 5)
+        self.logs_label = wx.StaticText(left_panel, label="Logs compartidos:")
+        left_sizer.Add(self.logs_label, 0, wx.ALL, 5)
 
         # Panel de filtros clásico: debajo de 'Logs compartidos', alineado y escalonado como antes
         filter_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -83,15 +93,15 @@ class ConnectedUsersPanel(wx.Panel):
         
         mode_filter_sizer = wx.BoxSizer(wx.VERTICAL)
         mode_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.mode_filter_checkbox = wx.CheckBox(self, label="Filtrar por modo actual:")
+        self.mode_filter_checkbox = wx.CheckBox(left_panel, label="Filtrar por modo actual:")
         self.mode_filter_checkbox.SetValue(filter_mode_value)
         self.mode_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_mode_filter_changed)
         mode_row_sizer.Add(self.mode_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        self.mode_label = wx.StaticText(self, label=f"({self.current_mode})")
+        self.mode_label = wx.StaticText(left_panel, label=f"({self.current_mode})")
         mode_row_sizer.Add(self.mode_label, 0, wx.ALIGN_CENTER_VERTICAL)
         mode_filter_sizer.Add(mode_row_sizer, 0, wx.BOTTOM, 2)
         mode_unknown_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.include_unknown_mode_checkbox = wx.CheckBox(self, label="Incluir desconocidos")
+        self.include_unknown_mode_checkbox = wx.CheckBox(left_panel, label="Incluir desconocidos")
         self.include_unknown_mode_checkbox.SetValue(include_unknown_mode_value)
         self.include_unknown_mode_checkbox.Bind(wx.EVT_CHECKBOX, self.on_include_unknown_mode_changed)
         mode_unknown_sizer.Add(self.include_unknown_mode_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
@@ -104,15 +114,15 @@ class ConnectedUsersPanel(wx.Panel):
         
         shard_filter_sizer = wx.BoxSizer(wx.VERTICAL)
         shard_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.shard_filter_checkbox = wx.CheckBox(self, label="Filtrar por shard actual:")
+        self.shard_filter_checkbox = wx.CheckBox(left_panel, label="Filtrar por shard actual:")
         self.shard_filter_checkbox.SetValue(filter_shard_value)
         self.shard_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_shard_filter_changed)
         shard_row_sizer.Add(self.shard_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        self.shard_label = wx.StaticText(self, label=f"({self.current_shard})")
+        self.shard_label = wx.StaticText(left_panel, label=f"({self.current_shard})")
         shard_row_sizer.Add(self.shard_label, 0, wx.ALIGN_CENTER_VERTICAL)
         shard_filter_sizer.Add(shard_row_sizer, 0, wx.BOTTOM, 2)
         shard_unknown_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.include_unknown_shard_checkbox = wx.CheckBox(self, label="Incluir desconocidos")
+        self.include_unknown_shard_checkbox = wx.CheckBox(left_panel, label="Incluir desconocidos")
         self.include_unknown_shard_checkbox.SetValue(include_unknown_shard_value)
         self.include_unknown_shard_checkbox.Bind(wx.EVT_CHECKBOX, self.on_include_unknown_shard_changed)
         shard_unknown_sizer.Add(self.include_unknown_shard_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
@@ -124,31 +134,31 @@ class ConnectedUsersPanel(wx.Panel):
         stalled_filter_value = False
         if bridge:
             stalled_filter_value = getattr(bridge, 'filter_stalled_if_online', False)
-        self.stalled_filter_checkbox = wx.CheckBox(self, label="Ocultar mensajes 'stalled' si el jugador está online")
+        self.stalled_filter_checkbox = wx.CheckBox(left_panel, label="Ocultar mensajes 'stalled' si el jugador está online")
         self.stalled_filter_checkbox.SetValue(stalled_filter_value)
         self.stalled_filter_checkbox.Bind(wx.EVT_CHECKBOX, self.on_stalled_filter_changed)
         filter_sizer.Add(self.stalled_filter_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
 
-        main_sizer.Add(filter_sizer, 0, wx.ALL, 5)
+        left_sizer.Add(filter_sizer, 0, wx.ALL, 5)
 
         # Lista de logs compartidos usando SharedLogsWidget
         from .shared_logs_widget import SharedLogsWidget
-        self.shared_logs = SharedLogsWidget(self, max_logs=500)
-        main_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
+        self.shared_logs = SharedLogsWidget(left_panel, max_logs=500)
+        left_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
         
         # Botones de control
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
-        self.refresh_btn = wx.Button(self, label="Refrescar")
+        self.refresh_btn = wx.Button(left_panel, label="Refrescar")
         self.refresh_btn.Bind(wx.EVT_BUTTON, self.on_refresh)
         button_sizer.Add(self.refresh_btn, 0, wx.ALL, 5)
         
-        self.clear_logs_btn = wx.Button(self, label="Limpiar logs")
+        self.clear_logs_btn = wx.Button(left_panel, label="Limpiar logs")
         self.clear_logs_btn.Bind(wx.EVT_BUTTON, self.on_clear_logs)
         button_sizer.Add(self.clear_logs_btn, 0, wx.ALL, 5)
 
         # Botón Reconectar (siempre visible en debug)
-        self.reconnect_btn = wx.Button(self, label="Reconectar")
+        self.reconnect_btn = wx.Button(left_panel, label="Reconectar")
         self.reconnect_btn.Bind(wx.EVT_BUTTON, self.on_reconnect)
         # Mostrar siempre en debug al inicializar
         if self._is_debug_mode():
@@ -157,7 +167,7 @@ class ConnectedUsersPanel(wx.Panel):
             self.reconnect_btn.Hide()
         button_sizer.Add(self.reconnect_btn, 0, wx.ALL, 5)
 
-        main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
+        left_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
 
         # Estado de pings y temporizadores
         self._last_own_ping = datetime.utcnow()
@@ -167,8 +177,29 @@ class ConnectedUsersPanel(wx.Panel):
         self._alert_blink_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_alert_blink, self._alert_blink_timer)
         self._alert_blink_state = False
-        self._alert_label = wx.StaticText(self, label="")
-        main_sizer.Add(self._alert_label, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        self._alert_label = wx.StaticText(left_panel, label="")
+        left_sizer.Add(self._alert_label, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        
+        # Layout del panel izquierdo
+        left_panel.SetSizer(left_sizer)
+        
+        # Panel derecho: Profile Cache
+        right_panel = wx.Panel(self.splitter)
+        right_sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        self.cache_widget = ProfileCacheWidget(right_panel)
+        right_sizer.Add(self.cache_widget, 1, wx.EXPAND | wx.ALL, 5)
+        right_panel.SetSizer(right_sizer)
+        
+        # Configurar splitter con los dos paneles
+        self.splitter.SplitVertically(left_panel, right_panel)
+        
+        # Configurar posición inicial: columna derecha en tamaño mínimo
+        # Calcular posición para que la derecha tenga 300px (tamaño mínimo)
+        self.splitter.SetSashPosition(-300)  # -300px desde la derecha = tamaño mínimo derecho
+        
+        # Añadir splitter al sizer principal
+        main_sizer.Add(self.splitter, 1, wx.EXPAND | wx.ALL, 5)
 
         # Establecer el sizer principal
         self.SetSizer(main_sizer)
@@ -456,3 +487,4 @@ class ConnectedUsersPanel(wx.Panel):
                 level=MessageLevel.DEBUG,
                 metadata={"source": "connected_users_panel", "filter": "user_online"}
             )
+    

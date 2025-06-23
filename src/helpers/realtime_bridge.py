@@ -539,6 +539,27 @@ class RealtimeBridge:
             username = broadcast_data.get('username','Unknown')
             event_data = broadcast_data.get('event_data', payload)
 
+            # Interceptar perfiles recibidos y almacenar en cache
+            if event_data.get('type') == 'actor_profile':
+                player_name = event_data.get('player_name')
+                if player_name:
+                    # Añadir origin a los datos para que _on_actor_profile lo detecte
+                    event_data_with_origin = event_data.copy()
+                    event_data_with_origin['origin'] = 'broadcast_received'
+                    
+                    # Emitir actor_profile para que _on_actor_profile se encargue de todo
+                    message_bus.emit('actor_profile', 
+                                    player_name, 
+                                    event_data.get('main_org_sid', 'Unknown'), 
+                                    event_data.get('enlisted', 'Unknown'), 
+                                    event_data_with_origin)  # Ahora sí tiene origin='broadcast_received'
+                    
+                    message_bus.publish(
+                        content=f"Profile for {player_name} received from {username}",
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "realtime_bridge"}
+                    )
+
             # --- FILTROS GLOBALES MODO/SHARD ---
             if not self._passes_global_filters(event_data):
                 return  # SUPRIMIR el mensaje

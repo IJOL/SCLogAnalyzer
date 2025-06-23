@@ -51,6 +51,7 @@
     "notifications_duration": 5,
     "rate_limit_timeout": 300,
     "rate_limit_max_duplicates": 1,
+    "profile_cache_max_size": 1000,
     "auto_reconnection": true,
     "data_provider_max_retries": 3,
     "data_provider_retry_delay": 1.0,
