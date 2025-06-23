@@ -9,7 +9,7 @@ from .config_utils import get_config_manager
 # Eliminar import incorrecto de get_async_client y usar el singleton supabase_manager
 from .supabase_manager import supabase_manager
 from .realtime_bridge import RealtimeBridge # Import RealtimeBridge class
-from .ultimate_listctrl_adapter import UltimateListCtrlAdapter
+from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 
 # --- 1. Add checkbox images for filtering ---
 CHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_OTHER, (16, 16))

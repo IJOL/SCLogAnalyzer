@@ -8,7 +8,7 @@ import csv
 import threading
 from datetime import datetime, timedelta
 from .message_bus import message_bus, MessageLevel
-from .ultimate_listctrl_adapter import UltimateListCtrlAdapter
+from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 
 
 class StalledWidget(wx.Panel):
@@ -65,7 +65,7 @@ class StalledWidget(wx.Panel):
         self.stalled_list.InsertColumn(0, "Jugador", width=80)
         self.stalled_list.InsertColumn(1, "Stalls", width=45)
         self.stalled_list.InsertColumn(2, "Fuentes", width=55)
-        self.stalled_list.InsertColumn(3, "Último", width=60)
+        self.stalled_list.InsertColumn(3, "Hace", width=60)
         self.stalled_list.InsertColumn(4, "TTL", width=50)
         
         # Eventos
@@ -98,27 +98,44 @@ class StalledWidget(wx.Panel):
         """Calcula TTL progresivo basado en importancia del problema"""
         # TTL base mínimo (30s para casos triviales)
         ttl = self.base_ttl_seconds
+        original_ttl = ttl
         
         # Factores de importancia
         sources_count = len(player_data['sources'])
         total_stalls = player_data['count']
         
-        # +30s por cada fuente adicional (múltiples usuarios reportando = más grave)
+        # +45s por cada fuente adicional (múltiples usuarios reportando = más grave)
         if sources_count > 1:
-            ttl += (sources_count - 1) * 30
+            ttl += (sources_count - 1) * 45
         
-        # +5s por cada stall adicional, con límite de +150s (máximo 30 stalls)
+        # +4s por cada stall adicional, con límite de +120s (máximo 30 stalls)
         if total_stalls > 1:
             extra_stalls = min(total_stalls - 1, 30)
-            ttl += extra_stalls * 5
+            ttl += extra_stalls * 4
         
         # Bonus por persistencia: si tiene más de 10 stalls de la misma fuente
         max_single_source = max((src['count'] for src in player_data['sources'].values()), default=0)
         if max_single_source >= 10:
             ttl += 60  # Problema persistente
         
-        # TTL máximo razonable de 10 minutos
-        return min(ttl, 600)
+        # Bonus por múltiples avistamientos: problema serio si 3+ fuentes diferentes
+        if sources_count >= 4:
+            ttl += 90  # Problema muy grave
+        elif sources_count >= 3:
+            ttl += 60  # Problema grave confirmado
+        
+        # TTL máximo de 12 minutos
+        final_ttl = min(ttl, 720)
+        
+        # Debug: mostrar cálculo si es diferente al base
+        if final_ttl != original_ttl:
+            from .message_bus import message_bus, MessageLevel
+            message_bus.publish(
+                content=f"TTL progresivo: {total_stalls} stalls, {sources_count} fuentes -> {final_ttl}s (base: {original_ttl}s)",
+                level=MessageLevel.DEBUG
+            )
+        
+        return final_ttl
     
     def _handle_remote_event(self, username, event_data):
         """Procesa eventos remotos de tiempo real"""
@@ -235,9 +252,12 @@ class StalledWidget(wx.Panel):
                 ttl_remaining = timedelta(seconds=player_ttl) - time_since_last
                 ttl_seconds = max(0, int(ttl_remaining.total_seconds()))
                 
-                # Skip entradas ya expiradas (serán eliminadas en próximo cleanup)
+                # Mostrar incluso si TTL es 0, pero marcar como "expirando"
+                # El cleanup real se encarga de eliminar los datos
                 if ttl_seconds <= 0:
-                    continue
+                    ttl_display = "0s"
+                else:
+                    ttl_display = f"{ttl_seconds}s"
                 
                 # Información de fuentes
                 sources_count = len(data['sources'])
@@ -256,8 +276,8 @@ class StalledWidget(wx.Panel):
                 index = self.stalled_list.InsertItem(self.stalled_list.GetItemCount(), player)
                 self.stalled_list.SetItem(index, 1, str(data['count']))           # Stalls
                 self.stalled_list.SetItem(index, 2, str(sources_count))          # Fuentes  
-                self.stalled_list.SetItem(index, 3, f"{last_source[:8]}")        # Último usuario (truncado)
-                self.stalled_list.SetItem(index, 4, f"{ttl_seconds}s")           # TTL progresivo
+                self.stalled_list.SetItem(index, 3, last_display)                # Último tiempo
+                self.stalled_list.SetItem(index, 4, ttl_display)                 # TTL progresivo
     
     def _on_context_menu(self, event):
         """Maneja clic derecho para mostrar menú contextual"""

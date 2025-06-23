@@ -4,7 +4,7 @@ from datetime import datetime
 import re
 
 from .message_bus import message_bus, MessageLevel
-from .ultimate_listctrl_adapter import UltimateListCtrlAdapter
+from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 
 class SharedLogsWidget(UltimateListCtrlAdapter):
     """Widget auto-contenido para logs compartidos que se suscribe a eventos directamente"""

@@ -5,7 +5,7 @@ import json
 import datetime
 from .gui_module import WindowsHelper
 from .config_utils import get_application_path
-from .ultimate_listctrl_adapter import UltimateListCtrlAdapter
+from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 
 FREEZER_DIR = os.path.abspath(os.path.join(get_application_path(), 'SCLogAnalyzer.freezer'))
 INDEX_FILE = os.path.join(FREEZER_DIR, 'freezer_index.json')
