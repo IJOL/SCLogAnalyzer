@@ -44,7 +44,7 @@ class ProfileCache:
         """Obtiene el tamaño máximo del cache desde configuración"""
         try:
             config = get_config_manager()
-            return config.get('profile_cache_max_size', 1000)
+            return int(config.get('profile_cache_max_size', 1000))
         except:
             return 1000
     

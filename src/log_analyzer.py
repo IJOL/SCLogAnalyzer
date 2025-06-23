@@ -1227,8 +1227,8 @@ def startup(process_all=False, use_discord=None, process_once=False, datasource=
 
         # Create a global rate limiter for the application
         main.rate_limiter = MessageRateLimiter(
-            timeout=config_manager.get('rate_limit_timeout', 300),
-            max_duplicates=config_manager.get('rate_limit_max_duplicates', 1)
+            timeout=int(config_manager.get('rate_limit_timeout', 300)),
+            max_duplicates=int(config_manager.get('rate_limit_max_duplicates', 1))
         )
 
         # Create a file handler with kwargs for event subscriptions

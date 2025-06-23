@@ -288,9 +288,24 @@ class ConfigDialog(wx.Dialog):
         """Save configuration using the ConfigManager."""
         # Store original config before making changes
         old_config = self.config_manager.get_all().copy()
-        # Save general config values 
+        
+        # Save general config values with automatic type detection
         for key, control in self.general_controls.items():
             value = control.GetStringSelection() if isinstance(control, wx.Choice) else control.GetValue()
+            
+            # Get original value to detect type
+            original_value = old_config.get(key)
+            
+            # If original was numeric, convert back to that type
+            if isinstance(original_value, (int, float)):
+                try:
+                    if isinstance(original_value, int):
+                        value = int(value)
+                    elif isinstance(original_value, float):
+                        value = float(value)
+                except (ValueError, TypeError):
+                    pass  # Keep as string if conversion fails
+            
             self.config_manager.set(key, value)
 
         # Save regex patterns data

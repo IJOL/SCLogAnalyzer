@@ -2023,13 +2023,13 @@ def get_data_provider(config_manager) -> DataProvider:
                 config_manager.set('datasource', 'googlesheets')
             else:
                 return SupabaseDataProvider(
-                    max_retries=config_manager.data_provider_max_retries or 3,
-                    retry_delay=config_manager.data_provider_retry_delay or 1.0
+                    max_retries=int(config_manager.data_provider_max_retries or 3),
+                    retry_delay=float(config_manager.data_provider_retry_delay or 1.0)
                 )
         else:
             return SupabaseDataProvider(
-                max_retries=config_manager.data_provider_max_retries or 3,
-                retry_delay=config_manager.data_provider_retry_delay or 1.0
+                max_retries=int(config_manager.data_provider_max_retries or 3),
+                retry_delay=float(config_manager.data_provider_retry_delay or 1.0)
             )
     
     # Use Google Sheets if that's the selected datasource or if Supabase failed
@@ -2038,8 +2038,8 @@ def get_data_provider(config_manager) -> DataProvider:
         if google_sheets_webhook:
             return GoogleSheetsDataProvider(
                 webhook_url=google_sheets_webhook,
-                max_retries=config_manager.data_provider_max_retries or 3,
-                retry_delay=config_manager.data_provider_retry_delay or 1.0
+                max_retries=int(config_manager.data_provider_max_retries or 3),
+                retry_delay=float(config_manager.data_provider_retry_delay or 1.0)
             )
     
     # Fallback message if nothing is configured
