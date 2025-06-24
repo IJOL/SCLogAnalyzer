@@ -186,26 +186,67 @@ class LogFileHandler(FileSystemEventHandler):
     
     def _on_actor_profile(self, player_name, org, enlisted, metadata=None):
         """Handler for actor_profile events from message bus"""
-        # Si es un perfil recibido por broadcast, usar origen específico
+        message_bus.publish(
+            content=f"_on_actor_profile called for {player_name} with origin={metadata.get('origin') if metadata else 'None'}",
+            level=MessageLevel.DEBUG,
+            metadata={"source": "log_analyzer", "action": "actor_profile_handler"}
+        )
+
+        # Si es un perfil recibido por broadcast y es nuestro propio mensaje, ignorarlo
         if metadata and metadata.get('origin') == 'broadcast_received':
-            origin = 'broadcast_received'
+            event_username = metadata.get('username')
+            if event_username == self.username:
+                message_bus.publish(
+                    content=f"Ignoring own broadcast for {player_name}",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "log_analyzer", "action": "ignore_own_broadcast"}
+                )
+                return
+
+        from helpers.profile_cache import ProfileCache
+        cache = ProfileCache.get_instance()
+
+        # Si es un perfil recibido por broadcast y tiene raw_data, usarlo directamente
+        if metadata and metadata.get('origin') == 'broadcast_received' and metadata.get('raw_data'):
+            raw_data = metadata['raw_data'].copy()
+            
+            # Añadir metadatos mínimos necesarios
+            profile_data = {
+                'player_name': raw_data.get('player_name'),
+                'org': raw_data.get('org'),
+                'enlisted': raw_data.get('enlisted'),
+                'source_type': 'automatic',
+                'origin': 'broadcast_received',
+                'requested_by': metadata.get('username'),
+                'source_user': metadata.get('username'),
+                'cache_time': datetime.now().isoformat(),
+                **raw_data  # Incluir todos los campos del raw_data
+            }
+            
+            # Almacenar en caché
+            cache.store_profile(profile_data['player_name'], profile_data)
+            
+            # Mostrar en log solo (sin notificación para broadcast)
+            message_bus.publish(
+                content=f"Profile for {player_name} received from {metadata.get('username')}",
+                level=MessageLevel.DEBUG,
+                metadata={"source": "log_analyzer", "action": "profile_received"}
+            )
+            return
+
+        # Determinar origen y tipo de la solicitud para perfiles normales
+        action = metadata.get('action', '') if metadata else ''
+        if action == 'get':
+            origin = 'manual'
+            source_type = 'manual'
+        elif action in ['killer', 'victim']:
+            origin = action
             source_type = 'automatic'
-            requested_by = metadata.get('username', 'unknown')
-            source_user = metadata.get('username', 'unknown')
         else:
-            # Determinar origen y tipo de la solicitud para perfiles normales
-            action = metadata.get('action', '') if metadata else ''
-            if action == 'get':
-                origin = 'manual'
-                source_type = 'manual'
-            elif action in ['killer', 'victim']:
-                origin = action
-                source_type = 'automatic'
-            else:
-                origin = 'automatic'
-                source_type = 'automatic'
-            requested_by = self.username
-            source_user = self.username
+            origin = 'automatic'
+            source_type = 'automatic'
+        requested_by = self.username
+        source_user = self.username
         
         # Create data dict to match pattern used by other event handlers
         data = {
@@ -226,8 +267,6 @@ class LogFileHandler(FileSystemEventHandler):
         data = self.add_state_data(data)
         
         # Almacenar en cache
-        from helpers.profile_cache import ProfileCache
-        cache = ProfileCache.get_instance()
         cache.add_profile(
             player_name=player_name,
             profile_data=data,

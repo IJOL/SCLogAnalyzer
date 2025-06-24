@@ -8,7 +8,7 @@ import os
 from typing import Dict, Any, Callable, Tuple, List, Optional, Union
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_application_path, get_config_manager, get_template_base_dir, get_template_path
-
+import wx.lib.buttons as buttons
 class TabCreator:
     """Manages creation and configuration of tabs in the notebook."""
     
@@ -536,3 +536,20 @@ def safe_call_after(func, *args, **kwargs):
         wx.CallAfter(func, *args, **kwargs)
     else:
         print(f"wx.App is not initialized. Cannot call {func.__name__}.")
+
+class DarkThemeButton(buttons.GenButton):
+    """Botón con tema oscuro por defecto usando GenButton"""
+    
+    def __init__(self, parent, label="", **kwargs):
+        # Configurar estilo con bordes menores
+        style = kwargs.get('style', 0) | wx.BORDER_NONE
+        kwargs['style'] = style
+        
+        super().__init__(parent, label=label, **kwargs)
+        
+        # Configurar colores oscuros por defecto
+        self.SetBackgroundColour(wx.Colour(64, 64, 64))  # Fondo gris oscuro
+        self.SetForegroundColour(wx.Colour(240, 240, 240))  # Texto blanco
+        
+        # Configurar bordes menores
+        self.SetBezelWidth(1)  # Borde más fino

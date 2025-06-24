@@ -9,6 +9,7 @@ import threading
 from datetime import datetime, timedelta
 from .message_bus import message_bus, MessageLevel
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from .ui_components import DarkThemeButton
 
 
 class StalledWidget(wx.Panel):
@@ -49,7 +50,7 @@ class StalledWidget(wx.Panel):
         header_sizer.Add(title_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         
         # Botón Reset compacto
-        reset_btn = wx.Button(self, label="Reset", size=(50, 25))
+        reset_btn = DarkThemeButton(self, label="Reset", size=(50, 25))
         reset_btn.Bind(wx.EVT_BUTTON, self._on_reset)
         header_sizer.Add(reset_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         

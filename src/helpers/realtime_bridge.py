@@ -539,20 +539,35 @@ class RealtimeBridge:
             username = broadcast_data.get('username','Unknown')
             event_data = broadcast_data.get('event_data', payload)
 
+            # Debug: ver la estructura del evento recibido
+            message_bus.publish(
+                content=f"Received event_data: type={event_data.get('type')}, keys={list(event_data.keys())}",
+                level=MessageLevel.DEBUG,
+                metadata={"source": "realtime_bridge", "action": "debug_event_structure"}
+            )
+
             # Interceptar perfiles recibidos y almacenar en cache
             if event_data.get('type') == 'actor_profile':
-                player_name = event_data.get('player_name')
+                # Buscar player_name en raw_data, no directamente en event_data
+                player_name = event_data.get('raw_data', {}).get('player_name')
                 if player_name:
-                    # Añadir origin a los datos para que _on_actor_profile lo detecte
+                    message_bus.publish(
+                        content=f"Processing actor_profile for {player_name} from {username}",
+                        level=MessageLevel.DEBUG,
+                        metadata={"source": "realtime_bridge", "action": "processing_profile"}
+                    )
+                    
+                    # Añadir origin y username a los datos para que _on_actor_profile lo detecte
                     event_data_with_origin = event_data.copy()
                     event_data_with_origin['origin'] = 'broadcast_received'
+                    event_data_with_origin['username'] = username  # Añadir username para que _on_actor_profile lo use
                     
                     # Emitir actor_profile para que _on_actor_profile se encargue de todo
                     message_bus.emit('actor_profile', 
                                     player_name, 
-                                    event_data.get('main_org_sid', 'Unknown'), 
-                                    event_data.get('enlisted', 'Unknown'), 
-                                    event_data_with_origin)  # Ahora sí tiene origin='broadcast_received'
+                                    event_data.get('raw_data', {}).get('main_org_sid', 'Unknown'), 
+                                    event_data.get('raw_data', {}).get('enlisted', 'Unknown'), 
+                                    event_data_with_origin)  # Ahora tiene origin='broadcast_received' y username
                     
                     message_bus.publish(
                         content=f"Profile for {player_name} received from {username}",

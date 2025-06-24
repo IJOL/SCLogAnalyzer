@@ -9,6 +9,7 @@ from typing import Dict, Any
 from .profile_cache import ProfileCache
 from .message_bus import message_bus, MessageLevel
 from .custom_listctrl import CustomListCtrl
+from .ui_components import DarkThemeButton
 
 
 class ProfileCacheWidget(wx.Panel):
@@ -56,13 +57,13 @@ class ProfileCacheWidget(wx.Panel):
         button_panel = wx.Panel(self)
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
-        self.refresh_btn = wx.Button(button_panel, label="🔄 Refresh")
+        self.refresh_btn = DarkThemeButton(button_panel, label="🔄 Refresh")
         self.refresh_btn.Bind(wx.EVT_BUTTON, self._on_refresh)
         
-        self.clear_btn = wx.Button(button_panel, label="🗑️ Clear All")
+        self.clear_btn = DarkThemeButton(button_panel, label="🗑️ Clear All")
         self.clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_cache)
         
-        self.broadcast_btn = wx.Button(button_panel, label="📡 Broadcast All")
+        self.broadcast_btn = DarkThemeButton(button_panel, label="📡 Broadcast All")
         self.broadcast_btn.Bind(wx.EVT_BUTTON, self._on_broadcast_all)
         
         button_sizer.Add(self.refresh_btn, 0, wx.RIGHT, 5)
@@ -86,8 +87,6 @@ class ProfileCacheWidget(wx.Panel):
         # Colores del tema dark
         dark_bg = wx.Colour(80, 80, 80)        # Fondo panel
         dark_fg = wx.Colour(230, 230, 230)     # Texto blanco
-        dark_btn_bg = wx.Colour(64, 64, 64)    # Fondo botones
-        dark_btn_fg = wx.Colour(240, 240, 240) # Texto botones
         
         # Panel principal
         self.SetBackgroundColour(dark_bg)
@@ -98,16 +97,7 @@ class ProfileCacheWidget(wx.Panel):
         if hasattr(self, 'stats_label'):
             self.stats_label.SetForegroundColour(dark_fg)
         
-        # Botones
-        if hasattr(self, 'refresh_btn'):
-            self.refresh_btn.SetBackgroundColour(dark_btn_bg)
-            self.refresh_btn.SetForegroundColour(dark_btn_fg)
-        if hasattr(self, 'clear_btn'):
-            self.clear_btn.SetBackgroundColour(dark_btn_bg)
-            self.clear_btn.SetForegroundColour(dark_btn_fg)
-        if hasattr(self, 'broadcast_btn'):
-            self.broadcast_btn.SetBackgroundColour(dark_btn_bg)
-            self.broadcast_btn.SetForegroundColour(dark_btn_fg)
+        # Los botones DarkThemeButton ya tienen colores configurados automáticamente
     
     def _refresh_cache_display(self):
         """Actualiza la visualización del cache"""

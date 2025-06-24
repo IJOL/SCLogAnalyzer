@@ -11,6 +11,7 @@ from .supabase_manager import supabase_manager
 from .realtime_bridge import RealtimeBridge # Import RealtimeBridge class
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 from .profile_cache_widget import ProfileCacheWidget
+from .ui_components import DarkThemeButton
 
 # --- 1. Add checkbox images for filtering ---
 CHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_OTHER, (16, 16))
@@ -149,16 +150,16 @@ class ConnectedUsersPanel(wx.Panel):
         # Botones de control
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
-        self.refresh_btn = wx.Button(left_panel, label="Refrescar")
+        self.refresh_btn = DarkThemeButton(left_panel, label="Refrescar")
         self.refresh_btn.Bind(wx.EVT_BUTTON, self.on_refresh)
         button_sizer.Add(self.refresh_btn, 0, wx.ALL, 5)
         
-        self.clear_logs_btn = wx.Button(left_panel, label="Limpiar logs")
+        self.clear_logs_btn = DarkThemeButton(left_panel, label="Limpiar logs")
         self.clear_logs_btn.Bind(wx.EVT_BUTTON, self.on_clear_logs)
         button_sizer.Add(self.clear_logs_btn, 0, wx.ALL, 5)
 
         # Botón Reconectar (siempre visible en debug)
-        self.reconnect_btn = wx.Button(left_panel, label="Reconectar")
+        self.reconnect_btn = DarkThemeButton(left_panel, label="Reconectar")
         self.reconnect_btn.Bind(wx.EVT_BUTTON, self.on_reconnect)
         # Mostrar siempre en debug al inicializar
         if self._is_debug_mode():
@@ -212,8 +213,6 @@ class ConnectedUsersPanel(wx.Panel):
         # Colores del tema dark (mismos que el adapter)
         dark_row_bg = wx.Colour(80, 80, 80)        # Fondo panel
         dark_row_fg = wx.Colour(230, 230, 230)     # Texto blanco
-        dark_header_bg = wx.Colour(64, 64, 64)     # Fondo botones
-        dark_header_fg = wx.Colour(240, 240, 240)  # Texto botones
         
         # Panel principal
         self.SetBackgroundColour(dark_row_bg)
@@ -233,14 +232,8 @@ class ConnectedUsersPanel(wx.Panel):
         self.include_unknown_shard_checkbox.SetForegroundColour(dark_row_fg)
         self.stalled_filter_checkbox.SetForegroundColour(dark_row_fg)
         
-        # Todos los wx.Button
-        self.refresh_btn.SetBackgroundColour(dark_header_bg)
-        self.refresh_btn.SetForegroundColour(dark_header_fg)
-        self.clear_logs_btn.SetBackgroundColour(dark_header_bg)
-        self.clear_logs_btn.SetForegroundColour(dark_header_fg)
-        self.reconnect_btn.SetBackgroundColour(dark_header_bg)
-        self.reconnect_btn.SetForegroundColour(dark_header_fg)
-        
+        # Los botones DarkThemeButton ya tienen colores configurados automáticamente
+
     def _update_ui_users_list(self):
         """Actualiza la UI con la lista de usuarios conectados"""
         self.users_list.DeleteAllItems()
