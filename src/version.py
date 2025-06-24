@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 12
-RELEASE = 3
+RELEASE = 4
 MATURITY = "valakkar"  # "alpha", "beta", or "final"
-PATCH = "89ea2f0"
+PATCH = "580eae9"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,7 +17,16 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.12.x series,
+    "580eae9: refactor: Integrate DarkThemeButton for consistent UI styling\n\n- Replaced standard wx.Button instances with DarkThemeButton in multiple panels for a cohesive dark theme experience.\n- Enhanced log analyzer to improve event handling and profile caching logic, including better metadata management and debug logging.\n- Streamlined profile data handling in the RealtimeBridge to ensure accurate event processing and caching.",
+    "a051232: refactor: Enhance configuration handling and type safety\n\n- Updated configuration retrieval in multiple modules to ensure values are cast to appropriate types (int, float) for better consistency and error handling.\n- Improved the ConfigDialog to automatically detect and convert types when saving configuration values.\n- Enhanced profile cache size retrieval to ensure it returns an integer value, preventing potential type-related issues.",
+    "c490491: feat: Implement profile caching system for player profiles\n\n- Introduced a new ProfileCache class to manage player profiles with LRU caching.\n- Added ProfileCacheWidget for UI management of cached profiles, including refresh and clear functionalities.\n- Enhanced log analyzer to emit profile data for caching and broadcasting.\n- Updated connected users panel to integrate profile cache functionality, improving user experience and data management.",
+    "5b92f2c: refactor: Replace UltimateListCtrlAdapter with CustomListCtrl\n\n- Updated imports across multiple files to utilize CustomListCtrl instead of UltimateListCtrlAdapter for improved customization.\n- Introduced CustomListCtrl with a dark theme and enhanced visual customization options, including theme application methods.",
+
+    # Version v0.12.3-89ea2f0-valakkar-docker,
+    "dadf544: [chore] Increment version to v0.12.3-89ea2f0-valakkar",
     "89ea2f0: feat: Add StalledWidget for real-time tracking of stalled users\n\n- Introduced StalledWidget to display information about stalled users with real-time updates.\n- Integrated StalledWidget into the main frame, enhancing the UI with a horizontal splitter for better organization of logs and stalled user data.\n- Implemented automatic TTL management and periodic UI refresh for improved user experience.",
+
+    # Version v0.12.2-445801b-valakkar-docker,
     "7d5e879: [chore] Increment version to v0.12.2-445801b-valakkar",
     "445801b: refactor: Update UltimateListCtrlAdapter to use native insert fix\n\n- Removed workaround for inserting items at position 0, now utilizing the native fix in UltimateListCtrl for improved performance.\n- Added a flag to control the workaround behavior for future testing.",
 
