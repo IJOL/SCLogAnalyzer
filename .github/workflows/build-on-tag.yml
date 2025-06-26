@@ -30,20 +30,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Apply wxPython UltimateListCtrl custom colors patch
-        run: |
-          # Download the custom UltimateListCtrl file from our fork
-          $customFile = "https://raw.githubusercontent.com/IJOL/Phoenix/custom-selection-renderer/wx/lib/agw/ultimatelistctrl.py"
-          $targetPath = "venv\Lib\site-packages\wx\lib\agw\ultimatelistctrl.py"
-          
-          # Create backup of original file
-          Copy-Item $targetPath "$targetPath.original" -Force
-          
-          # Download and replace with our custom version
-          Invoke-WebRequest -Uri $customFile -OutFile $targetPath
-          
-          Write-Host "Applied custom UltimateListCtrl with selection colors support"
-
       - name: Build executables
         run: |
           .\venv\Scripts\activate
