@@ -82,6 +82,17 @@ class ProfileCache:
             )
             return None
     
+    @staticmethod
+    def _limpiar_perfil_primer_nivel(perfil: dict) -> dict:
+        """
+        Elimina el campo 'all' y deja solo claves de primer nivel cuyo valor no sea dict ni list.
+        """
+        if not isinstance(perfil, dict):
+            return perfil
+        perfil = dict(perfil)  # Copia defensiva
+        perfil.pop('all', None)
+        return {k: v for k, v in perfil.items() if not isinstance(v, (dict, list))}
+    
     def add_profile(self, player_name: str, profile_data: Dict[str, Any], 
                    source_type: str = 'automatic', origin: str = 'unknown',
                    requested_by: str = 'unknown', source_user: str = 'unknown'):
@@ -98,14 +109,15 @@ class ProfileCache:
         """
         with self._cache_lock:
             now = datetime.now()
-            
+            # Limpiar el perfil antes de guardar
+            perfil_limpio = self._limpiar_perfil_primer_nivel(profile_data)
             cache_entry = {
                 'last_accessed': now,
-                'profile_data': profile_data.copy(),
+                'profile_data': perfil_limpio,
                 'source_type': source_type,
                 'origin': origin,
                 'cached_at': now,
-                'organization': profile_data.get('main_org_sid', 'Unknown'),
+                'organization': perfil_limpio.get('main_org_sid', 'Unknown'),
                 'requested_by': requested_by,
                 'source_user': source_user
             }
