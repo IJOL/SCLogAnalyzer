@@ -11,6 +11,7 @@ from .supabase_manager import supabase_manager
 from .realtime_bridge import RealtimeBridge # Import RealtimeBridge class
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 from .profile_cache_widget import ProfileCacheWidget
+from .freezer_widget import FreezerWidget
 from .ui_components import DarkThemeButton
 
 # --- 1. Add checkbox images for filtering ---
@@ -184,12 +185,34 @@ class ConnectedUsersPanel(wx.Panel):
         # Layout del panel izquierdo
         left_panel.SetSizer(left_sizer)
         
-        # Panel derecho: Profile Cache
+        # Panel derecho: Profile Cache + Freezer
         right_panel = wx.Panel(self.splitter)
         right_sizer = wx.BoxSizer(wx.VERTICAL)
         
-        self.cache_widget = ProfileCacheWidget(right_panel)
-        right_sizer.Add(self.cache_widget, 1, wx.EXPAND | wx.ALL, 5)
+        # Crear un splitter vertical para los dos widgets
+        right_splitter = wx.SplitterWindow(right_panel, style=wx.SP_LIVE_UPDATE | wx.SP_3D)
+        right_splitter.SetSashGravity(0.7)  # 70% para cache, 30% para freezer
+        right_splitter.SetMinimumPaneSize(150)  # Tamaño mínimo para ambos widgets
+        
+        # Panel superior: Profile Cache
+        cache_panel = wx.Panel(right_splitter)
+        cache_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.cache_widget = ProfileCacheWidget(cache_panel)
+        cache_sizer.Add(self.cache_widget, 1, wx.EXPAND | wx.ALL, 5)
+        cache_panel.SetSizer(cache_sizer)
+        
+        # Panel inferior: Freezer
+        freezer_panel = wx.Panel(right_splitter)
+        freezer_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.freezer_widget = FreezerWidget(freezer_panel)
+        freezer_sizer.Add(self.freezer_widget, 1, wx.EXPAND | wx.ALL, 5)
+        freezer_panel.SetSizer(freezer_sizer)
+        
+        # Configurar splitter vertical
+        right_splitter.SplitHorizontally(cache_panel, freezer_panel)
+        
+        # Añadir el splitter al sizer principal
+        right_sizer.Add(right_splitter, 1, wx.EXPAND | wx.ALL, 5)
         right_panel.SetSizer(right_sizer)
         
         # Configurar splitter con los dos paneles

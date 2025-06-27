@@ -285,7 +285,6 @@ class DataDisplayManager:
                 
                 # Add Users Connected tab if using Supabase and RealtimeBridge is available
                 self._add_users_connected_tab()
-                self._add_freezer_tab()
                 
                 # No longer need to load tabs in advance as refresh is connected to tab change
                 # wx.CallLater(500, self._refresh_all_tabs)
@@ -551,31 +550,6 @@ class DataDisplayManager:
         except Exception as e:
             message_bus.publish(
                 content=f"Error adding connected users tab: {e}",
-                level=MessageLevel.ERROR,
-                metadata={"source": "data_display_manager"}
-            )
-            message_bus.publish(
-                content=traceback.format_exc(),
-                level=MessageLevel.DEBUG
-            )
-
-    def _add_freezer_tab(self):
-        """
-        Añade la pestaña de Freezer directamente al notebook.
-        """
-        try:
-            from .freezer_panel import FreezerPanel
-            notebook = self.parent.notebook
-            freezer_panel = FreezerPanel(notebook)
-            notebook.AddPage(freezer_panel, "Freezer")
-            message_bus.publish(
-                content="Freezer tab added successfully",
-                level=MessageLevel.INFO,
-                metadata={"source": "data_display_manager"}
-            )
-        except Exception as e:
-            message_bus.publish(
-                content=f"Error adding Freezer tab: {e}",
                 level=MessageLevel.ERROR,
                 metadata={"source": "data_display_manager"}
             )
