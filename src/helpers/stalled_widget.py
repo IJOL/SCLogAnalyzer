@@ -126,15 +126,7 @@ class StalledWidget(wx.Panel):
             ttl += 60  # Problema grave confirmado
         
         # TTL máximo de 12 minutos
-        final_ttl = min(ttl, 720)
-        
-        # Debug: mostrar cálculo si es diferente al base
-        if final_ttl != original_ttl:
-            from .message_bus import message_bus, MessageLevel
-            message_bus.publish(
-                content=f"TTL progresivo: {total_stalls} stalls, {sources_count} fuentes -> {final_ttl}s (base: {original_ttl}s)",
-                level=MessageLevel.DEBUG
-            )
+        final_ttl = min(ttl, 720)       
         
         return final_ttl
     
