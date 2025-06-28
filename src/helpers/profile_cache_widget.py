@@ -193,44 +193,11 @@ class ProfileCacheWidget(wx.Panel):
             self._show_profile_tooltip(player_name, profiles[player_name])
     
     def _show_profile_tooltip(self, player_name: str, profile_data: Dict[str, Any]):
-        """Muestra un tooltip completo con todos los datos del perfil usando PopupWindow"""
+        """Muestra un tooltip completo con todos los datos del perfil usando Dialog modal (temporalmente)"""
         try:
-            # Datos del cache
-            cached_at = profile_data.get('cached_at', datetime.now())
-            last_accessed = profile_data.get('last_accessed', datetime.now())
-            
-            # Datos del perfil
-            profile_info = profile_data.get('profile_data', {})
-            
-            # Construir contenido del tooltip en formato lista
-            content_lines = [
-                f"Jugador: {player_name}",
-                f"Organización: {profile_data.get('organization', 'Unknown')}",
-                f"Origen: {profile_data.get('origin', 'unknown')}",
-                f"Tipo: {profile_data.get('source_type', 'unknown')}",
-                f"Solicitado por: {profile_data.get('requested_by', 'unknown')}",
-                f"Usuario fuente: {profile_data.get('source_user', 'unknown')}",
-                f"Cacheado: {cached_at.strftime('%Y-%m-%d %H:%M:%S')}",
-                f"Último acceso: {last_accessed.strftime('%Y-%m-%d %H:%M:%S')}",
-                "",  # Línea vacía para separar
-                "--- Datos del Perfil ---"
-            ]
-            
-            # Añadir todos los datos del perfil disponibles
-            for key, value in profile_info.items():
-                if value and value not in ['Unknown', '', 'None', None]:
-                    # Formatear el nombre del campo
-                    field_name = key.replace('_', ' ').title()
-                    content_lines.append(f"{field_name}: {value}")
-            
-            # Crear popup window personalizado
-            popup = ProfileTooltipPopup(self, "\n".join(content_lines))
-            
-            # Mostrar en la posición del mouse
-            mouse_pos = wx.GetMousePosition()
-            popup.Position(mouse_pos, (0, 0))
-            popup.Show()
-            
+            dlg = ProfileDetailsDialog(self, player_name, profile_data)
+            dlg.ShowModal()
+            dlg.Destroy()
         except Exception as e:
             message_bus.publish(
                 content=f"Error showing profile tooltip: {e}",
@@ -264,6 +231,77 @@ class ProfileCacheWidget(wx.Panel):
         message_bus.off("profile_cached", self._on_profile_cached)
 
 
+def _build_profile_text_block(player_name, profile_data):
+    """Devuelve el bloque de texto para tooltip/dialogo, igual que el popup."""
+    cached_at = profile_data.get('cached_at', datetime.now())
+    last_accessed = profile_data.get('last_accessed', datetime.now())
+    profile_info = profile_data.get('profile_data', {})
+    content_lines = [
+        f"Jugador: {player_name}",
+        f"Organización: {profile_data.get('organization', 'Unknown')}",
+        f"Origen: {profile_data.get('origin', 'unknown')}",
+        f"Tipo: {profile_data.get('source_type', 'unknown')}",
+        f"Solicitado por: {profile_data.get('requested_by', 'unknown')}",
+        f"Usuario fuente: {profile_data.get('source_user', 'unknown')}",
+        f"Cacheado: {cached_at.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Último acceso: {last_accessed.strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "--- Datos del Perfil ---"
+    ]
+    for key, value in profile_info.items():
+        if value and value not in ['Unknown', '', 'None', None]:
+            field_name = key.replace('_', ' ').title()
+            content_lines.append(f"{field_name}: {value}")
+    return "\n".join(content_lines)
+
+
+class ProfileDetailsDialog(wx.Dialog):
+    """Diálogo compacto y dark para mostrar detalles de un perfil específico, tipo tooltip"""
+    def __init__(self, parent, player_name: str, profile_data: dict):
+        super().__init__(parent, title=f"Detalles: {player_name}",
+                         style=wx.BORDER_SIMPLE | wx.STAY_ON_TOP)
+        self.SetBackgroundColour(wx.Colour(40, 40, 40))
+        self._setup_ui(player_name, profile_data)
+        self.Fit()
+        self.SetMinSize(self.GetSize())
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key_down)
+        # Capturar clics fuera del diálogo
+        self.Bind(wx.EVT_KILL_FOCUS, self._on_kill_focus)
+
+    def _setup_ui(self, player_name, profile_data):
+        from .ui_components import DarkThemeButton
+        
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        # Bloque de texto igual que el tooltip
+        text_block = _build_profile_text_block(player_name, profile_data)
+        self.text = wx.StaticText(self, label=text_block)
+        self.text.SetForegroundColour(wx.Colour(230, 230, 230))
+        font = wx.Font(9, wx.FONTFAMILY_MODERN, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
+        self.text.SetFont(font)
+        # Capturar clics en el texto también
+        self.text.Bind(wx.EVT_LEFT_DOWN, self._on_click_anywhere)
+        main_sizer.Add(self.text, 0, wx.ALL, 10)
+        
+        # Botón cerrar pequeño con DarkThemeButton
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        close_btn = DarkThemeButton(self, label="Cerrar", size=(60, 25))
+        close_btn.Bind(wx.EVT_BUTTON, self._on_close)
+        btn_sizer.AddStretchSpacer()
+        btn_sizer.Add(close_btn, 0, wx.ALL, 5)
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND)
+        self.SetSizer(main_sizer)
+
+    def _on_close(self, event):
+        self.EndModal(wx.ID_CLOSE)
+
+    def _on_key_down(self, event):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CLOSE)
+        else:
+            event.Skip()
+
+
+# El popup sigue igual, pero ahora usa la función reutilizable para el bloque de texto
 class ProfileTooltipPopup(wx.PopupWindow):
     """Popup simple para mostrar detalles de perfiles"""
     
@@ -271,125 +309,27 @@ class ProfileTooltipPopup(wx.PopupWindow):
         super().__init__(parent)
         self.content = content
         self._setup_ui()
-        
-        # Eventos para cerrar el popup
         self.Bind(wx.EVT_LEFT_DOWN, self._on_click)
         self.Bind(wx.EVT_KEY_DOWN, self._on_key_down)
-        
-        # Capturar eventos de clic en cualquier parte de la ventana
-        self.Bind(wx.EVT_KILL_FOCUS, self._on_lose_focus)
-        
-        # Hacer que el popup capture el foco para recibir eventos de teclado
         self.SetFocus()
     
     def _setup_ui(self):
-        """Configura la interfaz del popup simple"""
-        # Fondo oscuro sin bordes
         self.SetBackgroundColour(wx.Colour(40, 40, 40))
-        
-        # Texto con el contenido
         self.text = wx.StaticText(self, label=self.content)
-        self.text.SetForegroundColour(wx.Colour(230, 230, 230))  # Texto blanco
-        
-        # Font monospace para mejor alineación
+        self.text.SetForegroundColour(wx.Colour(230, 230, 230))
         font = wx.Font(9, wx.FONTFAMILY_MODERN, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         self.text.SetFont(font)
-        
-        # Hacer que el texto también sea clickeable
         self.text.Bind(wx.EVT_LEFT_DOWN, self._on_click)
-        
-        # Sizer simple
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.text, 1, wx.EXPAND | wx.ALL, 8)
         self.SetSizer(sizer)
-        
-        # Ajustar tamaño al contenido
         self.SetSize(self.text.GetBestSize() + wx.Size(16, 16))
     
     def _on_click(self, event):
-        """Cerrar al hacer clic"""
         self.Destroy()
     
     def _on_key_down(self, event):
-        """Cerrar al presionar ESC"""
         if event.GetKeyCode() == wx.WXK_ESCAPE:
             self.Destroy()
         else:
             event.Skip()
-    
-    def _on_lose_focus(self, event):
-        """Cerrar cuando se pierde el foco (clic fuera del popup)"""
-        # Usar CallAfter para evitar problemas de timing
-        wx.CallAfter(self.Destroy)
-
-
-class ProfileDetailsDialog(wx.Dialog):
-    """Diálogo para mostrar detalles de un perfil específico"""
-    
-    def __init__(self, parent, player_name: str, profile_data: Dict[str, Any]):
-        super().__init__(parent, title=f"Detalles: {player_name}", 
-                        style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self.player_name = player_name
-        self.profile_data = profile_data
-        self._setup_ui()
-        self.SetSize((500, 400))
-    
-    def _setup_ui(self):
-        """Configura la interfaz del diálogo"""
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        # Información del cache
-        cache_info = wx.StaticBoxSizer(wx.VERTICAL, self, "Información del Cache")
-        
-        cached_at = self.profile_data.get('cached_at', datetime.now())
-        last_accessed = self.profile_data.get('last_accessed', datetime.now())
-        
-        cache_info.Add(wx.StaticText(self, label=f"Jugador: {self.player_name}"), 0, wx.ALL, 5)
-        cache_info.Add(wx.StaticText(self, label=f"Organización: {self.profile_data.get('organization', 'Unknown')}"), 0, wx.ALL, 5)
-        cache_info.Add(wx.StaticText(self, label=f"Origen: {self.profile_data.get('origin', 'unknown')}"), 0, wx.ALL, 5)
-        cache_info.Add(wx.StaticText(self, label=f"Tipo: {self.profile_data.get('source_type', 'unknown')}"), 0, wx.ALL, 5)
-        cache_info.Add(wx.StaticText(self, label=f"Solicitado por: {self.profile_data.get('requested_by', 'unknown')}"), 0, wx.ALL, 5)
-        cache_info.Add(wx.StaticText(self, label=f"Usuario fuente: {self.profile_data.get('source_user', 'unknown')}"), 0, wx.ALL, 5)
-        cache_info.Add(wx.StaticText(self, label=f"Cacheado: {cached_at.strftime('%Y-%m-%d %H:%M:%S')}"), 0, wx.ALL, 5)
-        cache_info.Add(wx.StaticText(self, label=f"Último acceso: {last_accessed.strftime('%Y-%m-%d %H:%M:%S')}"), 0, wx.ALL, 5)
-        
-        # Datos del perfil
-        profile_info = wx.StaticBoxSizer(wx.VERTICAL, self, "Datos del Perfil")
-        
-        profile_text = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        profile_data_str = str(self.profile_data.get('profile_data', {}))
-        profile_text.SetValue(profile_data_str)
-        
-        profile_info.Add(profile_text, 1, wx.EXPAND | wx.ALL, 5)
-        
-        # Botones
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        close_btn = wx.Button(self, wx.ID_CLOSE, "Cerrar")
-        close_btn.Bind(wx.EVT_BUTTON, self._on_close)
-        button_sizer.Add(close_btn, 0, wx.ALL, 5)
-        
-        # Layout principal
-        main_sizer.Add(cache_info, 0, wx.EXPAND | wx.ALL, 10)
-        main_sizer.Add(profile_info, 1, wx.EXPAND | wx.ALL, 10)
-        main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
-        
-        self.SetSizer(main_sizer)
-    
-    def _on_close(self, event):
-        """Cierra el diálogo"""
-        self.EndModal(wx.ID_CLOSE)
-
-
-class CacheDetailsDialog(wx.Dialog):
-    """Diálogo para mostrar estadísticas completas del cache"""
-    
-    def __init__(self, parent):
-        super().__init__(parent, title="Estadísticas del Cache", 
-                        style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self.cache = ProfileCache.get_instance()
-        self._setup_ui()
-        self.SetSize((400, 300))
-    
-    def _setup_ui(self):
-        """Configura la interfaz del diálogo"""
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
