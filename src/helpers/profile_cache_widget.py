@@ -250,25 +250,10 @@ class ProfileCacheWidget(wx.Panel):
     
     def _broadcast_profile(self, player_name: str):
         """Envía un perfil específico a todos los conectados"""
-        profiles = self.cache.get_all_profiles()
-        if player_name in profiles:
-            cache_entry = profiles[player_name]
-            profile_data = cache_entry['profile_data']
-            
-            # Crear estructura completa para el broadcast
-            broadcast_data = {
-                'player_name': player_name,
-                'org': profile_data.get('main_org_sid', 'Unknown'),
-                'enlisted': profile_data.get('enlisted', 'Unknown'),
-                'action': 'force_broadcast',
-                **profile_data  # Incluir todos los datos del perfil
-            }
-            
-            # Emitir evento para que log_analyzer lo procese
-            message_bus.emit('force_broadcast_profile', player_name, broadcast_data)
-            
+        success = self.cache.broadcast_profile(player_name)
+        if success:
             message_bus.publish(
-                content=f"Requesting broadcast for profile {player_name}",
+                content=f"Broadcast requested for profile {player_name}",
                 level=MessageLevel.INFO,
                 metadata={"source": "profile_cache_widget"}
             )
@@ -287,8 +272,15 @@ class ProfileTooltipPopup(wx.PopupWindow):
         self.content = content
         self._setup_ui()
         
-        # Solo cerrar al hacer clic, no por tiempo
+        # Eventos para cerrar el popup
         self.Bind(wx.EVT_LEFT_DOWN, self._on_click)
+        self.Bind(wx.EVT_KEY_DOWN, self._on_key_down)
+        
+        # Capturar eventos de clic en cualquier parte de la ventana
+        self.Bind(wx.EVT_KILL_FOCUS, self._on_lose_focus)
+        
+        # Hacer que el popup capture el foco para recibir eventos de teclado
+        self.SetFocus()
     
     def _setup_ui(self):
         """Configura la interfaz del popup simple"""
@@ -317,6 +309,18 @@ class ProfileTooltipPopup(wx.PopupWindow):
     def _on_click(self, event):
         """Cerrar al hacer clic"""
         self.Destroy()
+    
+    def _on_key_down(self, event):
+        """Cerrar al presionar ESC"""
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.Destroy()
+        else:
+            event.Skip()
+    
+    def _on_lose_focus(self, event):
+        """Cerrar cuando se pierde el foco (clic fuera del popup)"""
+        # Usar CallAfter para evitar problemas de timing
+        wx.CallAfter(self.Destroy)
 
 
 class ProfileDetailsDialog(wx.Dialog):

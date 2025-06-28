@@ -4,7 +4,6 @@ Incluye tracking de fuentes, TTL automático, y actualización periódica.
 """
 
 import wx
-import csv
 import threading
 from datetime import datetime, timedelta
 from .message_bus import message_bus, MessageLevel
@@ -23,7 +22,10 @@ class StalledWidget(wx.Panel):
         
         # Datos thread-safe
         self.data_lock = threading.Lock()
-        self.stalled_data = {}  # {player_name: {count, sources, timestamps}}
+        self.stalled_data = {}  # {player_name: {count, sources, timestamps, base_ttl_multiplier, historical_detections}}
+        
+        # Cache histórico (no visible)
+        self.historical_cache = {}  # {player_name: {count, sources, last_seen, detection_count, base_ttl_multiplier}}
         
         # Timers
         self.ttl_timer = None
@@ -95,11 +97,10 @@ class StalledWidget(wx.Panel):
         """Suscribe a eventos del message bus"""
         message_bus.on("remote_realtime_event", self._handle_remote_event)
     
-    def _calculate_progressive_ttl(self, player_data):
+    def _calculate_progressive_ttl(self, player_data, player_name):
         """Calcula TTL progresivo basado en importancia del problema"""
-        # TTL base mínimo (30s para casos triviales)
-        ttl = self.base_ttl_seconds
-        original_ttl = ttl
+        # TTL base progresivo (puede ser 30s, 60s, 120s, 240s, etc.)
+        ttl = self._calculate_base_ttl(player_name)
         
         # Factores de importancia
         sources_count = len(player_data['sources'])
@@ -130,6 +131,140 @@ class StalledWidget(wx.Panel):
         
         return final_ttl
     
+    def _calculate_base_ttl(self, player_name):
+        """Calcula TTL base progresivo basado en historial"""
+        base_ttl = self.base_ttl_seconds  # TTL base inicial
+        
+        if player_name in self.historical_cache:
+            multiplier = self.historical_cache[player_name]['base_ttl_multiplier']
+            base_ttl *= multiplier
+        
+        return base_ttl
+    
+    def _move_to_historical_cache(self, player_name):
+        """Mueve datos activos a cache histórico"""
+        if player_name in self.stalled_data:
+            player_data = self.stalled_data[player_name]
+            
+            # Calcular multiplicador actual
+            current_multiplier = player_data.get('base_ttl_multiplier', 1)
+            historical_detections = player_data.get('historical_detections', 0)
+            
+            # Mover a cache histórico
+            self.historical_cache[player_name] = {
+                'count': player_data['count'],
+                'sources': player_data['sources'].copy(),
+                'last_seen': player_data['last_timestamp'],
+                'detection_count': historical_detections + 1,
+                'base_ttl_multiplier': min(current_multiplier * 2, 8),  # Máximo 8x
+                'last_source': player_data['last_source'],
+                'first_timestamp': player_data['first_timestamp']
+            }
+            
+            # Eliminar de datos activos
+            del self.stalled_data[player_name]
+    
+    def _promote_from_historical(self, player_name):
+        """Promueve jugador del cache histórico a activo"""
+        if player_name in self.historical_cache:
+            historical_data = self.historical_cache[player_name]
+            
+            # Restaurar datos con multiplicador actualizado
+            self.stalled_data[player_name] = {
+                'count': historical_data['count'],
+                'sources': historical_data['sources'].copy(),
+                'last_source': historical_data['last_source'],
+                'first_timestamp': historical_data['first_timestamp'],
+                'last_timestamp': datetime.now(),
+                'base_ttl_multiplier': historical_data['base_ttl_multiplier'],
+                'historical_detections': historical_data['detection_count']
+            }
+            
+            # Eliminar del cache histórico
+            del self.historical_cache[player_name]
+    
+    def _calculate_heat_color(self, player_data):
+        """Calcula color basado en actividad reciente (últimos 90s)"""
+        recent_detections = 0
+        current_time = datetime.now()
+        
+        for source_data in player_data['sources'].values():
+            time_diff = current_time - source_data['last_seen']
+            if time_diff.total_seconds() <= 90:  # 3 períodos de 30s
+                recent_detections += source_data['count']
+        
+        # Calcular intensidad (0-255)
+        if recent_detections >= 10:
+            intensity = 255  # Rojo máximo
+        elif recent_detections >= 5:
+            intensity = 200  # Rojo intenso
+        elif recent_detections >= 3:
+            intensity = 150  # Rojo medio
+        elif recent_detections >= 1:
+            intensity = 100  # Rojo suave
+        else:
+            intensity = 230  # Blanco (normal)
+        
+        return wx.Colour(intensity, 50, 50)
+    
+    def _calculate_background_color(self, player_data):
+        """Calcula color de fondo basado en actividad reciente (últimos 90s)"""
+        recent_detections = 0
+        current_time = datetime.now()
+        
+        for source_data in player_data['sources'].values():
+            time_diff = current_time - source_data['last_seen']
+            if time_diff.total_seconds() <= 90:  # 3 períodos de 30s
+                recent_detections += source_data['count']
+        
+        # Colores de fondo que contrastan bien con texto blanco
+        if recent_detections >= 10:
+            return wx.Colour(180, 30, 30)   # Rojo oscuro intenso
+        elif recent_detections >= 5:
+            return wx.Colour(140, 40, 40)   # Rojo oscuro medio
+        elif recent_detections >= 3:
+            return wx.Colour(100, 50, 50)   # Rojo oscuro suave
+        elif recent_detections >= 1:
+            return wx.Colour(80, 60, 60)    # Rojo muy oscuro
+        else:
+            return wx.Colour(80, 80, 80)    # Gris normal (fondo base)
+    
+    def _calculate_heat_level(self, player_data):
+        """Calcula nivel de actividad reciente (0-4) para determinar si mostrar punto coloreado"""
+        recent_detections = 0
+        current_time = datetime.now()
+        
+        for source_data in player_data['sources'].values():
+            time_diff = current_time - source_data['last_seen']
+            if time_diff.total_seconds() <= 90:  # 3 períodos de 30s
+                recent_detections += source_data['count']
+        
+        # Retornar nivel de actividad (0 = normal, 1-4 = actividad creciente)
+        if recent_detections >= 10:
+            return 4  # Actividad máxima
+        elif recent_detections >= 5:
+            return 3  # Actividad alta
+        elif recent_detections >= 3:
+            return 2  # Actividad media
+        elif recent_detections >= 1:
+            return 1  # Actividad baja
+        else:
+            return 0  # Sin actividad reciente
+    
+    def _get_historical_stats(self, player_name):
+        """Obtiene estadísticas incluyendo cache histórico"""
+        stats = {}
+        
+        # Datos activos
+        if player_name in self.stalled_data:
+            stats['active'] = self.stalled_data[player_name]
+        
+        # Datos históricos
+        if player_name in self.historical_cache:
+            stats['historical'] = self.historical_cache[player_name]
+        
+        return stats
+    
     def _handle_remote_event(self, username, event_data):
         """Procesa eventos remotos de tiempo real"""
         # Verificar que event_data sea dict
@@ -153,13 +288,19 @@ class StalledWidget(wx.Panel):
         
         # Actualizar datos thread-safe
         with self.data_lock:
+            # Verificar si el jugador está en cache histórico
+            if player_name in self.historical_cache:
+                self._promote_from_historical(player_name)
+            
             if player_name not in self.stalled_data:
                 self.stalled_data[player_name] = {
                     'count': 0,
                     'sources': {},
                     'last_source': source_user,
                     'first_timestamp': timestamp,
-                    'last_timestamp': timestamp
+                    'last_timestamp': timestamp,
+                    'base_ttl_multiplier': 1,
+                    'historical_detections': 0
                 }
             
             player_data = self.stalled_data[player_name]
@@ -194,7 +335,7 @@ class StalledWidget(wx.Panel):
         """Inicia el timer para actualización periódica de UI (TTL, tiempos)"""
         self.ui_refresh_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._periodic_ui_refresh, self.ui_refresh_timer)
-        self.ui_refresh_timer.Start(5000)  # Actualizar UI cada 5 segundos
+        self.ui_refresh_timer.Start(2000)  # Actualizar UI cada 2 segundos
     
     def _cleanup_expired_data(self, event):
         """Limpia datos expirados según TTL progresivo"""
@@ -204,13 +345,14 @@ class StalledWidget(wx.Panel):
         with self.data_lock:
             for player_name, data in list(self.stalled_data.items()):
                 # Calcular TTL específico para este jugador
-                player_ttl = self._calculate_progressive_ttl(data)
+                player_ttl = self._calculate_progressive_ttl(data, player_name)
                 ttl_delta = timedelta(seconds=player_ttl)
                 
                 time_since_last = current_time - data['last_timestamp']
                 if time_since_last > ttl_delta:
+                    # Mover a cache histórico en lugar de borrar
+                    self._move_to_historical_cache(player_name)
                     expired_players.append(player_name)
-                    del self.stalled_data[player_name]
         
         # Refrescar UI si hubo cambios
         if expired_players:
@@ -240,7 +382,7 @@ class StalledWidget(wx.Panel):
             
             for player, data in sorted_players:
                 # Calcular TTL progresivo específico para este jugador
-                player_ttl = self._calculate_progressive_ttl(data)
+                player_ttl = self._calculate_progressive_ttl(data, player)
                 time_since_last = current_time - data['last_timestamp']
                 ttl_remaining = timedelta(seconds=player_ttl) - time_since_last
                 ttl_seconds = max(0, int(ttl_remaining.total_seconds()))
@@ -265,12 +407,27 @@ class StalledWidget(wx.Panel):
                 else:
                     last_display = f"{minutes_ago}min"
                 
+                # Añadir punto indicador al nombre del jugador
+                heat_level = self._calculate_heat_level(data)
+                player_display = f"● {player}" if heat_level > 0 else f"○ {player}"
+                
                 # Añadir fila con todas las columnas
-                index = self.stalled_list.InsertItem(self.stalled_list.GetItemCount(), player)
+                index = self.stalled_list.InsertItem(self.stalled_list.GetItemCount(), player_display)
                 self.stalled_list.SetItem(index, 1, str(data['count']))           # Stalls
                 self.stalled_list.SetItem(index, 2, str(sources_count))          # Fuentes  
                 self.stalled_list.SetItem(index, 3, last_display)                # Último tiempo
                 self.stalled_list.SetItem(index, 4, ttl_display)                 # TTL progresivo
+                
+                # Aplicar fondo coloreado basado en actividad reciente
+                if heat_level > 0:
+                    background_color = self._calculate_background_color(data)
+                    self.stalled_list.SetItemBackgroundColour(index, background_color)
+                    # Texto siempre blanco para máximo contraste
+                    self.stalled_list.SetItemTextColour(index, wx.Colour(255, 255, 255))
+                else:
+                    # Sin actividad: fondo normal, texto blanco
+                    self.stalled_list.SetItemBackgroundColour(index, wx.Colour(80, 80, 80))
+                    self.stalled_list.SetItemTextColour(index, wx.Colour(230, 230, 230))
     
     def _on_context_menu(self, event):
         """Maneja clic derecho para mostrar menú contextual"""
@@ -301,10 +458,6 @@ class StalledWidget(wx.Panel):
         stats_item = menu.Append(wx.ID_ANY, f"Ver estadísticas")
         self.Bind(wx.EVT_MENU, lambda evt: self._on_show_player_stats(player_name), stats_item)
         
-        # Exportar datos
-        export_item = menu.Append(wx.ID_ANY, f"Exportar datos CSV")
-        self.Bind(wx.EVT_MENU, lambda evt: self.export_data_csv(), export_item)
-        
         # Mostrar menú
         self.PopupMenu(menu, event.GetPoint())
         menu.Destroy()
@@ -312,10 +465,13 @@ class StalledWidget(wx.Panel):
     def _on_show_player_stats(self, player_name):
         """Muestra estadísticas detalladas del jugador"""
         stats = self.get_player_stats(player_name)
+        historical_stats = self._get_historical_stats(player_name)
+        
         if stats:
             # Obtener información detallada de fuentes
             sources_info = self._get_sources_info(player_name)
             
+            # Información base
             info_text = f"""Estadísticas de {player_name}:
             
 • Total stalls: {stats['count']}
@@ -323,7 +479,16 @@ class StalledWidget(wx.Panel):
 • Primera vez: {stats['first_seen'].strftime('%H:%M:%S')}
 • Última vez: {stats['last_seen'].strftime('%H:%M:%S')}
 • Duración: {stats['duration_minutes']} minutos
-• Promedio: {stats['avg_per_minute']} stalls/min
+• Promedio: {stats['avg_per_minute']} stalls/min"""
+            
+            # Añadir información histórica si existe
+            if 'historical' in historical_stats:
+                historical_data = historical_stats['historical']
+                info_text += f"""
+• Detecciones históricas: {historical_data['detection_count']}
+• Multiplicador TTL: x{historical_data['base_ttl_multiplier']}"""
+            
+            info_text += f"""
 
 Detalle por fuente:
 {sources_info['details']}"""
@@ -370,18 +535,22 @@ Detalle por fuente:
         """Elimina un jugador específico"""
         with self.data_lock:
             if player_name in self.stalled_data:
+                self._on_filter_player_stalled(player_name)
                 del self.stalled_data[player_name]
                 wx.CallAfter(self._refresh_ui)
     
     def _on_reset(self, event):
         """Limpia la lista con confirmación visual"""
         count = len(self.stalled_data)
+        historical_count = len(self.historical_cache)
+        total_count = count + historical_count
         
-        if count > 0:
+        if total_count > 0:
             # Mostrar confirmación si hay datos
+            message = f"¿Limpiar {count} jugadores activos y {historical_count} históricos de la lista stalled?"
             dlg = wx.MessageDialog(
                 self, 
-                f"¿Limpiar {count} jugadores de la lista stalled?",
+                message,
                 "Confirmar Reset",
                 wx.YES_NO | wx.ICON_QUESTION
             )
@@ -389,11 +558,12 @@ Detalle por fuente:
             if dlg.ShowModal() == wx.ID_YES:
                 with self.data_lock:
                     self.stalled_data.clear()
+                    self.historical_cache.clear()
                 
                 wx.CallAfter(self._refresh_ui)
                 
                 message_bus.publish(
-                    content=f"Lista de {count} usuarios stalled reiniciada",
+                    content=f"Lista de {total_count} usuarios stalled reiniciada",
                     level=MessageLevel.INFO
                 )
             
@@ -434,60 +604,6 @@ Detalle por fuente:
                     'avg_per_minute': round(data['count'] / duration_minutes, 1)
                 }
         return None
-    
-    def export_data_csv(self):
-        """Exporta datos a CSV"""
-        if not self.stalled_data:
-            message_bus.publish(
-                content="No hay datos para exportar",
-                level=MessageLevel.INFO
-            )
-            return False
-        
-        # Generar nombre de archivo con timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"stalled_data_{timestamp}.csv"
-        
-        with wx.FileDialog(
-            self,
-            "Guardar datos stalled",
-            defaultFile=filename,
-            wildcard="CSV files (*.csv)|*.csv",
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
-        ) as fileDialog:
-            
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return False
-            
-            filepath = fileDialog.GetPath()
-            
-            try:
-                with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow(['Jugador', 'Conteo', 'Primera_Vez', 'Ultima_Vez', 'Duracion_Min'])
-                    
-                    for player, data in self.stalled_data.items():
-                        duration = datetime.now() - data['first_timestamp']
-                        writer.writerow([
-                            player,
-                            data['count'],
-                            data['first_timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-                            data['last_timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-                            int(duration.total_seconds() / 60)
-                        ])
-                
-                message_bus.publish(
-                    content=f"Datos exportados a: {filename}",
-                    level=MessageLevel.INFO
-                )
-                return True
-                
-            except Exception as e:
-                message_bus.publish(
-                    content=f"Error exportando datos: {str(e)}",
-                    level=MessageLevel.ERROR
-                )
-                return False
     
     def cleanup_timers(self):
         """Limpia y detiene todos los timers"""

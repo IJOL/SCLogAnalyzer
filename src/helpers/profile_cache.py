@@ -215,12 +215,15 @@ class ProfileCache:
             try:
                 profile_data = cache_entry['profile_data']
                 
+                # Limpiar el perfil antes del broadcast para eliminar campo 'all'
+                profile_data_clean = self._limpiar_perfil_primer_nivel(profile_data)
+                
                 # Emitir evento actor_profile para cada perfil
                 message_bus.emit('actor_profile', 
                                 player_name, 
-                                profile_data.get('main_org_sid', 'Unknown'), 
-                                profile_data.get('enlisted', 'Unknown'), 
-                                profile_data)
+                                profile_data_clean.get('main_org_sid', 'Unknown'), 
+                                profile_data_clean.get('enlisted', 'Unknown'), 
+                                profile_data_clean)
                 
                 broadcast_count += 1
                 
@@ -241,4 +244,50 @@ class ProfileCache:
             content=f"Broadcast completed: {broadcast_count}/{len(profiles)} profiles sent",
             level=MessageLevel.INFO,
             metadata={"source": "profile_cache", "action": "broadcast_all_complete", "count": broadcast_count}
-        ) 
+        )
+    
+    def broadcast_profile(self, player_name: str):
+        """Envía un perfil específico a todos los conectados via force_broadcast"""
+        with self._cache_lock:
+            if player_name not in self._cache:
+                message_bus.publish(
+                    content=f"Profile {player_name} not found in cache for broadcast",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": "profile_cache", "action": "broadcast_profile_not_found"}
+                )
+                return False
+            
+            cache_entry = self._cache[player_name]
+            profile_data = cache_entry['profile_data']
+        
+        try:
+            # Limpiar el perfil antes del broadcast para eliminar campo 'all'
+            profile_data_clean = self._limpiar_perfil_primer_nivel(profile_data)
+            
+            # Crear estructura completa para el broadcast
+            broadcast_data = {
+                'player_name': player_name,
+                'org': profile_data_clean.get('main_org_sid', 'Unknown'),
+                'enlisted': profile_data_clean.get('enlisted', 'Unknown'),
+                'action': 'force_broadcast',
+                **profile_data_clean  # Incluir todos los datos del perfil limpio
+            }
+            
+            # Emitir evento para que log_analyzer lo procese
+            message_bus.emit('force_broadcast_profile', player_name, broadcast_data)
+            
+            message_bus.publish(
+                content=f"Requesting force broadcast for profile {player_name}",
+                level=MessageLevel.INFO,
+                metadata={"source": "profile_cache", "action": "force_broadcast_profile"}
+            )
+            
+            return True
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error in force broadcast for profile {player_name}: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "profile_cache", "action": "force_broadcast_error"}
+            )
+            return False 
