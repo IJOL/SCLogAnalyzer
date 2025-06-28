@@ -252,10 +252,20 @@ class ProfileCacheWidget(wx.Panel):
         """Envía un perfil específico a todos los conectados"""
         profiles = self.cache.get_all_profiles()
         if player_name in profiles:
-            profile_data = profiles[player_name]['profile_data']
+            cache_entry = profiles[player_name]
+            profile_data = cache_entry['profile_data']
+            
+            # Crear estructura completa para el broadcast
+            broadcast_data = {
+                'player_name': player_name,
+                'org': profile_data.get('main_org_sid', 'Unknown'),
+                'enlisted': profile_data.get('enlisted', 'Unknown'),
+                'action': 'force_broadcast',
+                **profile_data  # Incluir todos los datos del perfil
+            }
             
             # Emitir evento para que log_analyzer lo procese
-            message_bus.emit('force_broadcast_profile', player_name, profile_data)
+            message_bus.emit('force_broadcast_profile', player_name, broadcast_data)
             
             message_bus.publish(
                 content=f"Requesting broadcast for profile {player_name}",

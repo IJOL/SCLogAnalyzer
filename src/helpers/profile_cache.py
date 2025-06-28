@@ -144,6 +144,9 @@ class ProfileCache:
                 level=MessageLevel.DEBUG,
                 metadata={"source": "profile_cache", "action": "store"}
             )
+            
+            # Emitir evento profile_cached para que el widget se actualice
+            message_bus.emit("profile_cached", player_name, cache_entry)
     
     def remove_profile(self, player_name: str) -> bool:
         """

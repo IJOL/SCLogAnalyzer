@@ -224,7 +224,14 @@ class LogFileHandler(FileSystemEventHandler):
             }
             
             # Almacenar en caché
-            cache.store_profile(profile_data['player_name'], profile_data)
+            cache.add_profile(
+                player_name=profile_data['player_name'],
+                profile_data=profile_data,
+                source_type='broadcast',
+                origin='broadcast_received',
+                requested_by=metadata.get('username', 'unknown'),
+                source_user=metadata.get('username', 'unknown')
+            )
             
             # Mostrar en log solo (sin notificación para broadcast)
             message_bus.publish(
@@ -275,9 +282,6 @@ class LogFileHandler(FileSystemEventHandler):
             requested_by=requested_by,
             source_user=source_user
         )
-        
-        # Emitir evento profile_cached para que el widget se actualice
-        message_bus.emit("profile_cached", player_name, data)
         
         # Use standard pattern: check if format exists in messages and output
         output_message_format = self.messages.get("actor_profile")
@@ -1178,28 +1182,35 @@ class LogFileHandler(FileSystemEventHandler):
 
     def _on_force_broadcast_profile(self, player_name, profile_data):
         """Handler for force_broadcast_profile events from message bus"""
-        # profile_data ya contiene todos los datos necesarios
-        data = profile_data.copy()
-        
-        # Asegurar que tenemos los campos básicos
-        data['player_name'] = player_name
-        data['org'] = profile_data.get('main_org_sid', 'Unknown')
-        data['enlisted'] = profile_data.get('enlisted', 'Unknown')
-        
-        # Marcar como broadcast forzado
-        data['action'] = 'force_broadcast'
-        
-        # Add state data to the data dict   
-        data = self.add_state_data(data)
-        
-        # SOLO HACER EL BROADCAST REAL - sin Discord ni log
-        self.send_realtime_event(data, pattern_name="actor_profile")
-        
-        message_bus.publish(
-            content=f"Force broadcast completed for profile {player_name}",
-            level=MessageLevel.INFO,
-            metadata={"source": "log_analyzer", "action": "force_broadcast"}
-        )
+        try:
+            # profile_data ya contiene todos los datos necesarios
+            data = profile_data.copy()
+            
+            # Asegurar que tenemos los campos básicos
+            data['player_name'] = player_name
+            data['org'] = profile_data.get('org', profile_data.get('main_org_sid', 'Unknown'))
+            data['enlisted'] = profile_data.get('enlisted', 'Unknown')
+            
+            # Marcar como broadcast forzado
+            data['action'] = 'force_broadcast'
+            
+            # Add state data to the data dict   
+            data = self.add_state_data(data)
+            
+            # SOLO HACER EL BROADCAST REAL - sin Discord ni log
+            self.send_realtime_event(data, pattern_name="actor_profile")
+            
+            message_bus.publish(
+                content=f"Force broadcast completed for profile {player_name}",
+                level=MessageLevel.INFO,
+                metadata={"source": "log_analyzer", "action": "force_broadcast"}
+            )
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error in force_broadcast_profile: {str(e)}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "log_analyzer", "action": "force_broadcast_error"}
+            )
 
 
 def signal_handler(signum, frame):
