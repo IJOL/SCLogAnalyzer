@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 12
-RELEASE = 4
+RELEASE = 5
 MATURITY = "valakkar"  # "alpha", "beta", or "final"
-PATCH = "580eae9"
+PATCH = "d88be00"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,14 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.12.x series,
+    "d88be00: refactor: Enhance profile broadcasting and error handling\n\n- Updated the LogFileHandler to improve profile broadcasting by adding detailed metadata and error handling in the force_broadcast_profile method.\n- Modified the ProfileCacheWidget to create a complete broadcast structure for profile data.\n- Ensured that profile caching emits events to update the UI, enhancing overall data management and user experience.",
+    "cc11c42: refactor: Simplify TTL calculation in StalledWidget\n\n- Removed debug logging for TTL calculation in the StalledWidget class to streamline the code.\n- Maintained the maximum TTL limit of 12 minutes while ensuring clarity in the final TTL computation.",
+    "ad79e49: feat: Add FreezerWidget for managing frozen entries\n\n- Introduced FreezerWidget to display and manage frozen entries with functionalities for creating snapshots, opening folders, and deleting entries.\n- Updated ConnectedUsersPanel to include FreezerWidget alongside ProfileCacheWidget, enhancing the user interface with a vertical splitter for better organization.\n- Removed the previous _add_freezer_tab method from DataDisplayManager to streamline tab management.",
+    "00c8d1f: refactor: Improve profile data handling in ProfileCache\n\n- Added a static method to clean profile data by removing the 'all' field and filtering out nested dictionaries and lists.\n- Updated the add_profile method to utilize the new cleaning method before saving profile data to the cache, enhancing data integrity.",
+    "6288065: chore: Remove custom patch application for UltimateListCtrl\n\n- Eliminated the step that applied a custom colors patch to UltimateListCtrl in the build workflow, streamlining the build process.",
+
+    # Version v0.12.4-580eae9-valakkar-docker,
+    "6b132ec: [chore] Increment version to v0.12.4-580eae9-valakkar",
     "580eae9: refactor: Integrate DarkThemeButton for consistent UI styling\n\n- Replaced standard wx.Button instances with DarkThemeButton in multiple panels for a cohesive dark theme experience.\n- Enhanced log analyzer to improve event handling and profile caching logic, including better metadata management and debug logging.\n- Streamlined profile data handling in the RealtimeBridge to ensure accurate event processing and caching.",
     "a051232: refactor: Enhance configuration handling and type safety\n\n- Updated configuration retrieval in multiple modules to ensure values are cast to appropriate types (int, float) for better consistency and error handling.\n- Improved the ConfigDialog to automatically detect and convert types when saving configuration values.\n- Enhanced profile cache size retrieval to ensure it returns an integer value, preventing potential type-related issues.",
     "c490491: feat: Implement profile caching system for player profiles\n\n- Introduced a new ProfileCache class to manage player profiles with LRU caching.\n- Added ProfileCacheWidget for UI management of cached profiles, including refresh and clear functionalities.\n- Enhanced log analyzer to emit profile data for caching and broadcasting.\n- Updated connected users panel to integrate profile cache functionality, improving user experience and data management.",
