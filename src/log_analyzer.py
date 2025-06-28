@@ -572,23 +572,7 @@ class LogFileHandler(FileSystemEventHandler):
                 # Convert to grayscale for QR code detection
                 top_right = top_right.convert("L")  # Convert to grayscale
 
-                # Use the central 50x50 pixels for threshold calculation
-                central_x_start = (top_right.width - 50) // 2
-                central_y_start = (top_right.height - 50) // 2
-                central_region = top_right.crop((
-                    central_x_start,
-                    central_y_start,
-                    central_x_start + 50,
-                    central_y_start + 50
-                ))
-
-                # Calculate the simple mean of the central region
-                pixels = central_region.load()
-                pixel_values = [pixels[x, y] for x in range(central_region.width) for y in range(central_region.height)]
-                dark_threshold = sum(pixel_values) // len(pixel_values)
-
-                # Output the threshold value
-                output_message(None, f"Darkness threshold: {dark_threshold}")
+                dark_threshold = 252
 
                 # Darken only the pixels that are already dark
                 pixels = top_right.load()
