@@ -23,6 +23,7 @@ from helpers.message_bus import message_bus, MessageLevel  # Import at module le
 from helpers.data_provider import get_data_provider  # Import data provider
 from helpers.rate_limiter import MessageRateLimiter
 from helpers.async_profile import scrape_profile_async  # Import profile scraper helper
+from helpers import ensure_all_field
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -286,7 +287,7 @@ class LogFileHandler(FileSystemEventHandler):
         # Use standard pattern: check if format exists in messages and output
         output_message_format = self.messages.get("actor_profile")
         if output_message_format:
-            output_message(None, output_message_format.format(**data), regex_pattern="actor_profile")
+            output_message(None, output_message_format.format(**ensure_all_field(data)), regex_pattern="actor_profile")
         
         # Si es broadcast recibido, solo mostrar en log_text y terminar
         if origin == 'broadcast_received':
@@ -300,7 +301,7 @@ class LogFileHandler(FileSystemEventHandler):
         if action == 'get':
             # Profile request manual: notificar solo localmente
             if output_message_format:
-                content = output_message_format.format(**data)
+                content = output_message_format.format(**ensure_all_field(data))
                 message_bus.emit("show_windows_notification", content)
         else:
             # Profile automático (killer/victim): transmitir por realtime
@@ -405,7 +406,7 @@ class LogFileHandler(FileSystemEventHandler):
                 else:
                     data['alert'] = ''  # Empty string for non-important players
                     
-                content = self.discord[pattern_name].format(**data)
+                content = self.discord[pattern_name].format(**ensure_all_field(data))
                 
                 # Determine the correct webhook URL based on the mode and message type
                 if self.current_mode == "SC_Default" and self.live_discord_webhook:
@@ -730,7 +731,7 @@ class LogFileHandler(FileSystemEventHandler):
                 pattern_name = 'vip'
                 output_message_format = self.messages.get(pattern_name, None)
                 if output_message_format:
-                    output_message(timestamp, output_message_format.format(**data), regex_pattern=pattern_name)
+                    output_message(timestamp, output_message_format.format(**ensure_all_field(data)), regex_pattern=pattern_name)
         
                 if send_message:
                     self.send_discord_message(data, pattern_name=pattern_name)
@@ -986,7 +987,7 @@ class LogFileHandler(FileSystemEventHandler):
     
             output_message_format = self.messages.get(pattern_name)
             if output_message_format:
-                output_message(timestamp, output_message_format.format(**data), regex_pattern=pattern_name)
+                output_message(timestamp, output_message_format.format(**ensure_all_field(data)), regex_pattern=pattern_name)
     
             if send_message:
                 self.send_discord_message(data, pattern_name=pattern_name)            # Send to data queue
@@ -1048,7 +1049,7 @@ class LogFileHandler(FileSystemEventHandler):
         output_message_format = self.messages.get(pattern_name)
         
         # Create the content string
-        content = output_message_format.format(**data) if output_message_format else f"{pattern_name}: {data.get('player', 'Unknown')}"
+        content = output_message_format.format(**ensure_all_field(data)) if output_message_format else f"{pattern_name}: {data.get('player', 'Unknown')}"
 
         # Check if this event should be rate limited
         if not rate_limiter.should_send(f"{pattern_name}:{content}", 'realtime'):
@@ -1195,7 +1196,6 @@ class LogFileHandler(FileSystemEventHandler):
                 level=MessageLevel.ERROR,
                 metadata={"source": "log_analyzer", "action": "force_broadcast_error"}
             )
-
 
 def signal_handler(signum, frame):
     """Handle external signals to stop the application"""
