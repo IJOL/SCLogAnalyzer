@@ -7,15 +7,39 @@ from .message_bus import message_bus, MessageLevel
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 
 class SharedLogsWidget(UltimateListCtrlAdapter):
-    """Widget auto-contenido para logs compartidos que se suscribe a eventos directamente"""
+    """Widget auto-contenido para logs compartidos con sistema de primera instancia controladora"""
+    
+    # Variables de clase compartidas
+    _shared_log_entries = []
+    _shared_max_logs = 500
+    _controller_instance = None  # Instancia que controla el procesamiento
+    _listener_instances = []     # Lista de instancias oyentes
     
     def __init__(self, parent, max_logs=500, style=wx.LC_REPORT | wx.BORDER_SUNKEN):
         super().__init__(parent, style=style)
         self.max_logs = max_logs
-        self.log_entries = []  # Lista interna de logs
+        
+        # Determinar si esta instancia es la controladora
+        if SharedLogsWidget._controller_instance is None:
+            # Primera instancia - toma el control
+            SharedLogsWidget._controller_instance = self
+            self._init_as_controller()
+        else:
+            # Instancia siguiente - se registra como oyente
+            self._init_as_listener()
         
         self._init_columns()
+        self._populate_ui_from_shared_data()
+    
+    def _init_as_controller(self):
+        """Inicializa como instancia controladora"""
+        self.is_controller = True
         self._subscribe_to_events()
+        
+    def _init_as_listener(self):
+        """Inicializa como instancia oyente"""
+        self.is_controller = False
+        SharedLogsWidget._listener_instances.append(self)
     
     def _init_columns(self):
         """Inicializa las columnas de la lista (EXACTAMENTE igual que ConnectedUsersPanel original)"""
@@ -31,16 +55,39 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         self.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
     
     def _subscribe_to_events(self):
-        """Se suscribe directamente a eventos del message_bus"""
-        message_bus.on("remote_realtime_event", self._on_remote_log_event)
+        """Solo la instancia controladora se suscribe a eventos externos"""
+        if self.is_controller:
+            message_bus.on("remote_realtime_event", self._on_remote_log_event)
+    
+    def _populate_ui_from_shared_data(self):
+        """Popula la UI inicial desde los datos compartidos existentes"""
+        for i, log_entry in enumerate(SharedLogsWidget._shared_log_entries):
+            if i >= self.max_logs:  # Respetar límite individual de UI
+                break
+            self._add_log_entry_to_ui_only(log_entry, i)
     
     def _on_remote_log_event(self, username, log_data):
-        """Maneja eventos de logs remotos directamente (igual que ConnectedUsersPanel)"""
-        wx.CallAfter(self._add_ui_remote_log, username, log_data)
+        """Solo la instancia controladora procesa eventos externos"""
+        if self.is_controller:
+            wx.CallAfter(self._process_remote_log, username, log_data)
+    
+    def _process_remote_log(self, username, log_data):
+        """Procesa el log y notifica a todas las instancias"""
+        # Crear entrada de log usando la lógica existente
+        log_entry = self._create_log_entry(username, log_data)
         
-    def _add_ui_remote_log(self, username, log_data):
-        """Actualiza la UI con un nuevo log remoto (copiado de ConnectedUsersPanel)"""
-        # Obtener datos del log (EXACTAMENTE igual que ConnectedUsersPanel)
+        # Añadir a estructura compartida
+        SharedLogsWidget._shared_log_entries.insert(0, log_entry)
+        
+        # Aplicar límite global
+        if len(SharedLogsWidget._shared_log_entries) > SharedLogsWidget._shared_max_logs:
+            SharedLogsWidget._shared_log_entries = SharedLogsWidget._shared_log_entries[:SharedLogsWidget._shared_max_logs]
+        
+        # Notificar a todas las instancias (incluyendo la controladora)
+        self._notify_all_instances()
+    
+    def _create_log_entry(self, username, log_data):
+        """Crea entrada de log usando la lógica existente"""
         raw_data = log_data.get('raw_data', {})
         timestamp = datetime.now()
         if 'metadata' in log_data:
@@ -59,8 +106,7 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         hora_local = raw_data.get('datetime', 'Desconocido')
         hora_local_str = str(hora_local) if hora_local else 'Desconocido'
         
-        # Crear entrada de log temporal (sin almacenarla)
-        log_entry = {
+        return {
             'timestamp_str': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'hora_local_str': hora_local_str,
             'username': username,
@@ -69,12 +115,41 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
             'shard': shard,
             'mode': mode
         }
-        
-        # Los filtros se aplican globalmente ahora, así que todos los eventos que llegan ya pasaron filtros
-        self._add_log_entry_to_ui(log_entry, 0)  # Insertar al principio
     
-    def _add_log_entry_to_ui(self, log_entry, position):
-        """Añade un log entry a la UI (EXACTAMENTE igual que ConnectedUsersPanel original)"""
+    def _notify_all_instances(self):
+        """Notifica a todas las instancias sobre cambios en los datos"""
+        # Notificar a la instancia controladora
+        if SharedLogsWidget._controller_instance:
+            wx.CallAfter(SharedLogsWidget._controller_instance._update_ui_from_shared_data)
+        
+        # Notificar a todas las instancias oyentes (limpiar referencias muertas)
+        alive_listeners = []
+        for listener in SharedLogsWidget._listener_instances:
+            try:
+                # Verificar que la instancia aún existe y es válida
+                if listener and hasattr(listener, '_update_ui_from_shared_data'):
+                    wx.CallAfter(listener._update_ui_from_shared_data)
+                    alive_listeners.append(listener)
+            except (AttributeError, RuntimeError):
+                # Instancia muerta, no la mantenemos
+                pass
+        
+        # Actualizar lista con solo las instancias vivas
+        SharedLogsWidget._listener_instances = alive_listeners
+    
+    def _update_ui_from_shared_data(self):
+        """Actualiza UI desde los datos compartidos"""
+        # Limpiar UI actual
+        self.DeleteAllItems()
+        
+        # Repoblar desde datos compartidos (respetando límite individual)
+        for i, log_entry in enumerate(SharedLogsWidget._shared_log_entries):
+            if i >= self.max_logs:  # Respetar límite individual de UI
+                break
+            self._add_log_entry_to_ui_only(log_entry, i)
+    
+    def _add_log_entry_to_ui_only(self, log_entry, position):
+        """Añade log entry solo a la UI (sin tocar datos compartidos)"""
         index = self.InsertItem(position, log_entry['timestamp_str'])
         self.SetItem(index, 1, str(log_entry.get('hora_local_str', 'Desconocido')))
         self.SetItem(index, 2, str(log_entry.get('username', 'Unknown')))
@@ -82,18 +157,7 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         self.SetItem(index, 4, str(log_entry.get('content', '')))
         self.SetItem(index, 5, str(log_entry.get('shard', 'Unknown')))
         self.SetItem(index, 6, str(log_entry.get('mode', 'Unknown')))
-        
-        # Añadir a lista interna
-        self.log_entries.insert(0, log_entry)
-        
-        # Mantener límite de logs
-        if len(self.log_entries) > self.max_logs:
-            self.log_entries = self.log_entries[:self.max_logs]
-        
-        # Mantener límite en UI también
-        if self.GetItemCount() > self.max_logs:
-            self.DeleteItem(self.max_logs)
-    
+
     def _on_right_click(self, event):
         """Menú contexto dinámico completo (igual que ConnectedUsersPanel)"""
         from .realtime_bridge import RealtimeBridge
@@ -176,9 +240,9 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         menu.Destroy()
     
     def _on_clear_logs(self, event):
-        """Limpia la lista de logs"""
-        self.DeleteAllItems()
-        self.log_entries.clear()
+        """Limpia logs compartidos y notifica a todas las instancias"""
+        SharedLogsWidget._shared_log_entries.clear()
+        self._notify_all_instances()
     
     def _on_toggle_filter_state(self, content, add):
         """Maneja filtros de contenido a través de RealtimeBridge"""
@@ -225,8 +289,22 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
 
     def get_log_count(self):
         """Retorna el número de logs en la lista"""
-        return len(self.log_entries)
+        return len(SharedLogsWidget._shared_log_entries)
     
     def clear_logs(self):
-        """Método público para limpiar logs"""
-        self._on_clear_logs(None) 
+        """Método público para limpiar logs compartidos"""
+        SharedLogsWidget._shared_log_entries.clear()
+        self._notify_all_instances()
+    
+    def __del__(self):
+        """Cleanup al destruir instancia"""
+        try:
+            if hasattr(self, 'is_controller') and self.is_controller:
+                # Si se destruye la controladora, resetear para que la próxima tome control
+                SharedLogsWidget._controller_instance = None
+            else:
+                # Remover de la lista de oyentes
+                if self in SharedLogsWidget._listener_instances:
+                    SharedLogsWidget._listener_instances.remove(self)
+        except (AttributeError, ValueError):
+            pass  # Ignorar errores de cleanup durante destrucción
