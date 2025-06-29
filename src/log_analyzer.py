@@ -573,16 +573,12 @@ class LogFileHandler(FileSystemEventHandler):
                 # Convert to grayscale for QR code detection
                 top_right = top_right.convert("L")  # Convert to grayscale
 
-                dark_threshold = 252
-
-                # Darken only the pixels that are already dark
+                # Binarización: solo blanco y negro para mejorar la detección de QR
+                threshold = 210
                 pixels = top_right.load()
                 for x in range(top_right.width):
                     for y in range(top_right.height):
-                        current_pixel = pixels[x, y]
-                        if current_pixel < dark_threshold:  # Only darken pixels below the threshold
-                            pixels[x, y] = max(0, current_pixel - 150)  # Darken by reducing brightness
-
+                        pixels[x, y] = 0 if pixels[x, y] < threshold else 255
 
                 # Try to decode QR code
                 qr_codes = decode(top_right)
