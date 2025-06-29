@@ -27,6 +27,9 @@ class StalledWidget(wx.Panel):
         # Cache histórico (no visible)
         self.historical_cache = {}  # {player_name: {count, sources, last_seen, detection_count, base_ttl_multiplier}}
         
+        # Mapping de índice de fila a nombre de jugador limpio
+        self.row_to_player = {}  # {row_index: player_name}
+        
         # Timers
         self.ttl_timer = None
         self.ui_refresh_timer = None
@@ -369,6 +372,9 @@ class StalledWidget(wx.Panel):
         # Limpiar lista actual
         self.stalled_list.DeleteAllItems()
         
+        # Limpiar mapping de filas al refrescar
+        self.row_to_player.clear()
+        
         # Calcular tiempo actual una sola vez para consistencia
         current_time = datetime.now()
         
@@ -407,7 +413,7 @@ class StalledWidget(wx.Panel):
                 else:
                     last_display = f"{minutes_ago}min"
                 
-                # Añadir punto indicador al nombre del jugador
+                # Añadir punto indicador al nombre del jugador (solo visual)
                 heat_level = self._calculate_heat_level(data)
                 player_display = f"● {player}" if heat_level > 0 else f"○ {player}"
                 
@@ -417,6 +423,9 @@ class StalledWidget(wx.Panel):
                 self.stalled_list.SetItem(index, 2, str(sources_count))          # Fuentes  
                 self.stalled_list.SetItem(index, 3, last_display)                # Último tiempo
                 self.stalled_list.SetItem(index, 4, ttl_display)                 # TTL progresivo
+                
+                # Almacenar nombre limpio para acceso posterior
+                self.row_to_player[index] = player
                 
                 # Aplicar fondo coloreado basado en actividad reciente
                 if heat_level > 0:
@@ -429,13 +438,22 @@ class StalledWidget(wx.Panel):
                     self.stalled_list.SetItemBackgroundColour(index, wx.Colour(80, 80, 80))
                     self.stalled_list.SetItemTextColour(index, wx.Colour(230, 230, 230))
     
+    def _get_player_name_by_index(self, index):
+        """Obtiene el nombre limpio del jugador usando el mapping simple"""
+        if index == -1:
+            return None
+        
+        return self.row_to_player.get(index)
+    
     def _on_context_menu(self, event):
         """Maneja clic derecho para mostrar menú contextual"""
         selected = event.GetIndex()
         if selected == -1:
             return
         
-        player_name = self.stalled_list.GetItemText(selected, 0)
+        player_name = self._get_player_name_by_index(selected)
+        if not player_name:
+            return
         
         # Crear menú contextual
         menu = wx.Menu()
@@ -532,12 +550,29 @@ Detalle por fuente:
             )
     
     def _on_remove_player(self, player_name):
-        """Elimina un jugador específico"""
+        """Elimina un jugador específico y aplica filtro"""
         with self.data_lock:
             if player_name in self.stalled_data:
+                # Aplicar filtro primero
                 self._on_filter_player_stalled(player_name)
+                
+                # Eliminar del dataset
                 del self.stalled_data[player_name]
+                
+                # Notificar éxito
+                message_bus.publish(
+                    content=f"Jugador {player_name} eliminado y filtrado",
+                    level=MessageLevel.INFO
+                )
+                
+                # Actualizar UI
                 wx.CallAfter(self._refresh_ui)
+            else:
+                # Jugador no encontrado
+                message_bus.publish(
+                    content=f"Jugador {player_name} no encontrado en la lista",
+                    level=MessageLevel.WARNING
+                )
     
     def _on_reset(self, event):
         """Limpia la lista con confirmación visual"""
