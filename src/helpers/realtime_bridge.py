@@ -556,19 +556,17 @@ class RealtimeBridge:
                         level=MessageLevel.DEBUG,
                         metadata={"source": "realtime_bridge", "action": "processing_profile"}
                     )
-                    
-                    # Añadir origin y username a los datos para que _on_actor_profile lo detecte
-                    event_data_with_origin = event_data.copy()
-                    event_data_with_origin['origin'] = 'broadcast_received'
-                    event_data_with_origin['username'] = username  # Añadir username para que _on_actor_profile lo use
-                    
-                    # Emitir actor_profile para que _on_actor_profile se encargue de todo
+                    # Emitir actor_profile para que _on_actor_profile lo procese
+                    metadata = {
+                        'action': 'broadcast',
+                        'source_user': username,
+                        'raw_data': event_data.get('raw_data', {})
+                    }
                     message_bus.emit('actor_profile', 
                                     player_name, 
-                                    event_data.get('raw_data', {}).get('main_org_sid', 'Unknown'), 
+                                    event_data.get('raw_data', {}).get('org', 'Unknown'), 
                                     event_data.get('raw_data', {}).get('enlisted', 'Unknown'), 
-                                    event_data_with_origin)  # Ahora tiene origin='broadcast_received' y username
-                    
+                                    metadata)
                     message_bus.publish(
                         content=f"Profile for {player_name} received from {username}",
                         level=MessageLevel.DEBUG,
@@ -613,18 +611,6 @@ class RealtimeBridge:
                 if player and player in users_online:
                     return  # SUPRIMIR el mensaje
 
-            # Emitir el mensaje a través del MessageBus local
-            message_bus.publish(
-                content=f"Realtime event received from {username}: {event_data.get('event_data', '')}",
-                level=MessageLevel.DEBUG,
-                pattern_name="realtime_event_remote",
-                metadata={
-                    "source": "realtime_bridge",
-                    "remote_user": username,
-                    "event_data": event_data
-                }
-            )
-
             # Filtrar y procesar pings
             if event_data.get('type') == 'ping':
                 username = event_data.get('username')
@@ -637,10 +623,6 @@ class RealtimeBridge:
                 except Exception:
                     pass
                 return
-            elif self.notification_manager.notifications_enabled \
-                and event_data.get('type') in self.notification_manager.notifications_events:
-                message_bus.emit("show_windows_notification", event_data.get('content', ''))
-
 
             message_bus.emit("remote_realtime_event", username, event_data)
 

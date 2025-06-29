@@ -188,14 +188,14 @@ class LogFileHandler(FileSystemEventHandler):
     def _on_actor_profile(self, player_name, org, enlisted, metadata=None):
         """Handler for actor_profile events from message bus"""
         message_bus.publish(
-            content=f"_on_actor_profile called for {player_name} with origin={metadata.get('origin') if metadata else 'None'}",
+            content=f"_on_actor_profile called for {player_name}",
             level=MessageLevel.DEBUG,
             metadata={"source": "log_analyzer", "action": "actor_profile_handler"}
         )
 
         # Si es un perfil recibido por broadcast y es nuestro propio mensaje, ignorarlo
-        if metadata and metadata.get('origin') == 'broadcast_received':
-            event_username = metadata.get('username')
+        if metadata and metadata.get('action') == 'broadcast':
+            event_username = metadata.get('source_user')
             if event_username == self.username:
                 message_bus.publish(
                     content=f"Ignoring own broadcast for {player_name}",
@@ -208,7 +208,7 @@ class LogFileHandler(FileSystemEventHandler):
         cache = ProfileCache.get_instance()
 
         # Si es un perfil recibido por broadcast y tiene raw_data, usarlo directamente
-        if metadata and metadata.get('origin') == 'broadcast_received' and metadata.get('raw_data'):
+        if metadata and metadata.get('action') == 'broadcast' and metadata.get('raw_data'):
             raw_data = metadata['raw_data'].copy()
             
             # Añadir metadatos mínimos necesarios
@@ -216,11 +216,8 @@ class LogFileHandler(FileSystemEventHandler):
                 'player_name': raw_data.get('player_name'),
                 'org': raw_data.get('org'),
                 'enlisted': raw_data.get('enlisted'),
-                'source_type': 'automatic',
-                'origin': 'broadcast_received',
-                'requested_by': metadata.get('username'),
-                'source_user': metadata.get('username'),
-                'cache_time': datetime.now().isoformat(),
+                'action': 'broadcast',
+                'source_user': metadata.get('source_user'),
                 **raw_data  # Incluir todos los campos del raw_data
             }
             
@@ -229,30 +226,20 @@ class LogFileHandler(FileSystemEventHandler):
                 player_name=profile_data['player_name'],
                 profile_data=profile_data,
                 source_type='broadcast',
-                origin='broadcast_received',
-                requested_by=metadata.get('username', 'unknown'),
-                source_user=metadata.get('username', 'unknown')
+                requested_by=metadata.get('source_user', 'unknown'),
+                source_user=metadata.get('source_user', 'unknown')
             )
             
             # Mostrar en log solo (sin notificación para broadcast)
             message_bus.publish(
-                content=f"Profile for {player_name} received from {metadata.get('username')}",
+                content=f"Profile for {player_name} received from {metadata.get('source_user')}",
                 level=MessageLevel.DEBUG,
                 metadata={"source": "log_analyzer", "action": "profile_received"}
             )
             return
 
-        # Determinar origen y tipo de la solicitud para perfiles normales
+        # Determinar tipo de la solicitud para perfiles normales
         action = metadata.get('action', '') if metadata else ''
-        if action == 'get':
-            origin = 'manual'
-            source_type = 'manual'
-        elif action in ['killer', 'victim']:
-            origin = action
-            source_type = 'automatic'
-        else:
-            origin = 'automatic'
-            source_type = 'automatic'
         requested_by = self.username
         source_user = self.username
         
@@ -266,11 +253,6 @@ class LogFileHandler(FileSystemEventHandler):
         # Add metadata if provided
         if metadata:
             data.update(metadata)
-            data['all'] = ' '.join([f"{k}: {v}\n" for k, v in metadata.items() 
-                                   if v is not None and 
-                                        k not in ['source','timestamp','player_name', 'org', 'enlisted','action'] and 
-                                        v not in ('None','Unknown','')])
-        
         # Add state data to the data dict   
         data = self.add_state_data(data)
         
@@ -278,8 +260,7 @@ class LogFileHandler(FileSystemEventHandler):
         cache.add_profile(
             player_name=player_name,
             profile_data=data,
-            source_type=source_type,
-            origin=origin,
+            source_type='automatic',
             requested_by=requested_by,
             source_user=source_user
         )
@@ -290,26 +271,31 @@ class LogFileHandler(FileSystemEventHandler):
             output_message(None, output_message_format.format(**ensure_all_field(data)), regex_pattern="actor_profile")
         
         # Si es broadcast recibido, solo mostrar en log_text y terminar
-        if origin == 'broadcast_received':
+        if action == 'broadcast':
             return
         
         # Para perfiles normales, continuar con Discord y lógica adicional
         self.send_discord_message(data, pattern_name="actor_profile")
         
         # Determinar si es solicitud manual vs automática
-        action = metadata.get('action', '') if metadata else ''
         if action == 'get':
-            # Profile request manual: notificar solo localmente
+            # Profile request manual: notificar siempre localmente
             if output_message_format:
                 content = output_message_format.format(**ensure_all_field(data))
                 message_bus.emit("show_windows_notification", content)
         else:
-            # Profile automático (killer/victim): transmitir por realtime
-            # Verificar si el perfil ya existía en cache antes de procesar
-            existing_profile = cache.get_profile(player_name)
+            # Profile automático (killer/victim): verificar si es nuevo antes de notificar
+            from helpers.profile_cache import ProfileCache
+            cache = ProfileCache.get_instance()
+            cached_profile = cache.get_profile(player_name)
             
-            if not existing_profile:
-                # Es la primera vez que obtenemos este perfil -> broadcast
+            # Si es nuevo (no está en cache), notificar localmente
+            if not cached_profile and output_message_format:
+                content = output_message_format.format(**ensure_all_field(data))
+                message_bus.emit("show_windows_notification", content)
+            
+            # Transmitir por realtime si corresponde
+            if self.should_broadcast_profile(data, "actor_profile"):
                 self.send_realtime_event(data, pattern_name="actor_profile")
                 message_bus.publish(
                     content=f"Broadcasting new profile for {player_name}",
@@ -317,9 +303,8 @@ class LogFileHandler(FileSystemEventHandler):
                     metadata={"source": "log_analyzer"}
                 )
             else:
-                # Ya teníamos el perfil en cache -> NO broadcast
                 message_bus.publish(
-                    content=f"Profile for {player_name} already in cache, skipping broadcast",
+                    content=f"Profile for {player_name} already in cache or not eligible for broadcast",
                     level=MessageLevel.DEBUG,
                     metadata={"source": "log_analyzer"}
                 )
@@ -1061,7 +1046,7 @@ class LogFileHandler(FileSystemEventHandler):
             'timestamp': timestamp,
             'type': pattern_name,
             'content': content,
-            'raw_data': {k: str(v) if v is not None else '' for k, v in data.items()}
+            'raw_data': {k: v for k, v in data.items() if v is not None}
         }
         
         # Emit the event for RealtimeBridge to capture
@@ -1192,6 +1177,18 @@ class LogFileHandler(FileSystemEventHandler):
                 level=MessageLevel.ERROR,
                 metadata={"source": "log_analyzer", "action": "force_broadcast_error"}
             )
+
+    def should_broadcast_profile(self, data, pattern_name):
+        """Determina si un perfil debe ser broadcast basado en action"""
+        action = data.get('action', '')
+        # Broadcast automático para killer/victim
+        if action in ['killer', 'victim']:
+            return True
+        # No broadcast para solicitudes manuales o broadcasts recibidos
+        if action in ['get', 'broadcast']:
+            return False
+        # Broadcast para otros eventos automáticos
+        return True
 
 def signal_handler(signum, frame):
     """Handle external signals to stop the application"""

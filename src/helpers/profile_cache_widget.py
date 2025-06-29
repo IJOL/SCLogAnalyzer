@@ -48,7 +48,7 @@ class ProfileCacheWidget(wx.Panel):
         self.cache_listctrl = CustomListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         self.cache_listctrl.InsertColumn(0, "Jugador", width=150)
         self.cache_listctrl.InsertColumn(1, "Organización", width=100)
-        self.cache_listctrl.InsertColumn(2, "Origen", width=80)
+        self.cache_listctrl.InsertColumn(2, "Acción", width=80)
         self.cache_listctrl.InsertColumn(3, "Hora", width=60)
         self.cache_listctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_profile_double_click)
         self.cache_listctrl.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
@@ -115,14 +115,14 @@ class ProfileCacheWidget(wx.Panel):
             
             for player_name, profile_data in profiles.items():
                 org = profile_data.get('organization', 'Unknown')
-                source = profile_data.get('origin', 'unknown')
+                action = profile_data.get('action', 'unknown')
                 cached_at = profile_data.get('cached_at', datetime.now())
                 time_str = cached_at.strftime("%H:%M")
                 
                 # Insertar fila con datos en columnas separadas
                 index = self.cache_listctrl.InsertItem(self.cache_listctrl.GetItemCount(), player_name)
                 self.cache_listctrl.SetItem(index, 1, org)
-                self.cache_listctrl.SetItem(index, 2, source)
+                self.cache_listctrl.SetItem(index, 2, action)
                 self.cache_listctrl.SetItem(index, 3, time_str)
                 self.cache_listctrl.SetItemData(index, hash(player_name))
                 
@@ -236,11 +236,12 @@ def _build_profile_text_block(player_name, profile_data):
     cached_at = profile_data.get('cached_at', datetime.now())
     last_accessed = profile_data.get('last_accessed', datetime.now())
     profile_info = profile_data.get('profile_data', {})
+    # Buscar 'action' primero en el dict anidado, luego en el raíz
+    action = profile_info.get('action') or profile_data.get('action', 'unknown')
     content_lines = [
         f"Jugador: {player_name}",
         f"Organización: {profile_data.get('organization', 'Unknown')}",
-        f"Origen: {profile_data.get('origin', 'unknown')}",
-        f"Tipo: {profile_data.get('source_type', 'unknown')}",
+        f"Acción: {action}",
         f"Solicitado por: {profile_data.get('requested_by', 'unknown')}",
         f"Usuario fuente: {profile_data.get('source_user', 'unknown')}",
         f"Cacheado: {cached_at.strftime('%Y-%m-%d %H:%M:%S')}",
