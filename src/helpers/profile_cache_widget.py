@@ -279,7 +279,7 @@ class ProfileDetailsDialog(wx.Dialog):
         font = wx.Font(9, wx.FONTFAMILY_MODERN, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         self.text.SetFont(font)
         # Capturar clics en el texto también
-        self.text.Bind(wx.EVT_LEFT_DOWN, self._on_click_anywhere)
+        self.text.Bind(wx.EVT_LEFT_DOWN, self._on_close)
         main_sizer.Add(self.text, 0, wx.ALL, 10)
         
         # Botón cerrar pequeño con DarkThemeButton
@@ -293,6 +293,13 @@ class ProfileDetailsDialog(wx.Dialog):
 
     def _on_close(self, event):
         self.EndModal(wx.ID_CLOSE)
+    
+    def _on_kill_focus(self, event):
+        """Cerrar el diálogo cuando pierde el foco"""
+        # Solo cerrar si no es porque se está cerrando ya
+        if self.IsShown():
+            self.EndModal(wx.ID_CLOSE)
+        event.Skip()
 
     def _on_key_down(self, event):
         if event.GetKeyCode() == wx.WXK_ESCAPE:
