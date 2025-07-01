@@ -1107,13 +1107,36 @@ class LogAnalyzerFrame(wx.Frame):
                 level=MessageLevel.DEBUG
             )
             
-            # Find the refresh button for this tab and execute a refresh
+            # Si es el tab Data, refrescar el subtab activo
+            if page_title == "Data":
+                data_panel = self.notebook.GetPage(current_page)
+                nested_notebook = None
+                for child in data_panel.GetChildren():
+                    if isinstance(child, wx.Notebook):
+                        nested_notebook = child
+                        break
+                if nested_notebook:
+                    subtab_index = nested_notebook.GetSelection()
+                    if subtab_index >= 0:
+                        subtab_title = nested_notebook.GetPageText(subtab_index)
+                        full_title = f"Data_{subtab_title}"
+                        if hasattr(self, 'tab_creator') and hasattr(self.tab_creator, 'tab_references'):
+                            tab_refs = self.tab_creator.tab_references
+                            if full_title in tab_refs:
+                                grid, refresh_button = tab_refs[full_title]
+                                wx.CallLater(100, self.data_manager.execute_refresh_event, refresh_button)
+                return
+            
+            # Handle regular tabs (Stats, Usuarios conectados)
             if hasattr(self, 'tab_creator') and hasattr(self.tab_creator, 'tab_references'):
                 tab_refs = self.tab_creator.tab_references
                 if page_title in tab_refs:
                     grid, refresh_button = tab_refs[page_title]
                     # Use a slight delay to ensure UI is updated first
                     wx.CallLater(100, self.data_manager.execute_refresh_event, refresh_button)
+                    
+            # Note: Data tab refresh is handled by the nested notebook binding
+                    
         except Exception as e:
             message_bus.publish(
                 content=f"Error refreshing tab after page change: {e}",

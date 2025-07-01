@@ -409,7 +409,10 @@ class DataDisplayManager:
             tab_creator = self.parent.tab_creator
             
             # Create the tab based on its type
-            if "form_fields" in tab_info:
+            if tab_info.get("type") == "nested_notebook":
+                # Create a nested notebook tab
+                self._create_nested_notebook_tab(tab_info)
+            elif "form_fields" in tab_info:
                 tab_creator.add_form_tab(
                     title,
                     params=tab_info["params"],
@@ -433,6 +436,176 @@ class DataDisplayManager:
         except Exception as e:
             message_bus.publish(
                 content=f"Error creating tab \"{tab_info.get('title', 'unknown')}\": {e}",
+                level=MessageLevel.ERROR
+            )
+    
+    def _create_nested_notebook_tab(self, tab_info):
+        """
+        Create a tab with a nested notebook containing multiple subtabs.
+        
+        Args:
+            tab_info (dict): Tab configuration with subtabs
+        """
+        try:
+            title = tab_info["title"]
+            subtabs = tab_info.get("subtabs", [])
+            
+            # Create the main tab panel
+            main_tab = wx.Panel(self.parent.notebook)
+            main_sizer = wx.BoxSizer(wx.VERTICAL)
+            
+            # Create nested notebook
+            nested_notebook = wx.Notebook(main_tab)
+            nested_notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self._on_nested_notebook_page_changed)
+            main_sizer.Add(nested_notebook, 1, wx.EXPAND | wx.ALL, 2)
+            
+            # Create each subtab
+            for subtab_info in subtabs:
+                subtab_title = subtab_info["title"]
+                
+                # Create subtab panel
+                subtab_panel = wx.Panel(nested_notebook)
+                subtab_sizer = wx.BoxSizer(wx.VERTICAL)
+                
+                # Create refresh button for subtab
+                refresh_button = wx.BitmapButton(
+                    subtab_panel,
+                    bitmap=wx.ArtProvider.GetBitmap(wx.ART_REDO, wx.ART_BUTTON, (16, 16)),
+                    style=wx.BORDER_NONE
+                )
+                refresh_button.SetToolTip("Refresh")
+                subtab_sizer.Add(refresh_button, 0, wx.ALL | wx.ALIGN_LEFT, 5)
+                
+                # Create grid for subtab
+                grid = wx.grid.Grid(subtab_panel)
+                grid.CreateGrid(0, 0)
+                subtab_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 2)
+                
+                # Add form if needed
+                if "form_fields" in subtab_info:
+                    form_panel = self._create_form_panel(subtab_panel, subtab_info["form_fields"])
+                    subtab_sizer.Insert(0, form_panel, 0, wx.EXPAND | wx.ALL, 5)
+                
+                # Set up subtab
+                subtab_panel.SetSizer(subtab_sizer)
+                nested_notebook.AddPage(subtab_panel, subtab_title)
+                
+                # Store parameters and bind refresh
+                refresh_button.params = subtab_info.get("params", {})
+                refresh_button.grid = grid
+                refresh_button.Bind(wx.EVT_BUTTON, self.on_refresh_tab)
+                
+                # Store reference in tab_creator for consistency
+                full_title = f"{title}_{subtab_title}"
+                self.parent.tab_creator.tab_references[full_title] = (grid, refresh_button)
+            
+            # Set up main tab
+            main_tab.SetSizer(main_sizer)
+            self.parent.notebook.AddPage(main_tab, title)
+            
+            message_bus.publish(
+                content=f"Nested notebook tab \"{title}\" created with {len(subtabs)} subtabs",
+                level=MessageLevel.INFO
+            )
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error creating nested notebook tab \"{tab_info.get('title', 'unknown')}\": {e}",
+                level=MessageLevel.ERROR
+            )
+    
+    def _create_form_panel(self, parent, form_fields):
+        """
+        Create a form panel with the specified fields.
+        
+        Args:
+            parent: Parent widget
+            form_fields (dict): Form field definitions
+            
+        Returns:
+            wx.Panel: Form panel
+        """
+        form_panel = wx.Panel(parent)
+        form_sizer = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
+        form_sizer.AddGrowableCol(1, 1)
+        
+        form_controls = {}
+        
+        for field_name, field_type in form_fields.items():
+            if field_name == "choices":
+                continue  # Skip choices as it's metadata
+                
+            label = wx.StaticText(form_panel, label=field_name)
+            if field_type == 'text':
+                control = wx.TextCtrl(form_panel)
+            elif field_type == 'dropdown':
+                control = wx.Choice(form_panel, choices=form_fields.get('choices', []))
+            elif field_type == 'check':
+                control = wx.CheckBox(form_panel)
+            elif field_type == 'number':
+                control = wx.TextCtrl(form_panel)
+                control.field_type = 'number'
+            else:
+                raise ValueError(f"Unsupported field type: {field_type}")
+                
+            form_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+            form_sizer.Add(control, 1, wx.EXPAND)
+            form_controls[field_name] = control
+        
+        # Add submit button
+        submit_button = wx.Button(form_panel, label="Submit")
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        button_sizer.AddStretchSpacer()
+        button_sizer.Add(submit_button, 0, wx.ALL, 5)
+        
+        # Wrap in vertical sizer
+        vertical_sizer = wx.BoxSizer(wx.VERTICAL)
+        vertical_sizer.Add(form_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        vertical_sizer.Add(button_sizer, 0, wx.EXPAND)
+        
+        form_panel.SetSizer(vertical_sizer)
+        return form_panel
+    
+    def _on_nested_notebook_page_changed(self, event):
+        """
+        Handle nested notebook page change event to refresh the grid of the selected subtab.
+        
+        Args:
+            event (wx.BookCtrlEvent): The nested notebook page changed event.
+        """
+        try:
+            # Skip the event first to ensure normal processing
+            event.Skip()
+            
+            # Get the nested notebook that triggered the event
+            nested_notebook = event.GetEventObject()
+            
+            # Get the currently selected subtab index
+            subtab_index = nested_notebook.GetSelection()
+            if subtab_index < 0:
+                return
+            
+            # Get the subtab title
+            subtab_title = nested_notebook.GetPageText(subtab_index)
+            
+            # Construct the full title as stored in tab_references
+            full_title = f"Data_{subtab_title}"
+            
+            message_bus.publish(
+                content=f"Subtab changed to: {subtab_title}, refreshing grid data...",
+                level=MessageLevel.DEBUG
+            )
+            
+            # Find and refresh the subtab
+            if hasattr(self.parent, 'tab_creator') and hasattr(self.parent.tab_creator, 'tab_references'):
+                tab_refs = self.parent.tab_creator.tab_references
+                if full_title in tab_refs:
+                    grid, refresh_button = tab_refs[full_title]
+                    wx.CallLater(100, self.execute_refresh_event, refresh_button)
+                    
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error refreshing subtab after page change: {e}",
                 level=MessageLevel.ERROR
             )
     
@@ -485,6 +658,10 @@ class DataDisplayManager:
             index = 0
             
             for title, (grid, refresh_button) in tab_creator.tab_references.items():
+                # Skip nested notebook tabs (they handle their own refresh)
+                if "_" in title and title.split("_")[0] == "Data":
+                    continue
+                    
                 # Log the scheduled refresh
                 message_bus.publish(
                     content=f"Scheduling refresh for tab: {title}",
@@ -560,8 +737,9 @@ class DataDisplayManager:
 
     def _get_required_tab_configs(self):
         """Get the list of tab configurations - centralized for maintainability"""        # Hardcoded tabs - these will always be available
-        hardcoded_tabs = [
-            {"title": "Stats", "params": {"sheet": "Resumen_Mes_Actual"}},
+        
+        # Base subtabs for the Data tab
+        data_subtabs = [
             {"title": "Stats del mes pasado", "params": {"sheet": "Resumen_Mes_Anterior"}},
             {"title": "SC Default", "params": {"sheet": "SC_Default", "username": lambda self: self.username}},
             {
@@ -576,7 +754,6 @@ class DataDisplayManager:
         ]
         
         # Get dynamic tabs from config.json if any
-        dynamic_tabs = []
         if self.config_manager:
             config_tabs = self.config_manager.get('tabs', {})
             if config_tabs and isinstance(config_tabs, dict):
@@ -600,9 +777,14 @@ class DataDisplayManager:
                     # Filter out tab names that conflict with hardcoded tabs
                     valid_tab_configs = {}
                     for tab_name, query in config_tabs.items():
-                        if any(tab["title"] == tab_name for tab in hardcoded_tabs):
+                        # Check against both hardcoded tabs and existing subtabs
+                        hardcoded_titles = ["Stats"]  # Only Stats remains as independent tab
+                        subtab_titles = [subtab["title"] for subtab in data_subtabs]
+                        all_existing_titles = hardcoded_titles + subtab_titles
+                        
+                        if tab_name in all_existing_titles:
                             message_bus.publish(
-                                content=f"Skipping dynamic tab '{tab_name}' as it conflicts with a hardcoded tab name",
+                                content=f"Skipping dynamic tab '{tab_name}' as it conflicts with an existing tab name",
                                 level=MessageLevel.WARNING
                             )
                         else:
@@ -612,10 +794,14 @@ class DataDisplayManager:
                     if valid_tab_configs:
                         data_provider.ensure_dynamic_views(valid_tab_configs)
                 
-                # Create a tab config for each entry in the tabs section
+                # Add dynamic tabs to data_subtabs
                 for tab_name, query in config_tabs.items():
-                    # Skip any tab that matches a hardcoded tab name to avoid collisions
-                    if any(tab["title"] == tab_name for tab in hardcoded_tabs):
+                    # Skip any tab that matches existing tab names
+                    hardcoded_titles = ["Stats"]
+                    subtab_titles = [subtab["title"] for subtab in data_subtabs]
+                    all_existing_titles = hardcoded_titles + subtab_titles
+                    
+                    if tab_name in all_existing_titles:
                         continue
                     
                     # For Supabase, check if the view actually exists before adding the tab
@@ -628,12 +814,17 @@ class DataDisplayManager:
                             )
                             continue
                     
-                    # Create a tab configuration for this dynamic tab
-                    dynamic_tabs.append({
+                    # Add to data subtabs
+                    data_subtabs.append({
                         "title": tab_name, 
                         "params": {"sheet": tab_name, 'username': lambda self: self.username},  # Use the tab name as the "sheet" parameter
                         "query": query  # Store the SQL query for later view creation
                     })
         
-        # Combine hardcoded and dynamic tabs
-        return hardcoded_tabs + dynamic_tabs
+        # Final tab configuration
+        hardcoded_tabs = [
+            {"title": "Stats", "params": {"sheet": "Resumen_Mes_Actual"}},
+            {"title": "Data", "type": "nested_notebook", "subtabs": data_subtabs}
+        ]
+        
+        return hardcoded_tabs
