@@ -623,6 +623,10 @@ class RealtimeBridge:
                 except Exception:
                     pass
                 return
+            elif self.notification_manager.notifications_enabled \
+                and event_data.get('type') in self.notification_manager.notifications_events:
+                message_bus.emit("show_windows_notification", event_data.get('content', ''))
+
 
             message_bus.emit("remote_realtime_event", username, event_data)
 
