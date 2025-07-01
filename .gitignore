@@ -180,3 +180,4 @@ SCLogAnalyzer-v0.9.11-87fde04-pyam-exhang/
 perfiles/
 .vscode/
 build-venv/
+.cursor/
