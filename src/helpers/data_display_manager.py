@@ -582,7 +582,7 @@ class DataDisplayManager:
             
             # Get the currently selected subtab index
             subtab_index = nested_notebook.GetSelection()
-            if subtab_index < 0:
+            if subtab_index < 0 or subtab_index >= nested_notebook.GetPageCount():
                 return
             
             # Get the subtab title

@@ -1099,6 +1099,10 @@ class LogAnalyzerFrame(wx.Frame):
             if current_page == 0:
                 return
             
+            # Validate page index before accessing
+            if current_page < 0 or current_page >= self.notebook.GetPageCount():
+                return
+            
             # Get the page title
             page_title = self.notebook.GetPageText(current_page)
             
