@@ -203,15 +203,12 @@ class ProfileCache:
             try:
                 profile_data = cache_entry['profile_data']
                 
-                # Limpiar el perfil antes del broadcast para eliminar campo 'all'
-                profile_data_clean = self._limpiar_perfil_primer_nivel(profile_data)
-                
                 # Emitir evento actor_profile para cada perfil
                 message_bus.emit('actor_profile', 
                                 player_name, 
-                                profile_data_clean.get('main_org_sid', 'Unknown'), 
-                                profile_data_clean.get('enlisted', 'Unknown'), 
-                                profile_data_clean)
+                                profile_data.get('main_org_sid', 'Unknown'), 
+                                profile_data.get('enlisted', 'Unknown'), 
+                                profile_data)
                 
                 broadcast_count += 1
                 
