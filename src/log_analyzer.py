@@ -296,7 +296,7 @@ class LogFileHandler(FileSystemEventHandler):
             
             # Transmitir por realtime si corresponde
             if self.should_broadcast_profile(data, "actor_profile"):
-                self.send_realtime_event(data, pattern_name="actor_profile")
+                self.send_realtime_event(data, pattern_name="actor_profile", force=True)
                 message_bus.publish(
                     content=f"Broadcasting new profile for {player_name}",
                     level=MessageLevel.DEBUG,
@@ -1007,7 +1007,7 @@ class LogFileHandler(FileSystemEventHandler):
         message_bus.emit("realtime_disconnect")
     
 
-    def send_realtime_event(self, data, pattern_name):
+    def send_realtime_event(self, data, pattern_name, force=False):
         """
         Send a realtime event with rate limiting if the pattern is in the realtime list.
         
@@ -1021,7 +1021,7 @@ class LogFileHandler(FileSystemEventHandler):
         if not message_bus.is_debug_mode() and self.current_mode != "SC_Default":
             return False
         # Check if this pattern should be sent as realtime
-        if pattern_name not in self.config_manager.get('realtime', []):
+        if pattern_name not in self.config_manager.get('realtime', []) and not force:
             return False
         # Get timestamp from data
         timestamp = data.get('timestamp')
@@ -1164,7 +1164,7 @@ class LogFileHandler(FileSystemEventHandler):
             data = self.add_state_data(data)
             
             # SOLO HACER EL BROADCAST REAL - sin Discord ni log
-            self.send_realtime_event(data, pattern_name="actor_profile")
+            self.send_realtime_event(data, pattern_name="actor_profile", force=True)
             
             message_bus.publish(
                 content=f"Force broadcast completed for profile {player_name}",
