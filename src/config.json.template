@@ -5,7 +5,7 @@
     "google_sheets_mapping": ["player_death"],
     "datasource": "googlesheets",
     "supabase_key": "",
-    "realtime": ["actor_stall", "player_death", "vehicle_destruction","vip","actor_profile"],
+    "realtime": ["actor_stall", "player_death", "vehicle_destruction","vip","actor_profile","corpse"],
     "scraping": ["player_death"],
     "active_users_update_interval": 120,
     "auto_reconnection": true,
@@ -23,7 +23,8 @@
         "connected" : "<(?P<timestamp>[^>]+)> \\[CSessionManager::OnClientConnected\\] (?P<message>Connected!)",
         "quantum_jump" : "<(?P<timestamp>[^>]+)> -- Entity Trying To QT: (?P<player>.+)",
         "vehicle_destruction": "<(?P<timestamp>.*?)> \\[Notice\\] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle '(?P<vehicle>.*?)' \\[(?P<vehicle_id>\\d+)\\] in zone '(?P<zone>.*?)' \\[pos x: (?P<pos_x>[\\d\\.-]+), y: (?P<pos_y>[\\d\\.-]+), z: (?P<pos_z>[\\d\\.-]+) vel x: (?P<vel_x>[\\d\\.-]+), y: (?P<vel_y>[\\d\\.-]+), z: (?P<vel_z>[\\d\\.-]+)] driven by '(?P<driver>.*?)' \\[(?P<driver_id>\\d+)\\] advanced from destroy level (?P<destroy_level_from>\\d+) to (?P<destroy_level_to>\\d+) caused by '(?P<cause>.*?)' \\[(?P<cause_id>\\d+)\\] with '(?P<damage_type>.*?)' \\[Team_(?P<team>.*?)\\]\\[Vehicle\\]",
-        "connection_flow": "<(?P<timestamp>.*?)> \\[Notice\\] <Connection Flow> CSCCommsComponent::DoEstablishCommunicationCommon: Update bubble created for communication connection '(?P<connection_id>\\d+)' on channel '(?P<channel>\\d+)' for (?P<entity>.*?) \\[(?P<entity_id>\\d+)\\] to track their communication partner (?P<partner>(?!(ATC_|AImodule_|Unavailable)).*?) \\[(?P<partner_id>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Comms\\]"
+        "connection_flow": "<(?P<timestamp>.*?)> \\[Notice\\] <Connection Flow> CSCCommsComponent::DoEstablishCommunicationCommon: Update bubble created for communication connection '(?P<connection_id>\\d+)' on channel '(?P<channel>\\d+)' for (?P<entity>.*?) \\[(?P<entity_id>\\d+)\\] to track their communication partner (?P<partner>(?!(ATC_|AImodule_|Unavailable)).*?) \\[(?P<partner_id>\\d+)\\] \\[Team_(?P<team>.*?)\\]\\[Comms\\]",
+        "corpse": "<(?P<timestamp>.*?)> \\[Notice\\] <\\[ActorState\\] Corpse> \\[ACTOR STATE\\]\\[SSCActorStateCVars::LogCorpse\\] Player '(?P<player>.*?)' <(?P<client_type>.*?)>: Running corpsify for corpse\\. \\[Team_(?P<team>.*?)\\]\\[Actor\\]"
     },
     "important_players": "",
     "console_key": "",
@@ -32,7 +33,8 @@
         "yellow": ["actor_death","vehicle_destruction"],
         "green": ["actor_stall"],
         "blue,white" : ["connected"],
-        "orange" : ["mode_change"]
+        "orange" : ["mode_change"],
+        "purple,white": ["corpse"]
     },
     "messages": {
         "vehicle_destruction": "🚗💥 {vehicle}:{driver} was destroyed {destroy_level_to} by {cause} with {damage_type} in {zone}",
@@ -44,7 +46,8 @@
         "mode_change": "🎮🔄 Game Mode changed: {mode} {status} at {timestamp}",
         "connection_flow" : "📡🔗 {partner}: in range",
         "vip": "👑🌟 VIP detected: {vip}",
-        "actor_profile": "🧑‍🚀📋 {username} {action} {player_name}: {org} {enlisted} \n {all}"
+        "actor_profile": "🧑‍🚀📋 {username} {action} {player_name}: {org} {enlisted} \n {all}",
+        "corpse": "💀⚰️ {player}: Corpse"
      },
     "notifications_enabled": true,
     "notifications_events": ["vip","actor_profile"],
