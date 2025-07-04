@@ -101,36 +101,47 @@ class StalledWidget(wx.Panel):
         message_bus.on("remote_realtime_event", self._handle_remote_event)
     
     def _calculate_progressive_ttl(self, player_data, player_name):
-        """Calcula TTL progresivo basado en importancia del problema"""
-        # TTL base progresivo (puede ser 30s, 60s, 120s, 240s, etc.)
+        """Calcula TTL progresivo con penalizaciones agresivas por reincidencia"""
+        # TTL base progresivo
         ttl = self._calculate_base_ttl(player_name)
         
-        # Factores de importancia
+        # Factores de importancia actuales
         sources_count = len(player_data['sources'])
         total_stalls = player_data['count']
         
-        # +45s por cada fuente adicional (múltiples usuarios reportando = más grave)
+        # +45s por cada fuente adicional
         if sources_count > 1:
             ttl += (sources_count - 1) * 45
         
-        # +4s por cada stall adicional, con límite de +120s (máximo 30 stalls)
+        # +4s por cada stall adicional (máximo 30 stalls = +120s)
         if total_stalls > 1:
             extra_stalls = min(total_stalls - 1, 30)
             ttl += extra_stalls * 4
         
+        # NUEVO: Penalizaciones por reincidencia histórica
+        historical_detections = player_data.get('historical_detections', 0)
+        if historical_detections > 0:
+            # 4ta detección: 2 minutos base
+            if historical_detections == 4:
+                ttl = max(ttl, 120)
+            # 5ta detección en adelante: +40 segundos por detección adicional
+            elif historical_detections >= 5:
+                additional_penalty = (historical_detections - 4) * 40
+                ttl = max(ttl, 120 + additional_penalty)
+        
         # Bonus por persistencia: si tiene más de 10 stalls de la misma fuente
         max_single_source = max((src['count'] for src in player_data['sources'].values()), default=0)
         if max_single_source >= 10:
-            ttl += 60  # Problema persistente
+            ttl += 60
         
-        # Bonus por múltiples avistamientos: problema serio si 3+ fuentes diferentes
+        # Bonus por múltiples avistamientos
         if sources_count >= 4:
-            ttl += 90  # Problema muy grave
+            ttl += 90
         elif sources_count >= 3:
-            ttl += 60  # Problema grave confirmado
+            ttl += 60
         
-        # TTL máximo de 12 minutos
-        final_ttl = min(ttl, 720)       
+        # TTL máximo de 6 minutos
+        final_ttl = min(ttl, 360)
         
         return final_ttl
     
@@ -145,26 +156,34 @@ class StalledWidget(wx.Panel):
         return base_ttl
     
     def _move_to_historical_cache(self, player_name):
-        """Mueve datos activos a cache histórico"""
+        """Mueve datos activos a cache histórico con multiplicadores más agresivos"""
         if player_name in self.stalled_data:
             player_data = self.stalled_data[player_name]
             
-            # Calcular multiplicador actual
             current_multiplier = player_data.get('base_ttl_multiplier', 1)
             historical_detections = player_data.get('historical_detections', 0)
             
-            # Mover a cache histórico
+            # NUEVO: Multiplicador más agresivo
+            # 1ra reaparición: 2x, 2da: 3x, 3ra: 5x, 4ra+: 8x
+            if historical_detections == 0:
+                new_multiplier = 2
+            elif historical_detections == 1:
+                new_multiplier = 3
+            elif historical_detections == 2:
+                new_multiplier = 5
+            else:
+                new_multiplier = 8
+            
             self.historical_cache[player_name] = {
                 'count': player_data['count'],
                 'sources': player_data['sources'].copy(),
                 'last_seen': player_data['last_timestamp'],
                 'detection_count': historical_detections + 1,
-                'base_ttl_multiplier': min(current_multiplier * 2, 8),  # Máximo 8x
+                'base_ttl_multiplier': new_multiplier,
                 'last_source': player_data['last_source'],
                 'first_timestamp': player_data['first_timestamp']
             }
             
-            # Eliminar de datos activos
             del self.stalled_data[player_name]
     
     def _promote_from_historical(self, player_name):
