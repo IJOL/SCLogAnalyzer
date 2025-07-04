@@ -274,8 +274,14 @@ class LogFileHandler(FileSystemEventHandler):
         if action == 'broadcast':
             return
         
-        # Para perfiles normales, continuar con Discord y lógica adicional
-        self.send_discord_message(data, pattern_name="actor_profile")
+        # Para perfiles normales, verificar caché antes de Discord
+        from helpers.profile_cache import ProfileCache
+        cache = ProfileCache.get_instance()
+        cached_profile = cache.get_profile(player_name)
+        
+        # Solo enviar a Discord si es nuevo
+        if not cached_profile:
+            self.send_discord_message(data, pattern_name="actor_profile")
         
         # Determinar si es solicitud manual vs automática
         if action == 'get':
@@ -285,10 +291,6 @@ class LogFileHandler(FileSystemEventHandler):
                 message_bus.emit("show_windows_notification", content)
         else:
             # Profile automático (killer/victim): verificar si es nuevo antes de notificar
-            from helpers.profile_cache import ProfileCache
-            cache = ProfileCache.get_instance()
-            cached_profile = cache.get_profile(player_name)
-            
             # Si es nuevo (no está en cache), notificar localmente
             if not cached_profile and output_message_format:
                 content = output_message_format.format(**ensure_all_field(data))
