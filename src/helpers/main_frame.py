@@ -17,6 +17,7 @@ from .gui_module import ConfigDialog, ProcessDialog, TaskBarIcon, AboutDialog
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_application_path, get_config_manager, get_template_base_dir
 from .supabase_manager import supabase_manager
+from .recording_switch_widget import RecordingSwitchWidget
 from helpers import updater
 from version import get_version
 
@@ -222,6 +223,10 @@ class LogAnalyzerFrame(wx.Frame):
         self.notifications_toggle.SetToolTip("Activar/desactivar notificaciones Windows")
         self.notifications_toggle.Bind(wx.EVT_CHECKBOX, self.on_toggle_notifications)
         self.main_button_sizer.Add(self.notifications_toggle, 0, wx.ALL, 1)
+        
+        # Widget de grabación (acceso directo al registro)
+        self.recording_switch = RecordingSwitchWidget(self.log_page, self.monitoring_service)
+        self.main_button_sizer.Add(self.recording_switch, 0, wx.ALL, 1)
         # Botones principales (compactos)
         self.process_log_button = self._create_button(self.main_button_sizer, "Process", wx.ART_FILE_OPEN)
         self.autoshard_button = self._create_button(self.main_button_sizer, "Shard", wx.ART_TIP)
@@ -932,6 +937,10 @@ class LogAnalyzerFrame(wx.Frame):
         # Stop monitoring if active
         if self.monitoring_service.is_monitoring():
             self.monitoring_service.stop_monitoring()
+        
+        # Cleanup recording switch timer
+        if hasattr(self, 'recording_switch'):
+            self.recording_switch.cleanup_timer()
         
         # Restore original stdout
         sys.stdout = sys.__stdout__
