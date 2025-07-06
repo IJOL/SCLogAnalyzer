@@ -54,7 +54,7 @@ class RecordingSwitchWidget(wx.Panel):
         # Switch visual (usar wx.ToggleButton como slider)
         self.switch_button = wx.ToggleButton(
             self, 
-            label="ON" if self.recording_enabled else "OFF",
+            label="Rec ON" if self.recording_enabled else "Rec OFF",
             size=(60, 25)
         )
         self.switch_button.SetValue(self.recording_enabled)

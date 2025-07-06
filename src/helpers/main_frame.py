@@ -18,6 +18,7 @@ from .message_bus import message_bus, MessageLevel
 from .config_utils import get_application_path, get_config_manager, get_template_base_dir
 from .supabase_manager import supabase_manager
 from .recording_switch_widget import RecordingSwitchWidget
+from .toggle_button_widget import ToggleButtonWidget
 from helpers import updater
 from version import get_version
 
@@ -213,16 +214,16 @@ class LogAnalyzerFrame(wx.Frame):
         self.debug_button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         # Add a horizontal sizer for buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        # Control de notificaciones (ahora con wx.CheckBox)
-        self.notifications_toggle = wx.CheckBox(
-            self.log_page,
-            id=wx.ID_ANY,
-            label="Notificaciones"
+        # Control de notificaciones (ahora con ToggleButtonWidget)
+        self.notifications_button = ToggleButtonWidget(
+            parent=self.log_page,
+            on_text="Notif ON",
+            off_text="Notif OFF",
+            tooltip="Activar/desactivar notificaciones Windows"
         )
-        self.notifications_toggle.SetValue(self.config_manager.get('notifications_enabled', True))
-        self.notifications_toggle.SetToolTip("Activar/desactivar notificaciones Windows")
-        self.notifications_toggle.Bind(wx.EVT_CHECKBOX, self.on_toggle_notifications)
-        self.main_button_sizer.Add(self.notifications_toggle, 0, wx.ALL, 1)
+        self.notifications_button.SetValue(self.config_manager.get('notifications_enabled', True))
+        self.notifications_button.Bind(wx.EVT_TOGGLEBUTTON, self.on_toggle_notifications)
+        self.main_button_sizer.Add(self.notifications_button, 0, wx.ALL, 1)
         
         # Widget de grabación (acceso directo al registro)
         self.recording_switch = RecordingSwitchWidget(self.log_page, self.monitoring_service)
@@ -1157,7 +1158,7 @@ class LogAnalyzerFrame(wx.Frame):
             )
 
     def on_toggle_notifications(self, event):
-        enabled = self.notifications_toggle.GetValue()
+        enabled = self.notifications_button.GetValue()
         self.config_manager.set('notifications_enabled', enabled)
         self.realtime_bridge.notification_manager.reload_config()
 
