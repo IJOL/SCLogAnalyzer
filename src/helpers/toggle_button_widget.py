@@ -8,7 +8,7 @@ class ToggleButtonWidget(wx.Panel):
     Usa el mismo estilo visual que DarkThemeButton pero con colores rojo/verde.
     """
     
-    def __init__(self, parent, on_text="ON", off_text="OFF", 
+    def __init__(self, parent, on_text="🟢 ON", off_text="🔴 OFF", 
                  on_color=None, off_color=None, tooltip=""):
         super().__init__(parent)
         self.on_text = on_text

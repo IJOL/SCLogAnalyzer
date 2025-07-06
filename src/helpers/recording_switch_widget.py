@@ -56,7 +56,7 @@ class RecordingSwitchWidget(wx.Panel):
         # Botón con estilo DarkThemeButton pero colores personalizados
         self.switch_button = buttons.GenButton(
             self, 
-            label="Rec ON" if self.recording_enabled else "Rec OFF",
+            label="🟢 Rec ON" if self.recording_enabled else "🔴 Rec OFF",
             size=(60, 25),
             style=wx.BORDER_NONE
         )
@@ -141,7 +141,7 @@ class RecordingSwitchWidget(wx.Panel):
         self.switch_button.Enable(not in_cooldown)
         
         # Actualizar etiqueta
-        self.switch_button.SetLabel("Rec ON" if self.recording_enabled else "Rec OFF")
+        self.switch_button.SetLabel("🟢 Rec ON" if self.recording_enabled else "🔴 Rec OFF")
         
         # Aplicar colores según estado (mismo estilo que DarkThemeButton)
         if self.recording_enabled:

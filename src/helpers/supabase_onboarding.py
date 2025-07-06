@@ -10,6 +10,7 @@ from typing import Callable, Optional
 from .message_bus import message_bus, MessageLevel
 from .supabase_manager import supabase_manager
 from .config_utils import get_config_manager
+from .ui_components import DarkThemeButton
 
 class SupabaseOnboarding:
     """
@@ -515,9 +516,9 @@ class SupabaseSetupDialog(wx.Dialog):
         self.code_textctrl.SetFont(font)
         
         # Buttons
-        self.copy_btn = wx.Button(self, label="Copy to Clipboard")
-        self.continue_btn = wx.Button(self, id=wx.ID_OK, label="Continue")
-        self.cancel_btn = wx.Button(self, id=wx.ID_CANCEL, label="Cancel")
+        self.copy_btn = DarkThemeButton(self, label="📋 Copy to Clipboard")
+        self.continue_btn = DarkThemeButton(self, id=wx.ID_OK, label="✅ Continue")
+        self.cancel_btn = DarkThemeButton(self, id=wx.ID_CANCEL, label="❌ Cancel")
         
         # Bind events
         self.copy_btn.Bind(wx.EVT_BUTTON, self._on_copy)
@@ -560,7 +561,7 @@ class SupabaseSetupDialog(wx.Dialog):
             
             # Reset the button label after a delay
             def reset_label():
-                wx.CallLater(2000, lambda: self.copy_btn.SetLabel("Copy to Clipboard"))
+                wx.CallLater(2000, lambda: self.copy_btn.SetLabel("📋 Copy to Clipboard"))
             
             reset_label()
             

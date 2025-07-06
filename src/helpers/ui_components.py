@@ -175,7 +175,7 @@ class TabCreator:
                 form_controls[field_name] = control
 
             # Add the submit button aligned to the right
-            submit_button = wx.Button(form_panel, label="Submit")
+            submit_button = DarkThemeButton(form_panel, label="📤 Submit")
             button_sizer = wx.BoxSizer(wx.HORIZONTAL)
             button_sizer.AddStretchSpacer()
             button_sizer.Add(submit_button, 0, wx.ALL, 5)
@@ -460,7 +460,7 @@ class FormPanel:
             
         # Add submit button
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        submit_button = wx.Button(form_panel, label="Submit")
+        submit_button = DarkThemeButton(form_panel, label="📤 Submit")
         button_sizer.AddStretchSpacer()
         button_sizer.Add(submit_button, 0, wx.ALL, 5)
         

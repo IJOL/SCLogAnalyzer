@@ -151,16 +151,16 @@ class ConnectedUsersPanel(wx.Panel):
         # Botones de control
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
-        self.refresh_btn = DarkThemeButton(left_panel, label="Refrescar")
+        self.refresh_btn = DarkThemeButton(left_panel, label="🔄 Refrescar")
         self.refresh_btn.Bind(wx.EVT_BUTTON, self.on_refresh)
         button_sizer.Add(self.refresh_btn, 0, wx.ALL, 5)
         
-        self.clear_logs_btn = DarkThemeButton(left_panel, label="Limpiar logs")
+        self.clear_logs_btn = DarkThemeButton(left_panel, label="🧹 Limpiar logs")
         self.clear_logs_btn.Bind(wx.EVT_BUTTON, self.on_clear_logs)
         button_sizer.Add(self.clear_logs_btn, 0, wx.ALL, 5)
 
         # Botón Reconectar (siempre visible en debug)
-        self.reconnect_btn = DarkThemeButton(left_panel, label="Reconectar")
+        self.reconnect_btn = DarkThemeButton(left_panel, label="🔌 Reconectar")
         self.reconnect_btn.Bind(wx.EVT_BUTTON, self.on_reconnect)
         # Mostrar siempre en debug al inicializar
         if self._is_debug_mode():

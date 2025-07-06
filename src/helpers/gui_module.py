@@ -18,6 +18,7 @@ from version import get_version  # Using absolute import for module in parent di
 from .config_utils import get_application_path, get_template_base_dir, get_template_path  # Direct import from same directory
 from .message_bus import message_bus, MessageLevel  # Direct import from same directory
 from .window_state_manager import is_app_in_startup, add_app_to_startup, remove_app_from_startup # SCLogAnalyzer: Added for startup management
+from .ui_components import DarkThemeButton # Added for DarkThemeButton
 
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -53,7 +54,7 @@ class KeyValueGrid(wx.Panel):
 
         # Add buttons at the bottom
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        add_button = wx.Button(self, label="+", size=(40, 40))
+        add_button = DarkThemeButton(self, label="➕ Add", size=(40, 40))
         add_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
         button_sizer.Add(add_button, 0, wx.ALL, 5)
         main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT)
@@ -77,7 +78,7 @@ class KeyValueGrid(wx.Panel):
         value_ctrl = wx.TextCtrl(self, value=value_str, style=wx.TE_MULTILINE)
         value_ctrl.SetMinSize((200, 50))
 
-        delete_button = wx.Button(self, label="-", size=(40, 40))
+        delete_button = DarkThemeButton(self, label="➖ Remove", size=(40, 40))
         delete_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
 
         self.grid.Add(key_ctrl, 0, wx.EXPAND)
@@ -153,9 +154,9 @@ class ConfigDialog(wx.Dialog):
 
         # Add Accept, Save, Cancel, and Startup buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        accept_button = wx.Button(self, label="Accept")
-        cancel_button = wx.Button(self, label="Cancel")
-        self.startup_button = wx.Button(self, label="")
+        accept_button = DarkThemeButton(self, label="✅ Accept")
+        cancel_button = DarkThemeButton(self, label="❌ Cancel")
+        self.startup_button = DarkThemeButton(self, label="")
         self.update_startup_button_label()
         button_sizer.Add(self.startup_button, 0, wx.ALL, 5)
         button_sizer.Add(accept_button, 0, wx.ALL, 5)
@@ -268,7 +269,7 @@ class ConfigDialog(wx.Dialog):
                 row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
                 row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
                 if key == "log_file_path":
-                    browse_button = wx.Button(panel, label="Browse...")
+                    browse_button = DarkThemeButton(panel, label="📁 Browse...")
                     browse_button.Bind(wx.EVT_BUTTON, lambda event, tc=control: self.on_browse_log_file(event, tc))
                     row_sizer.Add(browse_button, 0, wx.ALL, 5)
                 sizer.Add(row_sizer, 0, wx.EXPAND)
@@ -410,7 +411,7 @@ class ProcessDialog(wx.Dialog):
         file_sizer = wx.BoxSizer(wx.HORIZONTAL)
         file_label = wx.StaticText(panel, label="Log File:")
         self.file_path = wx.TextCtrl(panel, size=(300, -1))
-        browse_button = wx.Button(panel, label="Browse...")
+        browse_button = DarkThemeButton(panel, label="📁 Browse...")
         file_sizer.Add(file_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         file_sizer.Add(self.file_path, 1, wx.ALL | wx.EXPAND, 5)
         file_sizer.Add(browse_button, 0, wx.ALL, 5)
@@ -418,8 +419,8 @@ class ProcessDialog(wx.Dialog):
 
         # Accept and Cancel buttons
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        accept_button = wx.Button(panel, label="Process")
-        cancel_button = wx.Button(panel, label="Cancel")
+        accept_button = DarkThemeButton(panel, label="▶ Process")
+        cancel_button = DarkThemeButton(panel, label="❌ Cancel")
         button_sizer.Add(accept_button, 0, wx.ALL, 5)
         button_sizer.Add(cancel_button, 0, wx.ALL, 5)
         main_sizer.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 10)
@@ -512,13 +513,13 @@ class AboutDialog(wx.Dialog):
         buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Add Check for Updates button on the left
-        self.update_button = wx.Button(panel, label="Check for Updates")
+        self.update_button = DarkThemeButton(panel, label="🔄 Check for Updates")
         if update_callback:
             self.update_button.Bind(wx.EVT_BUTTON, lambda event: update_callback())
         buttons_sizer.Add(self.update_button, 0, wx.RIGHT, 10)
         
         # Add close button on the right
-        close_button = wx.Button(panel, wx.ID_CLOSE, label="Close")
+        close_button = DarkThemeButton(panel, id=wx.ID_CLOSE, label="❌ Close")
         close_button.Bind(wx.EVT_BUTTON, lambda event: self.Close())
         buttons_sizer.Add(close_button, 0, wx.LEFT, 10)
         
@@ -767,10 +768,10 @@ class DataTransferDialog(wx.Dialog):
         button_sizer = wx.StdDialogButtonSizer()
         
         # Create larger buttons with clear labels
-        self.start_button = wx.Button(panel, wx.ID_OK, label="Start Transfer", size=(140, 40))
+        self.start_button = DarkThemeButton(panel, wx.ID_OK, label="🚀 Start Transfer", size=(140, 40))
         self.start_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
         
-        self.cancel_button = wx.Button(panel, wx.ID_CANCEL, label="Cancel", size=(140, 40))
+        self.cancel_button = DarkThemeButton(panel, wx.ID_CANCEL, label="❌ Cancel", size=(140, 40))
         self.cancel_button.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
         
         # Add buttons to the standard dialog sizer

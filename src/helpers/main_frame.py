@@ -21,6 +21,7 @@ from .recording_switch_widget import RecordingSwitchWidget
 from .toggle_button_widget import ToggleButtonWidget
 from helpers import updater
 from version import get_version
+from .ui_components import DarkThemeButton
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -229,22 +230,22 @@ class LogAnalyzerFrame(wx.Frame):
         self.recording_switch = RecordingSwitchWidget(self.log_page, self.monitoring_service)
         self.main_button_sizer.Add(self.recording_switch, 0, wx.ALL, 1)
         # Botones principales (compactos)
-        self.process_log_button = self._create_button(self.main_button_sizer, "Process", wx.ART_FILE_OPEN)
-        self.autoshard_button = self._create_button(self.main_button_sizer, "Shard", wx.ART_TIP)
+        self.process_log_button = self._create_button(self.main_button_sizer, "📄 Process", wx.ART_FILE_OPEN)
+        self.autoshard_button = self._create_button(self.main_button_sizer, "🌐 Shard", wx.ART_TIP)
         self.autoshard_button.Enable(False)
-        self.monitor_button = self._create_button(self.main_button_sizer, "Start", wx.ART_EXECUTABLE_FILE)
+        self.monitor_button = self._create_button(self.main_button_sizer, "▶ Start", wx.ART_EXECUTABLE_FILE)
         # --- Botón 'Freeze' ---
-        self.freeze_button = self._create_button(self.main_button_sizer, "Freeze", wx.ART_NEW)
+        self.freeze_button = self._create_button(self.main_button_sizer, "❄️ Freeze", wx.ART_NEW)
         self.freeze_button.Bind(wx.EVT_BUTTON, self.on_freeze)
         # Añadir botón Profile Request al lado de Freeze
-        self.profile_request_button = self._create_button(self.main_button_sizer, "Profile Request", wx.ART_FIND)
+        self.profile_request_button = self._create_button(self.main_button_sizer, "👤 Profile Request", wx.ART_FIND)
         self.profile_request_button.Bind(wx.EVT_BUTTON, self.on_profile_request)
         # --- Botón 'Congelar' (se añade aquí, pero la lógica se implementa en el siguiente plan) ---
         # Botones de debug (compactos, solo en debug_button_sizer)
-        self.check_db_button = self._create_button(self.debug_button_sizer, "Check DB", wx.ART_FIND)
-        self.data_transfer_button = self._create_button(self.debug_button_sizer, "Transfer", wx.ART_COPY)
-        self.test_data_provider_button = self._create_button(self.debug_button_sizer, "Test Data", wx.ART_LIST_VIEW)
-        self.simulate_notification_button = self._create_button(self.debug_button_sizer, "Test Notif", wx.ART_INFORMATION)
+        self.check_db_button = self._create_button(self.debug_button_sizer, "🔍 Check DB", wx.ART_FIND)
+        self.data_transfer_button = self._create_button(self.debug_button_sizer, "📤 Transfer", wx.ART_COPY)
+        self.test_data_provider_button = self._create_button(self.debug_button_sizer, "🧪 Test Data", wx.ART_LIST_VIEW)
+        self.simulate_notification_button = self._create_button(self.debug_button_sizer, "🔔 Test Notif", wx.ART_INFORMATION)
         self.simulate_notification_button.Bind(wx.EVT_BUTTON, self.on_simulate_notification)
         # Ya no se hace Hide() de los botones de debug, la visibilidad la gestiona el sizer de debug
         # --- Añadir sizers al layout ---
@@ -346,11 +347,9 @@ class LogAnalyzerFrame(wx.Frame):
         self.CreateStatusBar()
         self.SetStatusText("Ready")
     
-    def _create_button(self, sizer, label, art_id, min_size=None):
+    def _create_button(self, sizer, label, art_id=None, min_size=None):
         """Crea un botón compacto, look Windows, lo añade al sizer y lo devuelve. Ajusta tamaño al texto salvo que se indique min_size."""
-        button = wx.Button(self.log_page, label=label)
-        button.SetBitmap(wx.ArtProvider.GetBitmap(art_id, wx.ART_BUTTON, (16, 16)))
-        # Fuente estándar Windows
+        button = DarkThemeButton(self.log_page, label=label)
         button.SetFont(wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT))
         if min_size is not None:
             button.SetMinSize(min_size)

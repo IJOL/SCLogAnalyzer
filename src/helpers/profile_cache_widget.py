@@ -285,7 +285,7 @@ class ProfileDetailsDialog(wx.Dialog):
         
         # Botón cerrar pequeño con DarkThemeButton
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        close_btn = DarkThemeButton(self, label="Cerrar", size=(60, 25))
+        close_btn = DarkThemeButton(self, label="❌ Cerrar", size=(60, 25))
         close_btn.Bind(wx.EVT_BUTTON, self._on_close)
         btn_sizer.AddStretchSpacer()
         btn_sizer.Add(close_btn, 0, wx.ALL, 5)

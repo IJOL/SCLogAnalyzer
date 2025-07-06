@@ -8,7 +8,7 @@ import traceback
 from typing import Dict, Any, List, Callable, Optional
 from .message_bus import message_bus, MessageLevel
 from .supabase_manager import supabase_manager
-from .ui_components import GridManager, safe_call_after
+from .ui_components import GridManager, safe_call_after, DarkThemeButton
 
 class DataDisplayManager:
     """Manages data fetching and display in grids."""
@@ -553,7 +553,7 @@ class DataDisplayManager:
             form_controls[field_name] = control
         
         # Add submit button
-        submit_button = wx.Button(form_panel, label="Submit")
+        submit_button = DarkThemeButton(form_panel, label="📤 Submit")
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         button_sizer.AddStretchSpacer()
         button_sizer.Add(submit_button, 0, wx.ALL, 5)
