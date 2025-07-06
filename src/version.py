@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 12
-RELEASE = 7
+RELEASE = 8
 MATURITY = "valakkar"  # "alpha", "beta", or "final"
-PATCH = "2411910"
+PATCH = "e7472b2"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,8 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.12.x series,
+    "e7472b2: fix: Correct purple color key in config template\n\n- Updated the color key for the corpse event from \"purple,white\" to \"purple\" in the config.json.template for clarity and consistency.",
+    "7cbc996: [chore] Increment version to v0.12.7-2411910-valakkar",
     "2411910: feat: Enhance UI components and improve recording switch functionality\n\n- Updated the RecordingSwitchWidget to display \"Rec ON\" and \"Rec OFF\" labels for better clarity.\n- Introduced a new ToggleButtonWidget for configurable bi-state buttons, enhancing UI flexibility.\n- Integrated the new ToggleButtonWidget into the main application for improved user interaction.",
     "7a3b36e: feat: Introduce RecordingSwitchWidget for managing recording state\n\n- Added RecordingSwitchWidget to control recording functionality with cooldown management using Windows registry.\n- Integrated the widget into LogAnalyzerFrame for direct access to recording controls.\n- Implemented cleanup logic for the recording switch timer on frame closure.",
     "430c0ec: feat: Add corpse event handling and update config template",
