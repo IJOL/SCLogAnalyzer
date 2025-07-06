@@ -50,6 +50,12 @@ class ToggleButtonWidget(wx.Panel):
         # Actualizar UI
         self._update_ui_state()
         
+        # Crear y emitir un evento wx.EVT_TOGGLEBUTTON
+        toggle_event = wx.CommandEvent(wx.EVT_TOGGLEBUTTON.typeId, self.toggle_button.GetId())
+        toggle_event.SetEventObject(self.toggle_button)
+        toggle_event.SetString(str(self._button_state))
+        wx.PostEvent(self.toggle_button, toggle_event)
+        
         # Propagar el evento wxPython estándar
         event.Skip()
     
