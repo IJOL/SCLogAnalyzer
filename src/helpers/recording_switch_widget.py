@@ -2,12 +2,14 @@
 import wx
 import time
 import winreg
+from wx.lib import buttons
 from .message_bus import message_bus, MessageLevel
 
 class RecordingSwitchWidget(wx.Panel):
     """
     Widget autocontenido para controlar grabación a Supabase.
     Usa acceso directo al registro de Windows.
+    Usa el mismo estilo visual que DarkThemeButton pero con colores rojo/verde.
     """
     
     def __init__(self, parent, monitoring_service):
@@ -51,14 +53,18 @@ class RecordingSwitchWidget(wx.Panel):
         # Crear sizer horizontal
         sizer = wx.BoxSizer(wx.HORIZONTAL)
         
-        # Switch visual (usar wx.ToggleButton como slider)
-        self.switch_button = wx.ToggleButton(
+        # Botón con estilo DarkThemeButton pero colores personalizados
+        self.switch_button = buttons.GenButton(
             self, 
             label="Rec ON" if self.recording_enabled else "Rec OFF",
-            size=(60, 25)
+            size=(60, 25),
+            style=wx.BORDER_NONE
         )
-        self.switch_button.SetValue(self.recording_enabled)
-        self.switch_button.Bind(wx.EVT_TOGGLEBUTTON, self._on_toggle)
+        self.switch_button.SetToolTip("Control de grabación")
+        self.switch_button.Bind(wx.EVT_BUTTON, self._on_click)
+        
+        # Configurar estilo visual igual que DarkThemeButton
+        self.switch_button.SetBezelWidth(1)  # Borde más fino
         
         # Añadir solo el botón al sizer
         sizer.Add(self.switch_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
@@ -66,14 +72,13 @@ class RecordingSwitchWidget(wx.Panel):
         self.SetSizer(sizer)
         self._update_ui_state()
     
-    def _on_toggle(self, event):
+    def _on_click(self, event):
         current_time = time.time()
         
         # Verificar cooldown usando timestamp guardado (bidireccional)
         if (self.last_toggle_time and 
             current_time - self.last_toggle_time < self.cooldown_seconds):
             # Revertir cambio y mostrar mensaje
-            self.switch_button.SetValue(not self.switch_button.GetValue())
             remaining = int(self.cooldown_seconds - (current_time - self.last_toggle_time))
             message_bus.publish(
                 content=f"Cooldown activo. Espera {remaining} segundos.",
@@ -82,7 +87,7 @@ class RecordingSwitchWidget(wx.Panel):
             return
         
         # Aplicar cambio
-        self.recording_enabled = self.switch_button.GetValue()
+        self.recording_enabled = not self.recording_enabled
         self.last_toggle_time = current_time
         
         # Guardar timestamp del último cambio y estado actual (bidireccional)
@@ -95,7 +100,6 @@ class RecordingSwitchWidget(wx.Panel):
             self.monitoring_service.event_handler.block_private_lobby_recording = not self.recording_enabled
         
         # Actualizar UI
-        self.switch_button.SetLabel("ON" if self.recording_enabled else "OFF")
         self._update_ui_state()
         
         # Programar rehabilitación después de 5 minutos
@@ -136,13 +140,22 @@ class RecordingSwitchWidget(wx.Panel):
         
         self.switch_button.Enable(not in_cooldown)
         
-        # Aplicar colores según estado
+        # Actualizar etiqueta
+        self.switch_button.SetLabel("Rec ON" if self.recording_enabled else "Rec OFF")
+        
+        # Aplicar colores según estado (mismo estilo que DarkThemeButton)
         if self.recording_enabled:
             self.switch_button.SetBackgroundColour(wx.Colour(0, 128, 0))  # Verde
             self.switch_button.SetForegroundColour(wx.Colour(255, 255, 255))  # Blanco
         else:
             self.switch_button.SetBackgroundColour(wx.Colour(128, 0, 0))  # Rojo
             self.switch_button.SetForegroundColour(wx.Colour(255, 255, 255))  # Blanco
+        
+        # Forzar refresco
+        self.switch_button.Refresh()
+        self.switch_button.Update()
+        self.Refresh()
+        self.Update()
     
     def is_recording_enabled(self):
         return self.recording_enabled
