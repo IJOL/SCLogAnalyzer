@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 12
-RELEASE = 6
+RELEASE = 7
 MATURITY = "valakkar"  # "alpha", "beta", or "final"
-PATCH = "c2096a1"
+PATCH = "2411910"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,16 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.12.x series,
+    "2411910: feat: Enhance UI components and improve recording switch functionality\n\n- Updated the RecordingSwitchWidget to display \"Rec ON\" and \"Rec OFF\" labels for better clarity.\n- Introduced a new ToggleButtonWidget for configurable bi-state buttons, enhancing UI flexibility.\n- Integrated the new ToggleButtonWidget into the main application for improved user interaction.",
+    "7a3b36e: feat: Introduce RecordingSwitchWidget for managing recording state\n\n- Added RecordingSwitchWidget to control recording functionality with cooldown management using Windows registry.\n- Integrated the widget into LogAnalyzerFrame for direct access to recording controls.\n- Implemented cleanup logic for the recording switch timer on frame closure.",
+    "430c0ec: feat: Add corpse event handling and update config template",
+    "6070ecc: feat: Enhance TTL calculation and historical detection handling in StalledWidget\n\n- Updated the TTL calculation to include aggressive penalties for historical detections, improving responsiveness to recurring issues.\n- Adjusted the maximum TTL to 6 minutes and refined multipliers for historical detections during cache movement, ensuring more accurate tracking of persistent problems.",
+    "075fc23: fix: Optimize Discord message sending based on profile cache\n\n- Updated LogFileHandler to check the profile cache before sending Discord messages for normal profiles.\n- Ensured that messages are only sent if the profile is new, reducing unnecessary notifications and improving efficiency.",
+    "b4260ad: fix: Simplify profile data emission in ProfileCache\n\n- Removed unnecessary cleaning of profile data before broadcasting.\n- Updated the event emission logic to directly use the original profile data, enhancing clarity and reducing redundancy.",
+    "3369bcf: feat: Add force parameter to send_realtime_event for improved event broadcasting\n\n- Updated the send_realtime_event method to include a force parameter, allowing events to be sent even if the pattern is not in the realtime list.\n- Modified calls to send_realtime_event in LogFileHandler to utilize the new force functionality, ensuring critical events are broadcasted as needed.",
+
+    # Version v0.12.6-c2096a1-valakkar-docker,
+    "21cdfe5: [chore] Increment version to v0.12.6-c2096a1-valakkar",
     "c2096a1: chore: Update .gitignore to include build-venv and .cursor\n\n- Added 'build-venv/' and '.cursor/' to the .gitignore file to prevent unnecessary files from being tracked in the repository.",
     "b345a23: fix: Validate page and subtab indices in DataDisplayManager and LogAnalyzerFrame\n\n- Added checks to ensure the selected subtab and current page indices are within valid ranges before accessing them, preventing potential index errors and improving stability.",
     "a855416: feat: Implement nested notebook tabs in DataDisplayManager\n\n- Added functionality to create nested notebook tabs with multiple subtabs in the DataDisplayManager.\n- Enhanced tab creation logic to handle nested structures and refresh events for subtabs.\n- Updated main frame to support refreshing active subtabs within the Data tab, improving user interaction and data management.",
