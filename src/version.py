@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 12
-RELEASE = 8
+RELEASE = 9
 MATURITY = "valakkar"  # "alpha", "beta", or "final"
-PATCH = "e7472b2"
+PATCH = "c6291f7"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,7 +17,14 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.12.x series,
+    "c6291f7: feat: Update UI components with enhanced button labels and styles\n\n- Replaced standard button labels with emoji-enhanced labels for better visual appeal across various panels, including ConnectedUsersPanel, FreezerPanel, and others.\n- Integrated DarkThemeButton for consistent styling in buttons throughout the application, improving overall user experience.",
+    "fcae2e4: feat: Refactor RecordingSwitchWidget and ToggleButtonWidget for improved UI and functionality\n\n- Updated RecordingSwitchWidget to use GenButton for a consistent visual style with DarkThemeButton, enhancing user experience.\n- Changed event handling from toggle to click for better interaction.\n- Refactored ToggleButtonWidget to support internal state management and visual updates, ensuring consistent color application based on state.",
+
+    # Version v0.12.8-e7472b2-valakkar-docker,
+    "f6c976f: [chore] Increment version to v0.12.8-e7472b2-valakkar",
     "e7472b2: fix: Correct purple color key in config template\n\n- Updated the color key for the corpse event from \"purple,white\" to \"purple\" in the config.json.template for clarity and consistency.",
+
+    # Version v0.12.7-2411910-valakkar-docker,
     "7cbc996: [chore] Increment version to v0.12.7-2411910-valakkar",
     "2411910: feat: Enhance UI components and improve recording switch functionality\n\n- Updated the RecordingSwitchWidget to display \"Rec ON\" and \"Rec OFF\" labels for better clarity.\n- Introduced a new ToggleButtonWidget for configurable bi-state buttons, enhancing UI flexibility.\n- Integrated the new ToggleButtonWidget into the main application for improved user interaction.",
     "7a3b36e: feat: Introduce RecordingSwitchWidget for managing recording state\n\n- Added RecordingSwitchWidget to control recording functionality with cooldown management using Windows registry.\n- Integrated the widget into LogAnalyzerFrame for direct access to recording controls.\n- Implemented cleanup logic for the recording switch timer on frame closure.",
