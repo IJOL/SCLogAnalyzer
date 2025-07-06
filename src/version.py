@@ -1,10 +1,10 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 12
-RELEASE = 9
-MATURITY = "valakkar"  # "alpha", "beta", or "final"
-PATCH = "c6291f7"
+MINOR = 13
+RELEASE = 0
+MATURITY = "phoenix"  # "alpha", "beta", or "final"
+PATCH = "21508d4"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,10 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.12.x series,
+    "21508d4: feat: Improve notification handling and toggle button event emission\n\n- Updated notification handling in RealtimeBridge to use configuration settings for enabling notifications.\n- Enhanced ToggleButtonWidget to emit wx.EVT_TOGGLEBUTTON events, improving interaction feedback and UI responsiveness.",
+
+    # Version v0.12.9-c6291f7-valakkar-docker,
+    "6ae7065: [chore] Increment version to v0.12.9-c6291f7-valakkar",
     "c6291f7: feat: Update UI components with enhanced button labels and styles\n\n- Replaced standard button labels with emoji-enhanced labels for better visual appeal across various panels, including ConnectedUsersPanel, FreezerPanel, and others.\n- Integrated DarkThemeButton for consistent styling in buttons throughout the application, improving overall user experience.",
     "fcae2e4: feat: Refactor RecordingSwitchWidget and ToggleButtonWidget for improved UI and functionality\n\n- Updated RecordingSwitchWidget to use GenButton for a consistent visual style with DarkThemeButton, enhancing user experience.\n- Changed event handling from toggle to click for better interaction.\n- Refactored ToggleButtonWidget to support internal state management and visual updates, ensuring consistent color application based on state.",
 
