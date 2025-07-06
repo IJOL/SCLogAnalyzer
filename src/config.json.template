@@ -34,7 +34,7 @@
         "green": ["actor_stall"],
         "blue,white" : ["connected"],
         "orange" : ["mode_change"],
-        "purple,white": ["corpse"]
+        "purple": ["corpse"]
     },
     "messages": {
         "vehicle_destruction": "🚗💥 {vehicle}:{driver} was destroyed {destroy_level_to} by {cause} with {damage_type} in {zone}",
