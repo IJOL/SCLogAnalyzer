@@ -751,7 +751,9 @@ class LogFileHandler(FileSystemEventHandler):
         vip_list = self.config_manager.get('important_players', [])
         for pattern in [ p.strip() for p in vip_list.split(",")]:
             try:
-                patterns.append(re.compile(f"<(?P<timestamp>.*?)>.*?(?P<vip>{pattern}?).*?"))
+                patterns.append(re.compile(
+                    fr"<(?P<timestamp>.*?)>.*?(?P<vip>(?<!\w){re.escape(pattern)}(?!\w)).*?"
+                ))
             except Exception:
                 pass  # Silently ignore invalid patterns
         return patterns  # Always assign a list, never None

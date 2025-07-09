@@ -45,12 +45,12 @@
         "quantum_jump": "✨🚀 {player}: Quantum jump",
         "mode_change": "🎮🔄 Game Mode changed: {mode} {status} at {timestamp}",
         "connection_flow" : "📡🔗 {partner}: in range",
-        "vip": "👑🌟 VIP detected: {vip}",
+        "vip": "👑🌟 {username} detected VIP: {vip}",
         "actor_profile": "🧑‍🚀📋 {username} {action} {player_name}: {org} {enlisted} \n {all}",
         "corpse": "💀⚰️ {player}: Corpse"
      },
     "notifications_enabled": true,
-    "notifications_events": ["vip","actor_profile"],
+    "notifications_events": ["vip"],
     "notifications_duration": 5,
     "rate_limit_timeout": 300,
     "rate_limit_max_duplicates": 1,
@@ -61,7 +61,7 @@
     "discord": {
         "player_death": "{username} :skull: **{killer} -> {victim}** *{mode}* with {weapon} in {zone} with {damage_type}",
         "startup": "🚀 *Startup Alert* **{username}** {script_version}",
-        "vip": "👑🌟 VIP detected: {vip}",
+        "vip": "👑🌟 {username} detected VIP: {vip}",
         "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n {all}"
     }
 }
