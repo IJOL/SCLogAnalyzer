@@ -3,7 +3,7 @@ import wx
 import os
 import sys
 import webcolors
-import log_analyzer
+from . import log_analyzer
 import win32event
 import win32api
 import winerror

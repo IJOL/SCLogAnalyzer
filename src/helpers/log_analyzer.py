@@ -16,14 +16,14 @@ from watchdog.events import FileSystemEventHandler
 from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustment
 from pyzbar.pyzbar import decode  # For QR code detection
 from bs4 import BeautifulSoup  # For profile scraping
-# Using absolute imports instead of relative ones
-from helpers.config_utils import get_application_path, get_config_manager
-from helpers.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
-from helpers.message_bus import message_bus, MessageLevel  # Import at module level
-from helpers.data_provider import get_data_provider  # Import data provider
-from helpers.rate_limiter import MessageRateLimiter
-from helpers.async_profile import scrape_profile_async  # Import profile scraper helper
-from helpers import ensure_all_field
+# Using relative imports
+from .config_utils import get_application_path, get_config_manager
+from .supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
+from .message_bus import message_bus, MessageLevel  # Import at module level
+from .data_provider import get_data_provider  # Import data provider
+from .rate_limiter import MessageRateLimiter
+from .async_profile import scrape_profile_async  # Import profile scraper helper
+from . import ensure_all_field
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -38,8 +38,8 @@ RETURN_KEY = "return"  # Add constant for Return key
 
 # Import version information
 try:
-    # Using absolute import
-    from version import get_version
+    # Using relative import from parent directory
+    from ..version import get_version
 except ImportError:
     def get_version():
         return "unknown"
