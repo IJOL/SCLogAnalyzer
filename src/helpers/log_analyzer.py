@@ -39,7 +39,7 @@ RETURN_KEY = "return"  # Add constant for Return key
 # Import version information
 try:
     # Using relative import from parent directory
-    from ..version import get_version
+    from version import get_version
 except ImportError:
     def get_version():
         return "unknown"
