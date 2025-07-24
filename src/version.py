@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 13
-RELEASE = 0
+RELEASE = 1
 MATURITY = "phoenix"  # "alpha", "beta", or "final"
-PATCH = "21508d4"
+PATCH = "1d63c1c"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -16,7 +16,16 @@ def get_version():
 
 # Recent commit messages
 COMMIT_MESSAGES = [
-    # Commits for v0.12.x series,
+    # Commits for v0.13.x series,
+    "1d63c1c: fix: Adjust binarization threshold range for improved QR code detection\n\n- Modified the threshold range in the binarization process from 220-140 to 220-180 to enhance the detection of QR codes in images.",
+    "b63f47c: refactor: Enhance QR code detection by implementing configurable binarization threshold\n\n- Introduced a new internal function to binarize images based on a configurable threshold.\n- Added logic for adaptive thresholding, starting from a high value and decreasing until a valid QR code is detected.\n- Output the threshold used for binarization to improve debugging and analysis.",
+    "610b429: fix: Update import statement in log_analyzer.py to use absolute import",
+    "3c1e918: chore: Update .gitignore to include additional files and directories",
+    "afce6d6: refactor: Move log_analyzer.py to helpers directory",
+    "c39c74a: feat: Update VIP notification format and enhance regex pattern matching\n\n- Modified the VIP notification message format in config.json.template to include the username.\n- Improved regex pattern matching in log_analyzer.py to ensure accurate detection of VIP players by using word boundaries.",
+
+    # Version v0.13.0-21508d4-phoenix-docker,
+    "55200c0: [chore] Increment version to v0.13.0-21508d4-phoenix",
     "21508d4: feat: Improve notification handling and toggle button event emission\n\n- Updated notification handling in RealtimeBridge to use configuration settings for enabling notifications.\n- Enhanced ToggleButtonWidget to emit wx.EVT_TOGGLEBUTTON events, improving interaction feedback and UI responsiveness.",
 
     # Version v0.12.9-c6291f7-valakkar-docker,
@@ -93,43 +102,5 @@ COMMIT_MESSAGES = [
     "f6cbd4f: feat: Add custom patch for wxPython UltimateListCtrl to support selection colors",
     "02b444b: chore: Introduce configurable virtual environment directory in build process",
     "9fe0596: fix: Ensure rate limit timeout and max duplicates are cast to integers in LogFileHandler initialization",
-    "99f80d8: feat: Enhance LogFileHandler to differentiate between manual and automatic profile requests, updating event handling accordingly",
-
-    # Version v0.11.3-9b2b76a-laminas-docker,
-    "02b370b: [chore] Increment version to v0.11.3-9b2b76a-laminas",
-    "9b2b76a: feat: Add 'Get Profile' option in ConnectedUsersPanel and integrate profile request handling via message bus",
-    "ce1542e: fix: Update scraping event from 'actor_death' to 'player_death' in config template and improve formatting in actor_profile message",
-    "5129c38: fix: Enhance mode checks in LogFileHandler to include debug mode condition",
-
-    # Version v0.11.2-edae730-laminas-docker,
-    "26efe73: [chore] Increment version to v0.11.2-edae730-laminas",
-    "edae730: feat: Integrate RealtimeBridge for content filtering in ConnectedUsersPanel, adding right-click menu options for managing filters",
-    "4a23f3e: fix: Add 'actor_profile' to notifications_events in config template for improved notification handling",
-    "c2be3cb: refactor: Remove unused functions and improve message bus filter documentation",
-
-    # Version v0.11.1-2f34d56-laminas-docker,
-    "f053a9e: [chore] Increment version to v0.11.1-2f34d56-laminas",
-    "2f34d56: fix: Remove unused regex patterns and messages for player and ship events in config template",
-    "30cb3df: fix: Correct formatting in actor_profile message and ensure consistent spacing",
-    "fe3a83d: fix: Update ConfigDialog to be modal and improve dialog handling in main frame",
-    "97509ad: fix: Add mode check to prevent event processing in non-default mode",
-    "dc4bbde: fix: Update organization detection logic and enhance logging in profile parser",
-    "010c13b: refactor: Simplify profile scraping by integrating standalone parser and enhancing error handling",
-    "eed91fa: refactor: Update async_profile_scraping to accept pattern_name and improve event handling",
-    "4074b5a: fix: Enhance organization status detection with detailed logging and error handling",
-
-    # Version v0.11.0-d275e6e-laminas-docker,
-    "6ff05e9: [chore] Increment version to v0.11.0-d275e6e-laminas",
-    "d275e6e: fix: Correct SQL syntax for hash_value generated column in SupabaseManager",
-    "e8eb473: chore: Unified version increment function to handle release, minor, and major increments",
-    "7ab7255: fix: Add 'actor_profile' to regex keys in ConfigDialog for message filtering",
-    "f3f4b8b: chore: Add functions to increment major and minor versions in version.py",
-    "1bf7a1e: fix: Update actor_profile and player_death message formats for consistency",
-    "2e1f064: feat: Enhance organization status detection in profile scraping",
-    "eb3fed3: chore: Add 'perfiles/' to .gitignore to exclude profile directories from version control",
-    "5b2000b: fix: Convert all data to strings in raw_data for consistent handling",
-    "fe0a877: fix: Remove datetime parsing for enlisted date in profile data extraction",
-    "b96c9aa: fix: Correct commit message formatting and improve non-chore commit filtering logic",
-    "78a038e: chore: Remove obsolete build script and related commands",
-    "2408732: [chore] Update commit message handling and improve formatting in build script"
+    "99f80d8: feat: Enhance LogFileHandler to differentiate between manual and automatic profile requests, updating event handling accordingly"
 ]
