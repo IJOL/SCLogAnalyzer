@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 13
-RELEASE = 1
+RELEASE = 2
 MATURITY = "phoenix"  # "alpha", "beta", or "final"
-PATCH = "1d63c1c"
+PATCH = "1623ef0"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,8 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.13.x series,
+    "1623ef0: fix: Convert cropped image to grayscale for improved QR code detection",
+    "106935c: [chore] Increment version to v0.13.1-1d63c1c-phoenix",
     "1d63c1c: fix: Adjust binarization threshold range for improved QR code detection\n\n- Modified the threshold range in the binarization process from 220-140 to 220-180 to enhance the detection of QR codes in images.",
     "b63f47c: refactor: Enhance QR code detection by implementing configurable binarization threshold\n\n- Introduced a new internal function to binarize images based on a configurable threshold.\n- Added logic for adaptive thresholding, starting from a high value and decreasing until a valid QR code is detected.\n- Output the threshold used for binarization to improve debugging and analysis.",
     "610b429: fix: Update import statement in log_analyzer.py to use absolute import",
