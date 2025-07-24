@@ -556,7 +556,8 @@ class LogFileHandler(FileSystemEventHandler):
                 else:
                     # Otherwise, crop a fixed 200x200 pixel area from the top-right corner
                     top_right = image.crop((width - 200, 0, width, 200))
-
+                # Convert to grayscale for QR code detection
+                top_right = top_right.convert("L")
                 # --- Refactor: función interna para binarizar imagen con threshold ---
                 def _binarize_image(img, threshold):
                     temp_img = img.copy()
