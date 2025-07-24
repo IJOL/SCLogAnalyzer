@@ -557,18 +557,41 @@ class LogFileHandler(FileSystemEventHandler):
                     # Otherwise, crop a fixed 200x200 pixel area from the top-right corner
                     top_right = image.crop((width - 200, 0, width, 200))
 
-                # Convert to grayscale for QR code detection
-                top_right = top_right.convert("L")  # Convert to grayscale
+                # --- Refactor: función interna para binarizar imagen con threshold ---
+                def _binarize_image(img, threshold):
+                    temp_img = img.copy()
+                    pixels = temp_img.load()
+                    for x in range(temp_img.width):
+                        for y in range(temp_img.height):
+                            pixels[x, y] = 0 if pixels[x, y] < threshold else 255
+                    return temp_img
 
-                # Binarización: solo blanco y negro para mejorar la detección de QR
-                threshold = 210
-                pixels = top_right.load()
-                for x in range(top_right.width):
-                    for y in range(top_right.height):
-                        pixels[x, y] = 0 if pixels[x, y] < threshold else 255
+                # Binarización mejorada: threshold configurable o búsqueda descendente
+                qr_threshold = self.config_manager.get('qr_threshold', None)
+                qr_codes = None
+                threshold_used = None
+                if qr_threshold is not None:
+                    # Usar threshold manual si está definido
+                    threshold = int(qr_threshold)
+                    bin_img = _binarize_image(top_right, threshold)
+                    qr_codes = decode(bin_img)
+                    top_right = bin_img
+                    threshold_used = threshold
+                else:
+                    # Prueba y error: empezar en 220 y bajar de 4 en 4 hasta 140
+                    for threshold in range(220, 139, -4):
+                        bin_img = _binarize_image(top_right, threshold)
+                        qr_codes = decode(bin_img)
+                        if qr_codes:
+                            top_right = bin_img
+                            threshold_used = threshold
+                            break
+                    if threshold_used is None:
+                        threshold_used = "none (all failed)"
+
+                output_message(None, f"QR binarization threshold used: {threshold_used}")
 
                 # Try to decode QR code
-                qr_codes = decode(top_right)
                 if qr_codes:
                     # Extract shard and version information from QR code
                     qr_data = qr_codes[0].data.decode('utf-8')
