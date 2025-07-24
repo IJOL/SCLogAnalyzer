@@ -579,7 +579,7 @@ class LogFileHandler(FileSystemEventHandler):
                     threshold_used = threshold
                 else:
                     # Prueba y error: empezar en 220 y bajar de 4 en 4 hasta 140
-                    for threshold in range(220, 139, -4):
+                    for threshold in range(220, 180, -4):
                         bin_img = _binarize_image(top_right, threshold)
                         qr_codes = decode(bin_img)
                         if qr_codes:
