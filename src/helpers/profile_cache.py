@@ -201,23 +201,8 @@ class ProfileCache:
         broadcast_count = 0
         for player_name, cache_entry in profiles:
             try:
-                profile_data = cache_entry['profile_data']
-                
-                # Emitir evento actor_profile para cada perfil
-                message_bus.emit('actor_profile', 
-                                player_name, 
-                                profile_data.get('main_org_sid', 'Unknown'), 
-                                profile_data.get('enlisted', 'Unknown'), 
-                                profile_data)
-                
+                self.broadcast_profile(player_name)
                 broadcast_count += 1
-                
-                message_bus.publish(
-                    content=f"Broadcasting cached profile: {player_name}",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "profile_cache", "action": "broadcast_profile", "player": player_name}
-                )
-                
             except Exception as e:
                 message_bus.publish(
                     content=f"Error broadcasting profile {player_name}: {e}",
