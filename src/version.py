@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 13
-RELEASE = 2
+RELEASE = 3
 MATURITY = "phoenix"  # "alpha", "beta", or "final"
-PATCH = "1623ef0"
+PATCH = "11b0ea6"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,7 +17,14 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.13.x series,
+    "11b0ea6: refactor: Improve actor profile handling in log_analyzer.py\n\n- Added cache check for player profiles before processing broadcast data.\n- Enhanced logging and notification for received profiles.\n- Streamlined the logic for sending Discord messages based on profile status.",
+    "6273ba5: refactor: Simplify profile broadcasting logic in ProfileCache class\n\n- Removed direct profile data emission in favor of a dedicated broadcast method for cleaner code.\n- Enhanced error handling during profile broadcasting.",
+
+    # Version v0.13.2-1623ef0-phoenix-docker,
+    "6a4f7f7: [chore] Increment version to v0.13.2-1623ef0-phoenix",
     "1623ef0: fix: Convert cropped image to grayscale for improved QR code detection",
+
+    # Version v0.13.1-1d63c1c-phoenix-docker,
     "106935c: [chore] Increment version to v0.13.1-1d63c1c-phoenix",
     "1d63c1c: fix: Adjust binarization threshold range for improved QR code detection\n\n- Modified the threshold range in the binarization process from 220-140 to 220-180 to enhance the detection of QR codes in images.",
     "b63f47c: refactor: Enhance QR code detection by implementing configurable binarization threshold\n\n- Introduced a new internal function to binarize images based on a configurable threshold.\n- Added logic for adaptive thresholding, starting from a high value and decreasing until a valid QR code is detected.\n- Output the threshold used for binarization to improve debugging and analysis.",
