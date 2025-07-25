@@ -187,6 +187,12 @@ class LogFileHandler(FileSystemEventHandler):
     
     def _on_actor_profile(self, player_name, org, enlisted, metadata=None):
         """Handler for actor_profile events from message bus"""
+                # Para perfiles normales, verificar caché antes de Discord
+        from helpers.profile_cache import ProfileCache
+        cache = ProfileCache.get_instance()
+        cached_profile = cache.get_profile(player_name)
+        output_message_format = self.messages.get("actor_profile")
+
         message_bus.publish(
             content=f"_on_actor_profile called for {player_name}",
             level=MessageLevel.DEBUG,
@@ -204,45 +210,46 @@ class LogFileHandler(FileSystemEventHandler):
                 )
                 return
 
-        from helpers.profile_cache import ProfileCache
-        cache = ProfileCache.get_instance()
-
         # Si es un perfil recibido por broadcast y tiene raw_data, usarlo directamente
         if metadata and metadata.get('action') == 'broadcast' and metadata.get('raw_data'):
-            raw_data = metadata['raw_data'].copy()
-            
-            # Añadir metadatos mínimos necesarios
-            profile_data = {
-                'player_name': raw_data.get('player_name'),
-                'org': raw_data.get('org'),
-                'enlisted': raw_data.get('enlisted'),
-                'action': 'broadcast',
-                'source_user': metadata.get('source_user'),
-                **raw_data  # Incluir todos los campos del raw_data
-            }
-            
-            # Almacenar en caché
-            cache.add_profile(
-                player_name=profile_data['player_name'],
-                profile_data=profile_data,
-                source_type='broadcast',
-                requested_by=metadata.get('source_user', 'unknown'),
-                source_user=metadata.get('source_user', 'unknown')
-            )
-            
-            # Mostrar en log solo (sin notificación para broadcast)
-            message_bus.publish(
-                content=f"Profile for {player_name} received from {metadata.get('source_user')}",
-                level=MessageLevel.DEBUG,
-                metadata={"source": "log_analyzer", "action": "profile_received"}
-            )
+            if not cached_profile:
+                raw_data = metadata['raw_data'].copy()
+                
+                # Añadir metadatos mínimos necesarios
+                profile_data = {
+                    'player_name': raw_data.get('player_name'),
+                    'org': raw_data.get('org'),
+                    'enlisted': raw_data.get('enlisted'),
+                    'action': 'broadcast',
+                    'source_user': metadata.get('source_user'),
+                    **raw_data  # Incluir todos los campos del raw_data
+                }
+                
+                # Almacenar en caché
+                cache.add_profile(
+                    player_name=profile_data['player_name'],
+                    profile_data=profile_data,
+                    source_type='broadcast',
+                    requested_by=metadata.get('source_user', 'unknown'),
+                    source_user=metadata.get('source_user', 'unknown')
+                )
+                
+                # Mostrar en log solo (sin notificación para broadcast)
+                message_bus.publish(
+                    content=f"Profile for {player_name} received from {metadata.get('source_user')}",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "log_analyzer", "action": "profile_received"}
+                )
+                if output_message_format:
+                    content = output_message_format.format(**ensure_all_field(profile_data))
+                    message_bus.emit("show_windows_notification", content)
+
             return
 
         # Determinar tipo de la solicitud para perfiles normales
         action = metadata.get('action', '') if metadata else ''
         requested_by = self.username
         source_user = self.username
-        
         # Create data dict to match pattern used by other event handlers
         data = {
             'player_name': player_name,
@@ -266,21 +273,12 @@ class LogFileHandler(FileSystemEventHandler):
         )
         
         # Use standard pattern: check if format exists in messages and output
-        output_message_format = self.messages.get("actor_profile")
         if output_message_format:
             output_message(None, output_message_format.format(**ensure_all_field(data)), regex_pattern="actor_profile")
-        
-        # Si es broadcast recibido, solo mostrar en log_text y terminar
-        if action == 'broadcast':
-            return
-        
-        # Para perfiles normales, verificar caché antes de Discord
-        from helpers.profile_cache import ProfileCache
-        cache = ProfileCache.get_instance()
-        cached_profile = cache.get_profile(player_name)
+            
         
         # Solo enviar a Discord si es nuevo
-        if not cached_profile:
+        if not cached_profile and action != 'broadcast':
             self.send_discord_message(data, pattern_name="actor_profile")
         
         # Determinar si es solicitud manual vs automática
