@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 13
-RELEASE = 4
+RELEASE = 5
 MATURITY = "phoenix"  # "alpha", "beta", or "final"
-PATCH = "f23a3e7"
+PATCH = "b90b336"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,19 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.13.x series,
+    "b90b336: feat: Implement column sorting functionality in CustomListCtrl\n\n- Added sorting capabilities to the CustomListCtrl, allowing users to sort by clicking on column headers.\n- Implemented methods for detecting data types, sorting data, and updating sort indicators.\n- Introduced public API methods to enable/disable sorting and manage sort state programmatically.",
+    "19cdf3d: fix: Update OrgMembersWidget initialization in ConnectedUsersPanel\n\n- Removed the explicit column specification in the OrgMembersWidget instantiation to allow for default behavior.\n- Simplified the widget setup for better maintainability.",
+    "893af0a: feat: Update search organization event handler in OrgMembersWidget\n\n- Modified the `_on_search_organization_event` method to accept an optional `source` parameter for enhanced event handling.\n- Improved flexibility in processing organization search events.",
+    "4ecc6fe: feat: Enhance ProfileCacheWidget with organization search functionality\n\n- Added a context menu option to search for a player's organization if available.\n- Implemented the `_search_organization` method to handle organization search events and logging.\n- Updated context menu to include organization details with appropriate icons for improved user experience.",
+    "f5a4e9c: feat: Enhance error handling in RSI Organization Scraper\n\n- Improved error handling for API responses, including throttling and invalid data sections.\n- Added checks for success status and refined exception messages for better clarity.\n- Ensured safe extraction of HTML content from API responses to prevent runtime errors.",
+    "bde735e: feat: Enhance context menu in SharedLogsWidget with icons\n\n- Updated context menu items to include icons for improved user experience.\n- Changed menu item labels to feature emoticons for filtering, clearing, and profile retrieval options.",
+    "640715e: feat: Integrate OrgMembersWidget into ConnectedUsersPanel layout\n\n- Added OrgMembersWidget to display organization members alongside ProfileCache and Freezer widgets.\n- Adjusted layout to accommodate the new widget with updated splitter configurations.\n- Implemented cleanup for existing components and removed message bus subscriptions to prevent memory leaks.",
+    "510d26f: feat: Introduce OrgMembersWidget for organization member search and display\n\n- Added a new widget for searching and visualizing non-redacted members of Star Citizen organizations.\n- Implemented UI components including search input, buttons, and a member list with dynamic columns.\n- Integrated threading for search operations to maintain UI responsiveness.\n- Added context menu options for member profile retrieval and name copying.",
+    "2a6ee2e: feat: Add RSI Organization Scraper module\n\n- Introduced a new module for scraping organization member data from the RSI API.\n- Implemented functions to fetch all organization data, retrieve member information, and save HTML pages.\n- Added error handling for network requests and response validation.",
+    "f419b65: feat: Update menu items in ProfileCacheWidget with icons\n\n- Added icons to menu items for improved user experience.\n- Updated \"Ver detalles\" to \"🔍 Ver detalles\", \"Enviar a Discord\" to \"🔊 Enviar a Discord\", and \"Eliminar del cache\" to \"🗑️ Eliminar del cache\".",
+
+    # Version v0.13.4-f23a3e7-phoenix-docker,
+    "074c197: [chore] Increment version to v0.13.4-f23a3e7-phoenix",
     "f23a3e7: feat: Add functionality to send player profiles to Discord\n\n- Introduced a new menu item in ProfileCacheWidget for sending profiles to Discord.\n- Implemented the `_send_discord` method in ProfileCacheWidget to handle the sending process.\n- Added `send_discord_message` method in ProfileCache to manage Discord message publishing and error handling.",
     "0dc5d92: feat: Add new event handlers for Discord and real-time messaging in log_analyzer.py\n\n- Introduced `_on_send_discord` and `_on_send_realtime` methods to handle respective events.\n- Updated event subscriptions to include new handlers for improved messaging functionality.",
 
