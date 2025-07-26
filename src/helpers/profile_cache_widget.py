@@ -175,10 +175,10 @@ class ProfileCacheWidget(wx.Panel):
             player_name = self.cache_listctrl.GetItemText(selection, 0)
             
             menu = wx.Menu()
-            details_item = menu.Append(wx.ID_ANY, "Ver detalles")
+            details_item = menu.Append(wx.ID_ANY, "🔍 Ver detalles")
             broadcast_item = menu.Append(wx.ID_ANY, "📡 Broadcast profile")
-            discord_item = menu.Append(wx.ID_ANY, "Send to Discord")
-            remove_item = menu.Append(wx.ID_ANY, "Eliminar del cache")
+            discord_item = menu.Append(wx.ID_ANY, "🔊 Enviar a Discord")
+            remove_item = menu.Append(wx.ID_ANY, "🗑️ Eliminar del cache")
             
             self.Bind(wx.EVT_MENU, lambda e: self._show_profile_details(player_name), details_item)
             self.Bind(wx.EVT_MENU, lambda e: self._broadcast_profile(player_name), broadcast_item)
