@@ -75,13 +75,28 @@ def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
                 if not isinstance(data, dict):
                     raise ValueError(f"Respuesta JSON inválida: {type(data)}")
                 
-                html_content = data.get("data", {}).get("html", "")
+                # Verificar si hay error de throttling u otros errores
+                if data.get('success') == 0:
+                    error_msg = data.get('msg', 'Unknown error')
+                    if 'throttled' in error_msg.lower():
+                        raise ValueError(f"API throttled para {org}. Intenta más tarde.")
+                    else:
+                        raise ValueError(f"Error de API para {org}: {error_msg}")
+                
+                # Extraer data de forma segura
+                data_section = data.get("data")
+                if data_section is None:
+                    raise ValueError("Respuesta JSON no contiene sección 'data'")
+                
+                html_content = data_section.get("html", "")
             except (ValueError, TypeError) as e:
                 # Si el JSON no es válido, intentar extraer información del texto
                 if "not found" in response.text.lower() or "404" in response.text.lower():
                     raise ValueError(f"Organización '{org}' no encontrada")
                 elif "forbidden" in response.text.lower() or "403" in response.text.lower():
                     raise ValueError(f"Acceso denegado a la organización '{org}'")
+                elif "throttled" in response.text.lower():
+                    raise ValueError(f"API throttled para {org}. Intenta más tarde.")
                 else:
                     raise ValueError(f"Error al parsear respuesta JSON de {org}: {e}")
             
@@ -260,10 +275,18 @@ def save_all_html_pages(org: str, output_file: str = "all_pages.html"):
             
             # Verificar si la respuesta es exitosa
             if data.get('success') != 1:
-                raise requests.RequestException(f"Error en respuesta RSI: {data.get('msg', 'Unknown error')}")
+                error_msg = data.get('msg', 'Unknown error')
+                if 'throttled' in error_msg.lower():
+                    raise ValueError(f"API throttled para {org}. Intenta más tarde.")
+                else:
+                    raise requests.RequestException(f"Error en respuesta RSI: {error_msg}")
             
-            # Extraer HTML de la respuesta
-            html_content = data.get('data', {}).get('html', '')
+            # Extraer HTML de la respuesta de forma segura
+            data_section = data.get('data')
+            if data_section is None:
+                raise ValueError("Respuesta JSON no contiene sección 'data'")
+            
+            html_content = data_section.get('html', '')
             
             if not html_content:
                 break
