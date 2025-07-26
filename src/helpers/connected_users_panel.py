@@ -199,7 +199,7 @@ class ConnectedUsersPanel(wx.Panel):
         org_members_panel = wx.Panel(right_splitter)
         org_members_sizer = wx.BoxSizer(wx.VERTICAL)
         # Crear widget con solo la columna de nombre
-        self.org_members_widget = OrgMembersWidget(org_members_panel, columns=["Name"])
+        self.org_members_widget = OrgMembersWidget(org_members_panel)
         org_members_sizer.Add(self.org_members_widget, 1, wx.EXPAND | wx.ALL, 5)
         org_members_panel.SetSizer(org_members_sizer)
         
