@@ -174,8 +174,20 @@ class ProfileCacheWidget(wx.Panel):
         if selection != -1:
             player_name = self.cache_listctrl.GetItemText(selection, 0)
             
+            # Obtener datos del perfil
+            profiles = self.cache.get_all_profiles()
+            profile_data = profiles.get(player_name, {})
+            organization = profile_data.get('organization', 'Unknown')
+            has_organization = organization and organization != 'Unknown'
+            
             menu = wx.Menu()
             details_item = menu.Append(wx.ID_ANY, "🔍 Ver detalles")
+            
+            # Opción de búsqueda de organización (solo si tiene org)
+            if has_organization:
+                search_org_item = menu.Append(wx.ID_ANY, f"🏢 Buscar org: {organization}")
+                self.Bind(wx.EVT_MENU, lambda e: self._search_organization(player_name, organization), search_org_item)
+            
             broadcast_item = menu.Append(wx.ID_ANY, "📡 Broadcast profile")
             discord_item = menu.Append(wx.ID_ANY, "🔊 Enviar a Discord")
             remove_item = menu.Append(wx.ID_ANY, "🗑️ Eliminar del cache")
@@ -230,6 +242,17 @@ class ProfileCacheWidget(wx.Panel):
                 level=MessageLevel.INFO,
                 metadata={"source": "profile_cache_widget"}
             )
+    
+    def _search_organization(self, player_name: str, org_symbol: str):
+        """Busca la organización del jugador"""
+        # Emitir evento de búsqueda de organización
+        message_bus.emit("search_organization", org_symbol, "ProfileCacheWidget")
+        
+        message_bus.publish(
+            content=f"Searching organization {org_symbol} for player {player_name}",
+            level=MessageLevel.INFO,
+            metadata={"source": "profile_cache_widget"}
+        )
     
     def cleanup(self):
         """Limpieza al cerrar el widget"""
