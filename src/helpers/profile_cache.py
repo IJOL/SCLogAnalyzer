@@ -8,6 +8,8 @@ from datetime import datetime
 from collections import OrderedDict
 from typing import Optional, Dict, Any
 
+from helpers import ensure_all_field
+
 from .message_bus import message_bus, MessageLevel
 from .config_utils import get_config_manager
 
@@ -258,3 +260,18 @@ class ProfileCache:
                 metadata={"source": "profile_cache", "action": "force_broadcast_error"}
             )
             return False 
+    
+    def send_discord_message(self, player_name: str):
+        """Envía un perfil específico a Discord"""
+        with self._cache_lock:
+            if player_name not in self._cache:
+                message_bus.publish(
+                    content=f"Profile {player_name} not found in cache for Discord",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": "profile_cache", "action": "send_discord_not_found"}
+                )
+                return False
+            cache_entry = self._cache[player_name]
+            profile_data = cache_entry['profile_data']
+            message_bus.emit("send_discord", profile_data, pattern_name="actor_profile")
+

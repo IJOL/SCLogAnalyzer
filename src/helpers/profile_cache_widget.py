@@ -177,14 +177,20 @@ class ProfileCacheWidget(wx.Panel):
             menu = wx.Menu()
             details_item = menu.Append(wx.ID_ANY, "Ver detalles")
             broadcast_item = menu.Append(wx.ID_ANY, "📡 Broadcast profile")
+            discord_item = menu.Append(wx.ID_ANY, "Send to Discord")
             remove_item = menu.Append(wx.ID_ANY, "Eliminar del cache")
             
             self.Bind(wx.EVT_MENU, lambda e: self._show_profile_details(player_name), details_item)
             self.Bind(wx.EVT_MENU, lambda e: self._broadcast_profile(player_name), broadcast_item)
+            self.Bind(wx.EVT_MENU, lambda e: self._send_discord(player_name), discord_item)
             self.Bind(wx.EVT_MENU, lambda e: self._remove_profile(player_name), remove_item)
             
             self.PopupMenu(menu)
             menu.Destroy()
+    
+    def _send_discord(self, player_name: str):
+        """Envía un perfil específico a Discord"""
+        self.cache.send_discord_message(player_name)
     
     def _show_profile_details(self, player_name: str):
         """Muestra detalles de un perfil específico usando tooltip"""
