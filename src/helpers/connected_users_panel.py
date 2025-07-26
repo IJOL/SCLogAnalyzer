@@ -13,6 +13,7 @@ from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 from .profile_cache_widget import ProfileCacheWidget
 from .freezer_widget import FreezerWidget
 from .ui_components import DarkThemeButton
+from .org_members_widget import OrgMembersWidget
 
 # --- 1. Add checkbox images for filtering ---
 CHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_OTHER, (16, 16))
@@ -185,31 +186,55 @@ class ConnectedUsersPanel(wx.Panel):
         # Layout del panel izquierdo
         left_panel.SetSizer(left_sizer)
         
-        # Panel derecho: Profile Cache + Freezer
+        # Panel derecho: OrgMembersWidget + ProfileCache + Freezer
         right_panel = wx.Panel(self.splitter)
         right_sizer = wx.BoxSizer(wx.VERTICAL)
         
-        # Crear un splitter vertical para los dos widgets
+        # Crear un splitter vertical para los tres widgets
         right_splitter = wx.SplitterWindow(right_panel, style=wx.SP_LIVE_UPDATE | wx.SP_3D)
-        right_splitter.SetSashGravity(0.7)  # 70% para cache, 30% para freezer
-        right_splitter.SetMinimumPaneSize(150)  # Tamaño mínimo para ambos widgets
+        right_splitter.SetSashGravity(0.4)  # 40% para org_members, 60% para el resto
+        right_splitter.SetMinimumPaneSize(200)  # Tamaño mínimo para ambos paneles
+        
+        # Panel superior: OrgMembersWidget (solo columna de nombre)
+        org_members_panel = wx.Panel(right_splitter)
+        org_members_sizer = wx.BoxSizer(wx.VERTICAL)
+        # Crear widget con solo la columna de nombre
+        self.org_members_widget = OrgMembersWidget(org_members_panel, columns=["Name"])
+        org_members_sizer.Add(self.org_members_widget, 1, wx.EXPAND | wx.ALL, 5)
+        org_members_panel.SetSizer(org_members_sizer)
+        
+        # Panel inferior: Splitter horizontal para ProfileCache + Freezer
+        bottom_panel = wx.Panel(right_splitter)
+        bottom_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # Splitter horizontal para ProfileCache y Freezer
+        bottom_splitter = wx.SplitterWindow(bottom_panel, style=wx.SP_LIVE_UPDATE | wx.SP_3D)
+        bottom_splitter.SetSashGravity(0.7)  # 70% para cache, 30% para freezer
+        bottom_splitter.SetMinimumPaneSize(150)  # Tamaño mínimo para ambos widgets
         
         # Panel superior: Profile Cache
-        cache_panel = wx.Panel(right_splitter)
+        cache_panel = wx.Panel(bottom_splitter)
         cache_sizer = wx.BoxSizer(wx.VERTICAL)
         self.cache_widget = ProfileCacheWidget(cache_panel)
         cache_sizer.Add(self.cache_widget, 1, wx.EXPAND | wx.ALL, 5)
         cache_panel.SetSizer(cache_sizer)
         
         # Panel inferior: Freezer
-        freezer_panel = wx.Panel(right_splitter)
+        freezer_panel = wx.Panel(bottom_splitter)
         freezer_sizer = wx.BoxSizer(wx.VERTICAL)
         self.freezer_widget = FreezerWidget(freezer_panel)
         freezer_sizer.Add(self.freezer_widget, 1, wx.EXPAND | wx.ALL, 5)
         freezer_panel.SetSizer(freezer_sizer)
         
-        # Configurar splitter vertical
-        right_splitter.SplitHorizontally(cache_panel, freezer_panel)
+        # Configurar splitter horizontal inferior
+        bottom_splitter.SplitHorizontally(cache_panel, freezer_panel)
+        
+        # Añadir splitter horizontal al panel inferior
+        bottom_sizer.Add(bottom_splitter, 1, wx.EXPAND)
+        bottom_panel.SetSizer(bottom_sizer)
+        
+        # Configurar splitter vertical principal
+        right_splitter.SplitVertically(org_members_panel, bottom_panel)
         
         # Añadir el splitter al sizer principal
         right_sizer.Add(right_splitter, 1, wx.EXPAND | wx.ALL, 5)
@@ -218,9 +243,9 @@ class ConnectedUsersPanel(wx.Panel):
         # Configurar splitter con los dos paneles
         self.splitter.SplitVertically(left_panel, right_panel)
         
-        # Configurar posición inicial: columna derecha en tamaño mínimo
-        # Calcular posición para que la derecha tenga 300px (tamaño mínimo)
-        self.splitter.SetSashPosition(-300)  # -300px desde la derecha = tamaño mínimo derecho
+        # Configurar posición inicial: columna derecha con más espacio para OrgMembersWidget
+        # Calcular posición para que la derecha tenga 400px (más espacio para el nuevo widget)
+        self.splitter.SetSashPosition(-400)  # -400px desde la derecha = más espacio derecho
         
         # Añadir splitter al sizer principal
         main_sizer.Add(self.splitter, 1, wx.EXPAND | wx.ALL, 5)
@@ -503,4 +528,17 @@ class ConnectedUsersPanel(wx.Panel):
                 level=MessageLevel.DEBUG,
                 metadata={"source": "connected_users_panel", "filter": "user_online"}
             )
+    
+
+        
+        # Cleanup existing components
+        if hasattr(self, 'cache_widget'):
+            self.cache_widget.cleanup()
+        if hasattr(self, 'freezer_widget'):
+            self.freezer_widget.cleanup()
+        
+        # Remove message bus subscriptions
+        message_bus.off("users_online_updated", self.update_users_list)
+        message_bus.off("shard_version_update", self.on_shard_version_update)
+        message_bus.off("broadcast_ping_missing", lambda *a, **k: wx.CallAfter(self._on_broadcast_ping_missing))
     
