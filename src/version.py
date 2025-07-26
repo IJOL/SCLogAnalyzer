@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 13
-RELEASE = 3
+RELEASE = 4
 MATURITY = "phoenix"  # "alpha", "beta", or "final"
-PATCH = "11b0ea6"
+PATCH = "f23a3e7"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,11 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.13.x series,
+    "f23a3e7: feat: Add functionality to send player profiles to Discord\n\n- Introduced a new menu item in ProfileCacheWidget for sending profiles to Discord.\n- Implemented the `_send_discord` method in ProfileCacheWidget to handle the sending process.\n- Added `send_discord_message` method in ProfileCache to manage Discord message publishing and error handling.",
+    "0dc5d92: feat: Add new event handlers for Discord and real-time messaging in log_analyzer.py\n\n- Introduced `_on_send_discord` and `_on_send_realtime` methods to handle respective events.\n- Updated event subscriptions to include new handlers for improved messaging functionality.",
+
+    # Version v0.13.3-11b0ea6-phoenix-docker,
+    "5194c28: [chore] Increment version to v0.13.3-11b0ea6-phoenix",
     "11b0ea6: refactor: Improve actor profile handling in log_analyzer.py\n\n- Added cache check for player profiles before processing broadcast data.\n- Enhanced logging and notification for received profiles.\n- Streamlined the logic for sending Discord messages based on profile status.",
     "6273ba5: refactor: Simplify profile broadcasting logic in ProfileCache class\n\n- Removed direct profile data emission in favor of a dedicated broadcast method for cleaner code.\n- Enhanced error handling during profile broadcasting.",
 
