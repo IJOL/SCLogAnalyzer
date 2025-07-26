@@ -159,7 +159,7 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         self.SetItem(index, 6, str(log_entry.get('mode', 'Unknown')))
 
     def _on_right_click(self, event):
-        """Menú contexto dinámico completo (igual que ConnectedUsersPanel)"""
+        """Menú contexto dinámico completo con emoticonos"""
         from .realtime_bridge import RealtimeBridge
         
         menu = wx.Menu()
@@ -187,7 +187,7 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
             return
         
         # Opción "Filtrar: [contenido]" - siempre presente
-        filter_item = menu.Append(wx.ID_ANY, f"Filtrar: {clicked_content_display}")
+        filter_item = menu.Append(wx.ID_ANY, f"⚡ Filtrar: {clicked_content_display}")
         if actual_content_to_filter in active_exclusions:
             filter_item.Enable(False)
         else:
@@ -200,7 +200,7 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
             
             for ex_content in active_exclusions:
                 ex_display = (ex_content[:50] + '...') if len(ex_content) > 50 else ex_content
-                menu_item = menu.Append(wx.ID_ANY, f"Quitar filtro: {ex_display}")
+                menu_item = menu.Append(wx.ID_ANY, f"✅ Quitar filtro: {ex_display}")
                 self.Bind(wx.EVT_MENU, lambda evt, c=ex_content: self._on_toggle_filter_state(c, add=False), menu_item)
         
         # Opción "Borrar todos" si hay filtros activos
@@ -216,21 +216,21 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
                 if not last_item_is_separator:
                      menu.AppendSeparator()
  
-            clear_all_item = menu.Append(wx.ID_ANY, "Borrar todos")
+            clear_all_item = menu.Append(wx.ID_ANY, "🗑️ Borrar todos")
             self.Bind(wx.EVT_MENU, self._on_clear_all_content_filters, clear_all_item)
 
         # Separador y opción "Get Profile"
         if menu.GetMenuItemCount() > 0:
             menu.AppendSeparator()
         
-        get_profile_item = menu.Append(wx.ID_ANY, "Get Profile")
+        get_profile_item = menu.Append(wx.ID_ANY, "🔍 Get Profile")
         self.Bind(wx.EVT_MENU, lambda evt: self._on_get_profile(evt, clicked_idx), get_profile_item)
 
         # Separador y opción "Limpiar lista"
         if menu.GetMenuItemCount() > 0:
             menu.AppendSeparator()
         
-        clear_logs_item = menu.Append(wx.ID_ANY, "Limpiar lista")
+        clear_logs_item = menu.Append(wx.ID_ANY, "🗑️ Limpiar lista")
         self.Bind(wx.EVT_MENU, self._on_clear_logs, clear_logs_item)
 
         if menu.GetMenuItemCount() > 0:
