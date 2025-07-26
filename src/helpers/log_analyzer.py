@@ -162,6 +162,8 @@ class LogFileHandler(FileSystemEventHandler):
         message_bus.on("actor_profile", self._on_actor_profile)
         message_bus.on("request_profile", self.async_profile_scraping)
         message_bus.on("force_broadcast_profile", self._on_force_broadcast_profile)
+        message_bus.on("send_discord", self._on_send_discord)
+        message_bus.on("send_realtime", self._on_send_realtime)
 
     def __getattr__(self, name):
         """
@@ -187,7 +189,7 @@ class LogFileHandler(FileSystemEventHandler):
     
     def _on_actor_profile(self, player_name, org, enlisted, metadata=None):
         """Handler for actor_profile events from message bus"""
-                # Para perfiles normales, verificar caché antes de Discord
+        # Para perfiles normales, verificar caché antes de Discord
         from helpers.profile_cache import ProfileCache
         cache = ProfileCache.get_instance()
         cached_profile = cache.get_profile(player_name)
@@ -278,8 +280,8 @@ class LogFileHandler(FileSystemEventHandler):
             
         
         # Solo enviar a Discord si es nuevo
-        if not cached_profile and action != 'broadcast':
-            self.send_discord_message(data, pattern_name="actor_profile")
+#        if not cached_profile and action != 'broadcast':
+#            self.send_discord_message(data, pattern_name="actor_profile")
         
         # Determinar si es solicitud manual vs automática
         if action == 'get':
@@ -327,7 +329,7 @@ class LogFileHandler(FileSystemEventHandler):
             "username": self.username or "Unknown",
             "version": self.current_version or "Unknown",
             "script_version": self.script_version or "Unknown",
-                        "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),            
+            "datetime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),            
         }
         
         # Create a new dict with state_data keys that don't exist in data
@@ -366,6 +368,12 @@ class LogFileHandler(FileSystemEventHandler):
         except Exception as e:
             output_message(None, f"Error getting file end position: {e}")
             return 0
+
+    def _on_send_discord(self, data, pattern_name=None, technical=False):
+        self.send_discord_message(data, pattern_name, technical)
+
+    def _on_send_realtime(self, data, pattern_name=None, force=False):
+        self.send_realtime_event(data, pattern_name, force)
 
     def send_discord_message(self, data, pattern_name=None, technical=False):
         """Send a message to Discord via webhook or stdout"""
