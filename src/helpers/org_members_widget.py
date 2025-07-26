@@ -119,7 +119,7 @@ class OrgMembersWidget(wx.Panel):
         """Suscribe a eventos del message bus"""
         message_bus.on("search_organization", self._on_search_organization_event)
     
-    def _on_search_organization_event(self, org_symbol):
+    def _on_search_organization_event(self, org_symbol, source=None):
         """Handler para eventos de búsqueda de organizaciones"""
         if org_symbol and isinstance(org_symbol, str):
             wx.CallAfter(self._set_org_input, org_symbol)
