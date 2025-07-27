@@ -364,7 +364,7 @@ class DynamicLabels:
         label_sizer.Add(self.connection_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         sizer.Add(label_sizer, 0, wx.EXPAND)
         message_bus.on("broadcast_ping_missing", lambda *a, **k: wx.CallAfter(self._on_ping_missing))
-        message_bus.on("realtime_reconnected", self._on_reconnected)
+        message_bus.on("realtime_reconnected", lambda *a, **k: wx.CallAfter(self._on_reconnected))
         return label_sizer
 
     def set_connection_status(self, connected: bool):
