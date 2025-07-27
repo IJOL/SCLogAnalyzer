@@ -118,7 +118,7 @@ def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
             page += 1
             
             # Limitar a un máximo de páginas para evitar bucles infinitos
-            if page > 50:
+            if page > 150:
                 break
                 
     except requests.RequestException as e:
