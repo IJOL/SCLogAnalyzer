@@ -529,16 +529,3 @@ class ConnectedUsersPanel(wx.Panel):
                 metadata={"source": "connected_users_panel", "filter": "user_online"}
             )
     
-
-        
-        # Cleanup existing components
-        if hasattr(self, 'cache_widget'):
-            self.cache_widget.cleanup()
-        if hasattr(self, 'freezer_widget'):
-            self.freezer_widget.cleanup()
-        
-        # Remove message bus subscriptions
-        message_bus.off("users_online_updated", self.update_users_list)
-        message_bus.off("shard_version_update", self.on_shard_version_update)
-        message_bus.off("broadcast_ping_missing", lambda *a, **k: wx.CallAfter(self._on_broadcast_ping_missing))
-    
