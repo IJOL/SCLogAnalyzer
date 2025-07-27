@@ -8,24 +8,112 @@ de Star Citizen desde el endpoint oficial de RSI.
 import requests
 import json
 import re
+import time
+import random
 from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 
+# Import MessageBus for logging
+from .message_bus import message_bus, MessageLevel
 
-def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
+
+def _calculate_delay(attempt: int, base_delay=1.0, max_delay=60.0) -> float:
     """
-    Función base que obtiene TODOS los datos de la organización (visibles y redacted).
-    Esta es la única función que hace peticiones HTTP.
+    Calcula delay con backoff exponencial y jitter para evitar thundering herd.
     
     Args:
-        org: Símbolo de la organización (ej: "DZERO")
+        attempt: Número de intento actual (0-based)
+        base_delay: Delay base en segundos
+        max_delay: Delay máximo en segundos
         
     Returns:
-        Lista de diccionarios con TODOS los datos de miembros (visibles y redacted)
+        Delay en segundos con jitter
+    """
+    delay = min(base_delay * (2 ** attempt), max_delay)
+    # Añadir jitter para evitar sincronización de reintentos
+    jitter = random.uniform(0, 0.1 * delay)
+    return delay + jitter
+
+
+def _should_retry(exception) -> bool:
+    """
+    Determina si reintentar basado en tipo de error.
+    
+    Args:
+        exception: Excepción capturada
+        
+    Returns:
+        True si se debe reintentar, False en caso contrario
+    """
+    if isinstance(exception, requests.exceptions.HTTPError):
+        # Solo reintentar para throttling (429)
+        return exception.response.status_code == 429
+    elif isinstance(exception, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        # Siempre reintentar errores de red
+        return True
+    else:
+        # No reintentar otros errores
+        return False
+
+
+def _handle_throttling_error(org: str, attempt: int, error_msg: str):
+    """
+    Manejo específico para errores de throttling (429, rate limiting).
+    
+    Args:
+        org: Símbolo de la organización
+        attempt: Número de intento actual
+        error_msg: Mensaje de error
+    """
+    # Delay más largo para throttling (mínimo 30 segundos)
+    delay = max(30, _calculate_delay(attempt))
+    
+    # Logging específico para throttling
+    message_bus.publish(
+        content=f"[{org}] Throttling detectado (intento {attempt}): {error_msg}. Esperando {delay}s...",
+        level=MessageLevel.WARNING,
+        metadata={"source": "rsi_org_scraper", "action": "throttling", "attempt": attempt}
+    )
+    
+    time.sleep(delay)
+
+
+def _handle_network_error(org: str, attempt: int, error_msg: str):
+    """
+    Manejo específico para errores de red (timeout, connection error).
+    
+    Args:
+        org: Símbolo de la organización
+        attempt: Número de intento actual
+        error_msg: Mensaje de error
+    """
+    # Delay más corto para errores de red (máximo 10 segundos)
+    delay = min(10, _calculate_delay(attempt))
+    
+    # Logging específico para errores de red
+    message_bus.publish(
+        content=f"[{org}] Error de red (intento {attempt}): {error_msg}. Reintentando en {delay}s...",
+        level=MessageLevel.WARNING,
+        metadata={"source": "rsi_org_scraper", "action": "network_error", "attempt": attempt}
+    )
+    
+    time.sleep(delay)
+
+
+def _make_request_with_retry(org: str, page: int, max_retries=5) -> Dict:
+    """
+    Hace petición HTTP con reintentos automáticos.
+    
+    Args:
+        org: Símbolo de la organización
+        page: Número de página
+        max_retries: Número máximo de reintentos
+        
+    Returns:
+        Respuesta JSON de la API
         
     Raises:
-        requests.RequestException: Si hay error de red o HTTP
-        ValueError: Si la respuesta no es válida
+        Exception: Si fallan todos los reintentos
     """
     url = "https://robertsspaceindustries.com/api/orgs/getOrgMembers"
     
@@ -43,67 +131,145 @@ def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
         "Sec-Fetch-Site": "same-origin",
     }
     
-    all_members = []
-    page = 1
-    pagesize = 20  # Pagesize de 20 para obtener todos los miembros
-    redacted_counter = 1  # Contador global para redacted
+    payload = {
+        "symbol": org,
+        "pagesize": 20,
+        "page": page
+    }
     
-    try:
-        while True:
-            # Payload para la petición
-            payload = {
-                "symbol": org,
-                "pagesize": pagesize,
-                "page": page
-            }
-            
+    for attempt in range(max_retries + 1):
+        try:
             # Realizar petición POST
-            response = requests.post(url, headers=headers, json=payload)
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             
             # Verificar que la respuesta tenga contenido
             if not response.text:
                 raise ValueError(f"Respuesta vacía del servidor para {org}")
             
-            # Extraer HTML de la respuesta
-            try:
-                data = response.json()
-                if data is None:
-                    raise ValueError("Respuesta JSON vacía del servidor")
-                
-                # Verificar que data sea un diccionario
-                if not isinstance(data, dict):
-                    raise ValueError(f"Respuesta JSON inválida: {type(data)}")
-                
-                # Verificar si hay error de throttling u otros errores
-                if data.get('success') == 0:
-                    error_msg = data.get('msg', 'Unknown error')
-                    if 'throttled' in error_msg.lower():
-                        raise ValueError(f"API throttled para {org}. Intenta más tarde.")
-                    else:
-                        raise ValueError(f"Error de API para {org}: {error_msg}")
-                
-                # Extraer data de forma segura
-                data_section = data.get("data")
-                if data_section is None:
-                    raise ValueError("Respuesta JSON no contiene sección 'data'")
-                
-                html_content = data_section.get("html", "")
-            except (ValueError, TypeError) as e:
-                # Si el JSON no es válido, intentar extraer información del texto
-                if "not found" in response.text.lower() or "404" in response.text.lower():
-                    raise ValueError(f"Organización '{org}' no encontrada")
-                elif "forbidden" in response.text.lower() or "403" in response.text.lower():
-                    raise ValueError(f"Acceso denegado a la organización '{org}'")
-                elif "throttled" in response.text.lower():
-                    raise ValueError(f"API throttled para {org}. Intenta más tarde.")
+            # Parsear JSON
+            data = response.json()
+            if data is None:
+                raise ValueError("Respuesta JSON vacía del servidor")
+            
+            # Verificar que data sea un diccionario
+            if not isinstance(data, dict):
+                raise ValueError(f"Respuesta JSON inválida: {type(data)}")
+            
+            # Verificar si hay error de throttling u otros errores
+            if data.get('success') == 0:
+                error_msg = data.get('msg', 'Unknown error')
+                if 'throttled' in error_msg.lower():
+                    raise requests.exceptions.HTTPError(f"API throttled para {org}. Intenta más tarde.", response=response)
                 else:
-                    raise ValueError(f"Error al parsear respuesta JSON de {org}: {e}")
+                    raise ValueError(f"Error de API para {org}: {error_msg}")
             
-            if not html_content:
-                break
+            return data
             
-            # Parsear el HTML para obtener todos los miembros
+        except requests.exceptions.HTTPError as e:
+            if _should_retry(e) and attempt < max_retries:
+                if e.response.status_code == 429:  # Throttling
+                    _handle_throttling_error(org, attempt, str(e))
+                else:
+                    # Otros errores HTTP que se pueden reintentar
+                    delay = _calculate_delay(attempt)
+                    message_bus.publish(
+                        content=f"[{org}] Error HTTP {e.response.status_code} (intento {attempt}): {str(e)}. Reintentando en {delay}s...",
+                        level=MessageLevel.WARNING,
+                        metadata={"source": "rsi_org_scraper", "action": "http_error", "attempt": attempt, "status_code": e.response.status_code}
+                    )
+                    time.sleep(delay)
+                continue
+            else:
+                raise
+                
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            if _should_retry(e) and attempt < max_retries:
+                _handle_network_error(org, attempt, str(e))
+                continue
+            else:
+                raise Exception(f"Error de red persistente para {org} después de {max_retries} intentos")
+                
+        except Exception as e:
+            if _should_retry(e) and attempt < max_retries:
+                delay = _calculate_delay(attempt)
+                message_bus.publish(
+                    content=f"[{org}] Error inesperado (intento {attempt}): {str(e)}. Reintentando en {delay}s...",
+                    level=MessageLevel.WARNING,
+                    metadata={"source": "rsi_org_scraper", "action": "retry", "attempt": attempt}
+                )
+                time.sleep(delay)
+            else:
+                raise
+    
+    # Nunca debería llegar aquí, pero por si acaso
+    raise Exception(f"Error inesperado para {org} después de {max_retries} intentos")
+
+
+def _log_progress(org: str, page: int, total_pages: int, members_count: int, expected_total: int):
+    """
+    Logging detallado del progreso usando MessageBus.
+    
+    Args:
+        org: Símbolo de la organización
+        page: Página actual
+        total_pages: Total de páginas estimadas
+        members_count: Número de miembros obtenidos hasta ahora
+        expected_total: Total esperado de miembros
+    """
+    progress = (page / total_pages) * 100 if total_pages > 0 else 0
+    message_bus.publish(
+        content=f"[{org}] Página {page}/{total_pages} ({progress:.1f}%) - {members_count}/{expected_total} miembros",
+        level=MessageLevel.INFO,
+        metadata={"source": "rsi_org_scraper", "action": "progress"}
+    )
+
+def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
+    """
+    Función base que obtiene TODOS los datos de la organización (visibles y redacted).
+    Esta es la única función que hace peticiones HTTP.
+    AHORA CON REINTENTOS Y VALIDACIÓN CONTRA TOTALROWS.
+    
+    Args:
+        org: Símbolo de la organización (ej: "DZERO")
+        
+    Returns:
+        Lista de diccionarios con TODOS los datos de miembros (visibles y redacted)
+        
+    Raises:
+        requests.RequestException: Si hay error de red o HTTP
+        ValueError: Si la respuesta no es válida
+    """
+    all_members = []
+    page = 1
+    redacted_counter = 1  # Contador global para redacted
+    expected_total = None
+    max_retries_for_total = 3  # Máximo reintentos para obtener totalrows
+    
+    try:
+        # Obtener primer paquete para extraer totalrows
+        message_bus.publish(
+            content=f"[{org}] Iniciando obtención de datos con validación de totalrows...",
+            level=MessageLevel.INFO,
+            metadata={"source": "rsi_org_scraper", "action": "start"}
+        )
+        
+        first_response = _make_request_with_retry(org, 1)
+        data_section = first_response.get("data")
+        if data_section is None:
+            raise ValueError("Respuesta JSON no contiene sección 'data'")
+        
+        expected_total = data_section.get('totalrows')
+        if expected_total is None:
+            message_bus.publish(
+                content=f"[{org}] Advertencia: No se pudo obtener totalrows, continuando sin validación",
+                level=MessageLevel.WARNING,
+                metadata={"source": "rsi_org_scraper", "action": "no_totalrows"}
+            )
+        
+        html_content = data_section.get("html", "")
+        if html_content:
+            # Parsear el HTML para obtener todos los miembros de la primera página
             page_members = _parse_members_full_all(html_content, org, redacted_counter)
             
             # Actualizar el contador global de redacted
@@ -114,26 +280,180 @@ def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
             # Añadir miembros de esta página al total
             all_members.extend(page_members)
             
-            # Continuar con la siguiente página (no nos detenemos si obtenemos más de pagesize)
-            page += 1
-            
-            # Limitar a un máximo de páginas para evitar bucles infinitos
-            if page > 150:
-                break
+            # Logging del progreso inicial
+            if expected_total:
+                _log_progress(org, 1, (expected_total + 19) // 20, len(all_members), expected_total)
+        
+        # Continuar con el resto de páginas
+        page = 2
+        while True:
+            try:
+                # Hacer petición con reintentos
+                data = _make_request_with_retry(org, page)
                 
-    except requests.RequestException as e:
-        if response.status_code == 404:
-            raise Exception(f"Organización '{org}' no encontrada")
-        elif response.status_code == 403:
-            raise Exception(f"Acceso denegado a la organización '{org}'")
-        else:
-            raise Exception(f"Error de red al obtener datos de {org}: {e}")
-    except ValueError as e:
-        raise Exception(f"Error al parsear respuesta de {org}: {e}")
+                # Extraer data de forma segura
+                data_section = data.get("data")
+                if data_section is None:
+                    raise ValueError("Respuesta JSON no contiene sección 'data'")
+                
+                html_content = data_section.get("html", "")
+                
+                if not html_content:
+                    break
+                
+                # Parsear el HTML para obtener todos los miembros
+                page_members = _parse_members_full_all(html_content, org, redacted_counter)
+                
+                # Actualizar el contador global de redacted
+                for member in page_members:
+                    if member['visibility'] == 'R':
+                        redacted_counter += 1
+                
+                # Añadir miembros de esta página al total
+                all_members.extend(page_members)
+                
+                # Logging del progreso
+                if expected_total:
+                    total_pages = (expected_total + 19) // 20
+                    _log_progress(org, page, total_pages, len(all_members), expected_total)
+                
+                # Delay aleatorio entre páginas para evitar throttling
+                delay = random.uniform(0.5, 3.0)  # Delay entre 0.5 y 3 segundos
+                message_bus.publish(
+                    content=f"[{org}] Esperando {delay:.1f}s antes de la siguiente página...",
+                    level=MessageLevel.DEBUG,
+                    metadata={"source": "rsi_org_scraper", "action": "page_delay", "delay": delay}
+                )
+                time.sleep(delay)
+                
+                # Continuar con la siguiente página
+                page += 1
+                
+                # Limitar a un máximo de páginas para evitar bucles infinitos
+                if page > 150:
+                    message_bus.publish(
+                        content=f"[{org}] Advertencia: Límite de páginas alcanzado (150), deteniendo obtención",
+                        level=MessageLevel.WARNING,
+                        metadata={"source": "rsi_org_scraper", "action": "page_limit"}
+                    )
+                    break
+                    
+            except Exception as e:
+                message_bus.publish(
+                    content=f"[{org}] Error en página {page}: {str(e)}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": "rsi_org_scraper", "action": "page_error", "page": page}
+                )
+                raise
+        
+        # Validación directa contra totalrows
+        if expected_total and len(all_members) != expected_total:
+            message_bus.publish(
+                content=f"[{org}] Advertencia: Número de miembros obtenidos ({len(all_members)}) no coincide con totalrows ({expected_total})",
+                level=MessageLevel.WARNING,
+                metadata={"source": "rsi_org_scraper", "action": "validation_mismatch", "obtained": len(all_members), "expected": expected_total}
+            )
+            
+            # Reintentar hasta obtener el número correcto (máximo 3 intentos)
+            for retry_attempt in range(max_retries_for_total):
+                message_bus.publish(
+                    content=f"[{org}] Reintentando para obtener número correcto de miembros (intento {retry_attempt + 1}/{max_retries_for_total})",
+                    level=MessageLevel.INFO,
+                    metadata={"source": "rsi_org_scraper", "action": "total_retry", "attempt": retry_attempt + 1}
+                )
+                
+                # Reiniciar obtención
+                all_members = []
+                page = 1
+                redacted_counter = 1
+                
+                # Obtener primer paquete nuevamente
+                first_response = _make_request_with_retry(org, 1)
+                data_section = first_response.get("data")
+                if data_section is None:
+                    continue
+                
+                html_content = data_section.get("html", "")
+                if html_content:
+                    page_members = _parse_members_full_all(html_content, org, redacted_counter)
+                    for member in page_members:
+                        if member['visibility'] == 'R':
+                            redacted_counter += 1
+                    all_members.extend(page_members)
+                
+                # Continuar con el resto de páginas
+                page = 2
+                while True:
+                    try:
+                        data = _make_request_with_retry(org, page)
+                        data_section = data.get("data")
+                        if data_section is None:
+                            break
+                        
+                        html_content = data_section.get("html", "")
+                        if not html_content:
+                            break
+                        
+                        page_members = _parse_members_full_all(html_content, org, redacted_counter)
+                        for member in page_members:
+                            if member['visibility'] == 'R':
+                                redacted_counter += 1
+                        all_members.extend(page_members)
+                        
+                        # Delay aleatorio entre páginas para evitar throttling
+                        delay = random.uniform(0.5, 3.0)  # Delay entre 0.5 y 3 segundos
+                        message_bus.publish(
+                            content=f"[{org}] Esperando {delay:.1f}s antes de la siguiente página (reintento)...",
+                            level=MessageLevel.DEBUG,
+                            metadata={"source": "rsi_org_scraper", "action": "page_delay_retry", "delay": delay}
+                        )
+                        time.sleep(delay)
+                        
+                        page += 1
+                        if page > 150:
+                            break
+                            
+                    except Exception:
+                        break
+                
+                # Verificar si ahora tenemos el número correcto
+                if len(all_members) == expected_total:
+                    message_bus.publish(
+                        content=f"[{org}] Éxito: Número correcto de miembros obtenidos después de reintento",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "rsi_org_scraper", "action": "validation_success"}
+                    )
+                    break
+                
+                # Si no es el último intento, esperar antes del siguiente
+                if retry_attempt < max_retries_for_total - 1:
+                    delay = _calculate_delay(retry_attempt, base_delay=5.0)
+                    message_bus.publish(
+                        content=f"[{org}] Esperando {delay}s antes del siguiente intento...",
+                        level=MessageLevel.INFO,
+                        metadata={"source": "rsi_org_scraper", "action": "retry_delay"}
+                    )
+                    time.sleep(delay)
+        
+        # Logging final
+        message_bus.publish(
+            content=f"[{org}] Obtención completada: {len(all_members)} miembros totales",
+            level=MessageLevel.INFO,
+            metadata={"source": "rsi_org_scraper", "action": "complete", "total_members": len(all_members)}
+        )
+                
     except Exception as e:
-        raise Exception(f"Error inesperado al obtener datos de {org}: {e}")
+        message_bus.publish(
+            content=f"[{org}] Error final: {str(e)}",
+            level=MessageLevel.ERROR,
+            metadata={"source": "rsi_org_scraper", "action": "final_error"}
+        )
+        raise Exception(f"Error al obtener datos de {org}: {e}")
     
     return all_members
+
+
+
 
 
 def get_org_members(org: str, full: bool = False, redacted: bool = False) -> Union[List[str], List[Dict[str, Any]]]:
@@ -317,152 +637,48 @@ def save_all_html_pages(org: str, output_file: str = "all_pages.html"):
         return 0
 
 
-def _parse_org_info(html_content: str, org_symbol: str) -> Dict[str, Any]:
+def get_org_members_count(org: str) -> int:
     """
-    Extrae información general de la organización desde el HTML.
+    Obtiene solo el número total de miembros de una organización.
+    Esta es la función más rápida disponible.
     
     Args:
-        html_content: HTML de la respuesta RSI
-        org_symbol: Símbolo de la organización
+        org: Símbolo de la organización (ej: "DZERO")
         
     Returns:
-        Diccionario con información de la organización
-    """
-    # Extraer nombre de la organización del primer elemento
-    org_name_match = re.search(r'data-org-name="([^"]*)"', html_content)
-    org_name = org_name_match.group(1) if org_name_match else org_symbol
-    
-    # Contar miembros usando el patrón correcto para detectar redacted
-    visible_count = len(re.findall(r'<li class="[^"]*org-visibility-V[^"]*"', html_content))
-    restricted_count = len(re.findall(r'<li class="[^"]*org-visibility-R[^"]*"', html_content))
-    total_count = visible_count + restricted_count
-    
-    return {
-        'symbol': org_symbol,
-        'name': _clean_html(org_name),
-        'total_members': total_count,
-        'visible_members': visible_count,
-        'restricted_members': restricted_count
-    }
-
-
-def _parse_members_simple(html_content: str) -> List[str]:
-    """
-    Extrae solo los usernames de los miembros visibles desde el HTML.
-    
-    Args:
-        html_content: HTML de la respuesta RSI
+        Número total de miembros de la organización
         
-    Returns:
-        Lista de usernames (str) - solo miembros visibles
+    Raises:
+        requests.RequestException: Si hay error de red o HTTP
+        ValueError: Si la respuesta no es válida
     """
-    usernames = []
-    
-    # Patrón para extraer usernames solo de miembros visibles
-    pattern = r'<li class="member-item[^"]*org-visibility-V"[^>]*>.*?href="/citizens/([^"]+)"'
-    
-    matches = re.findall(pattern, html_content, re.DOTALL)
-    for match in matches:
-        if match and match.strip():
-            usernames.append(match.strip())
-    
-    return usernames
-
-
-def _parse_members_full(html_content: str, org_symbol: str) -> List[Dict[str, Any]]:
-    """
-    Extrae datos completos de los miembros visibles desde el HTML.
-    
-    Args:
-        html_content: HTML de la respuesta RSI
-        org_symbol: Símbolo de la organización
+    try:
+        # Obtener solo la primera página
+        first_response = _make_request_with_retry(org, 1)
+        data_section = first_response.get("data")
+        if data_section is None:
+            raise ValueError("Respuesta JSON no contiene sección 'data'")
         
-    Returns:
-        Lista de diccionarios con datos completos de cada miembro - solo visibles
-    """
-    members = []
-    
-    # Patrón para extraer solo miembros visibles
-    member_pattern = r'<li class="member-item[^"]*org-visibility-V"[^>]*data-org-sid="([^"]*)" data-org-name="([^"]*)">(.*?)</li>'
-    
-    member_matches = re.findall(member_pattern, html_content, re.DOTALL)
-    
-    for org_sid, org_name, member_html in member_matches:
-        try:
-            # Extraer username del href
-            username_match = re.search(r'href="/citizens/([^"]*)"', member_html)
-            username = username_match.group(1) if username_match else ""
-            
-            # Extraer display name
-            name_match = re.search(r'<span class="[^"]*name[^"]*">([^<]*)</span>', member_html)
-            display_name = name_match.group(1).strip() if name_match else ""
-            
-            # Extraer nick
-            nick_match = re.search(r'<span class="[^"]*nick[^"]*">([^<]*)</span>', member_html)
-            nick = nick_match.group(1).strip() if nick_match else ""
-            
-            # Extraer rank
-            rank_match = re.search(r'<span class="rank">([^<]*)</span>', member_html)
-            rank = rank_match.group(1).strip() if rank_match else ""
-            
-            # Extraer avatar URL
-            avatar_match = re.search(r'<img[^>]*src="([^"]*)"', member_html)
-            avatar_url = avatar_match.group(1) if avatar_match else ""
-            
-            # Construir profile URL
-            profile_url = f"https://robertsspaceindustries.com/citizens/{username}" if username else ""
-            
-            # Limpiar datos HTML
-            username = _clean_html(username)
-            display_name = _clean_html(display_name)
-            nick = _clean_html(nick)
-            rank = _clean_html(rank)
-            avatar_url = _clean_html(avatar_url)
-            org_name = _clean_html(org_name)
-            
-            # Solo incluir si el username no está vacío
-            if username and username.strip():
-                member_data = {
-                    'username': username.strip(),
-                    'display_name': display_name.strip() if display_name else username.strip(),
-                    'nick': nick.strip() if nick else username.strip(),
-                    'rank': rank.strip() if rank else 'Unknown',
-                    'avatar_url': avatar_url.strip() if avatar_url else '',
-                    'profile_url': profile_url.strip() if profile_url else '',
-                    'visibility': 'V',  # Siempre visible en esta función
-                    'org_symbol': org_sid.strip() if org_sid else org_symbol,
-                    'org_name': org_name.strip() if org_name else ''
-                }
-                members.append(member_data)
-                
-        except Exception as e:
-            # Si hay error parseando un miembro, continuar con el siguiente
-            continue
-    
-    return members
-
-
-def _parse_members_simple_all(html_content: str) -> List[str]:
-    """
-    Extrae TODOS los usernames (visibles y no visibles) desde el HTML.
-    
-    Args:
-        html_content: HTML de la respuesta RSI
+        total_members = data_section.get('totalrows', 0)
         
-    Returns:
-        Lista de usernames (str) - TODOS los miembros
-    """
-    usernames = []
-    
-    # Patrón para extraer usernames de TODOS los miembros (visibles y no visibles)
-    pattern = r'<li class="member-item[^"]*"[^>]*>.*?href="/citizens/([^"]+)"'
-    
-    matches = re.findall(pattern, html_content, re.DOTALL)
-    for match in matches:
-        if match and match.strip():
-            usernames.append(match.strip())
-    
-    return usernames
+        message_bus.publish(
+            content=f"[{org}] Número de miembros obtenido: {total_members}",
+            level=MessageLevel.DEBUG,
+            metadata={"source": "rsi_org_scraper", "action": "count_only", "total_members": total_members}
+        )
+        
+        return total_members
+        
+    except Exception as e:
+        message_bus.publish(
+            content=f"[{org}] Error obteniendo número de miembros: {str(e)}",
+            level=MessageLevel.ERROR,
+            metadata={"source": "rsi_org_scraper", "action": "count_error"}
+        )
+        raise Exception(f"Error al obtener número de miembros de {org}: {e}")
+
+
+
 
 
 def _parse_members_full_all(html_content: str, org_symbol: str, redacted_counter: int) -> List[Dict[str, Any]]:
