@@ -182,7 +182,9 @@ perfiles/
 build-venv/
 .cursor/
 .taskmaster/
-
+.kilocode/
+.kiro/
+.vscode/
 
 # Logs
 logs
