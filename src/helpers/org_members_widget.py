@@ -12,7 +12,7 @@ from datetime import datetime
 from .message_bus import message_bus, MessageLevel
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 from .ui_components import DarkThemeButton
-from .rsi_org_scraper import get_org_members, get_org_info
+from .rsi_org_scraper import get_org_members, get_org_info, get_org_members_count
 
 
 class OrgMembersWidget(wx.Panel):
@@ -132,11 +132,20 @@ class OrgMembersWidget(wx.Panel):
     def _on_search(self, event):
         """Maneja la búsqueda de organización"""
         org_symbol = self.org_input.GetValue().strip().upper()
+
         if org_symbol:
             self._perform_search(org_symbol)
     
     def _perform_search(self, org_symbol):
         """Ejecuta la búsqueda de organización"""
+        if get_org_members_count(org_symbol) > 500:
+            result = wx.MessageBox(
+                "This organization has more than 500 members. This may take a while to load.\n\nDo you want to continue?",
+                "Warning", 
+                wx.OK | wx.CANCEL | wx.ICON_WARNING
+            )
+            if result != wx.OK:
+                return    
         if self.is_searching:
             return
         
@@ -242,10 +251,23 @@ class OrgMembersWidget(wx.Panel):
     
     def _on_context_menu(self, event):
         """Maneja el menú contextual en la lista"""
+        # Obtener el índice de la fila donde se hizo clic derecho
         index = event.GetIndex()
-        if index >= 0 and index in self.row_to_member:
-            member = self.row_to_member[index]
-            self._show_context_menu(event.GetPoint(), member)
+        if index >= 0:
+            # Obtener el username de la fila actual del ListCtrl
+            # Esto funciona independientemente del reordenamiento
+            username = self.members_list.GetItem(index, 0).GetText()  # Columna 0 = Name
+            
+            # Buscar el miembro por username en la lista original
+            member = None
+            for m in self.current_org_data:
+                if (m.get('display_name', m.get('username', '')) == username or 
+                    m.get('username', '') == username):
+                    member = m
+                    break
+            
+            if member:
+                self._show_context_menu(event.GetPoint(), member)
     
     def _show_context_menu(self, point, member):
         """Muestra el menú contextual para un miembro"""
