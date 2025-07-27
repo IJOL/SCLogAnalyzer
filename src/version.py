@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 13
-RELEASE = 5
+RELEASE = 6
 MATURITY = "phoenix"  # "alpha", "beta", or "final"
-PATCH = "b90b336"
+PATCH = "72a3b2e"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,17 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.13.x series,
+    "72a3b2e: feat: Add member count warning in organization search\n\n- Introduced a check for organizations with more than 500 members during the search process, prompting a warning message to the user about potential loading delays.\n- Enhanced context menu handling to ensure accurate member retrieval based on the displayed username in the list.",
+    "f466355: feat: Add handler for realtime reconnection event\n\n- Implemented a new event handler for the \"realtime_reconnected\" event to update the UI status when the connection is restored.\n- Enhanced the existing \"broadcast_ping_missing\" handler by removing commented-out code to improve code clarity and maintainability.",
+    "7ac9ba1: feat: Enhance organization data retrieval with retry logic and validation\n\n- Implemented automatic retry mechanism for HTTP requests in the `_make_request_with_retry` function to handle throttling and network errors.\n- Added logging for progress and errors using MessageBus to improve monitoring during data scraping.\n- Introduced validation against total member count to ensure data integrity during organization data fetching.\n- Updated `_fetch_all_org_data` to support retries and detailed error handling, enhancing robustness of the scraping process.",
+    "b574be1: refactor: Update message bus subscription for reconnected event\n\n- Changed the subscription for the \"realtime_reconnected\" event to use a lambda function with wx.CallAfter for improved thread safety and UI responsiveness.",
+    "a641836: chore: Update .gitignore",
+    "6aa3eb8: refactor: Simplify profile data access in ProfileCacheWidget\n\n- Updated the way profile data is accessed by introducing a `data` variable to encapsulate `profile_data.get('profile_data', {})`.\n- Removed unused cleanup method to streamline the code and improve maintainability.",
+    "4a2871a: fix: Increase page limit in _fetch_all_org_data function\n\n- Updated the maximum page limit from 50 to 150 in the _fetch_all_org_data function to allow for more comprehensive data retrieval during organization scraping.",
+    "97d2f57: refactor: Remove unused cleanup code and message bus subscriptions in ConnectedUsersPanel\n\n- Deleted redundant cleanup logic for cache and freezer widgets.\n- Removed message bus subscription unsubscriptions to streamline the component lifecycle.",
+
+    # Version v0.13.5-b90b336-phoenix-docker,
+    "1d1254d: [chore] Increment version to v0.13.5-b90b336-phoenix",
     "b90b336: feat: Implement column sorting functionality in CustomListCtrl\n\n- Added sorting capabilities to the CustomListCtrl, allowing users to sort by clicking on column headers.\n- Implemented methods for detecting data types, sorting data, and updating sort indicators.\n- Introduced public API methods to enable/disable sorting and manage sort state programmatically.",
     "19cdf3d: fix: Update OrgMembersWidget initialization in ConnectedUsersPanel\n\n- Removed the explicit column specification in the OrgMembersWidget instantiation to allow for default behavior.\n- Simplified the widget setup for better maintainability.",
     "893af0a: feat: Update search organization event handler in OrgMembersWidget\n\n- Modified the `_on_search_organization_event` method to accept an optional `source` parameter for enhanced event handling.\n- Improved flexibility in processing organization search events.",
