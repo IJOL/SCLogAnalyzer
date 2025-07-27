@@ -114,8 +114,9 @@ class ProfileCacheWidget(wx.Panel):
             self.cache_listctrl.DeleteAllItems()
             
             for player_name, profile_data in profiles.items():
+                data = profile_data.get('profile_data', {})
                 org = profile_data.get('organization', 'Unknown')
-                action = profile_data.get('action', 'unknown')
+                action = data.get('action', 'unknown')
                 cached_at = profile_data.get('cached_at', datetime.now())
                 time_str = cached_at.strftime("%H:%M")
                 
@@ -254,11 +255,6 @@ class ProfileCacheWidget(wx.Panel):
             metadata={"source": "profile_cache_widget"}
         )
     
-    def cleanup(self):
-        """Limpieza al cerrar el widget"""
-        # Desconectar eventos del message bus
-        message_bus.off("profile_cached", self._on_profile_cached)
-
 
 def _build_profile_text_block(player_name, profile_data):
     """Devuelve el bloque de texto para tooltip/dialogo, igual que el popup."""
