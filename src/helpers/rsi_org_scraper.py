@@ -228,7 +228,6 @@ def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
     """
     Función base que obtiene TODOS los datos de la organización (visibles y redacted).
     Esta es la única función que hace peticiones HTTP.
-    AHORA CON REINTENTOS Y VALIDACIÓN CONTRA TOTALROWS.
     
     Args:
         org: Símbolo de la organización (ej: "DZERO")
@@ -244,12 +243,11 @@ def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
     page = 1
     redacted_counter = 1  # Contador global para redacted
     expected_total = None
-    max_retries_for_total = 3  # Máximo reintentos para obtener totalrows
     
     try:
         # Obtener primer paquete para extraer totalrows
         message_bus.publish(
-            content=f"[{org}] Iniciando obtención de datos con validación de totalrows...",
+            content=f"[{org}] Iniciando obtención de datos...",
             level=MessageLevel.INFO,
             metadata={"source": "rsi_org_scraper", "action": "start"}
         )
@@ -346,94 +344,13 @@ def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
                 )
                 raise
         
-        # Validación directa contra totalrows
+        # Validación simple: solo informar si no coincide, pero no reintentar
         if expected_total and len(all_members) != expected_total:
             message_bus.publish(
                 content=f"[{org}] Advertencia: Número de miembros obtenidos ({len(all_members)}) no coincide con totalrows ({expected_total})",
                 level=MessageLevel.WARNING,
                 metadata={"source": "rsi_org_scraper", "action": "validation_mismatch", "obtained": len(all_members), "expected": expected_total}
             )
-            
-            # Reintentar hasta obtener el número correcto (máximo 3 intentos)
-            for retry_attempt in range(max_retries_for_total):
-                message_bus.publish(
-                    content=f"[{org}] Reintentando para obtener número correcto de miembros (intento {retry_attempt + 1}/{max_retries_for_total})",
-                    level=MessageLevel.INFO,
-                    metadata={"source": "rsi_org_scraper", "action": "total_retry", "attempt": retry_attempt + 1}
-                )
-                
-                # Reiniciar obtención
-                all_members = []
-                page = 1
-                redacted_counter = 1
-                
-                # Obtener primer paquete nuevamente
-                first_response = _make_request_with_retry(org, 1)
-                data_section = first_response.get("data")
-                if data_section is None:
-                    continue
-                
-                html_content = data_section.get("html", "")
-                if html_content:
-                    page_members = _parse_members_full_all(html_content, org, redacted_counter)
-                    for member in page_members:
-                        if member['visibility'] == 'R':
-                            redacted_counter += 1
-                    all_members.extend(page_members)
-                
-                # Continuar con el resto de páginas
-                page = 2
-                while True:
-                    try:
-                        data = _make_request_with_retry(org, page)
-                        data_section = data.get("data")
-                        if data_section is None:
-                            break
-                        
-                        html_content = data_section.get("html", "")
-                        if not html_content:
-                            break
-                        
-                        page_members = _parse_members_full_all(html_content, org, redacted_counter)
-                        for member in page_members:
-                            if member['visibility'] == 'R':
-                                redacted_counter += 1
-                        all_members.extend(page_members)
-                        
-                        # Delay aleatorio entre páginas para evitar throttling
-                        delay = random.uniform(0.5, 3.0)  # Delay entre 0.5 y 3 segundos
-                        message_bus.publish(
-                            content=f"[{org}] Esperando {delay:.1f}s antes de la siguiente página (reintento)...",
-                            level=MessageLevel.DEBUG,
-                            metadata={"source": "rsi_org_scraper", "action": "page_delay_retry", "delay": delay}
-                        )
-                        time.sleep(delay)
-                        
-                        page += 1
-                        if page > 150:
-                            break
-                            
-                    except Exception:
-                        break
-                
-                # Verificar si ahora tenemos el número correcto
-                if len(all_members) == expected_total:
-                    message_bus.publish(
-                        content=f"[{org}] Éxito: Número correcto de miembros obtenidos después de reintento",
-                        level=MessageLevel.INFO,
-                        metadata={"source": "rsi_org_scraper", "action": "validation_success"}
-                    )
-                    break
-                
-                # Si no es el último intento, esperar antes del siguiente
-                if retry_attempt < max_retries_for_total - 1:
-                    delay = _calculate_delay(retry_attempt, base_delay=5.0)
-                    message_bus.publish(
-                        content=f"[{org}] Esperando {delay}s antes del siguiente intento...",
-                        level=MessageLevel.INFO,
-                        metadata={"source": "rsi_org_scraper", "action": "retry_delay"}
-                    )
-                    time.sleep(delay)
         
         # Logging final
         message_bus.publish(
@@ -448,7 +365,7 @@ def _fetch_all_org_data(org: str) -> List[Dict[str, Any]]:
             level=MessageLevel.ERROR,
             metadata={"source": "rsi_org_scraper", "action": "final_error"}
         )
-        raise Exception(f"Error al obtener datos de {org}: {e}")
+        raise
     
     return all_members
 
@@ -678,9 +595,6 @@ def get_org_members_count(org: str) -> int:
         raise Exception(f"Error al obtener número de miembros de {org}: {e}")
 
 
-
-
-
 def _parse_members_full_all(html_content: str, org_symbol: str, redacted_counter: int) -> List[Dict[str, Any]]:
     """
     Extrae datos completos de TODOS los miembros (visibles y no visibles) desde el HTML.
@@ -746,7 +660,7 @@ def _parse_members_full_all(html_content: str, org_symbol: str, redacted_counter
     return members
 
 
-def _clean_html(text: str) -> str:
+
     """
     Limpia entidades HTML comunes.
     
