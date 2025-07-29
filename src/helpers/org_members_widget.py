@@ -11,7 +11,7 @@ from datetime import datetime
 
 from .message_bus import message_bus, MessageLevel
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
-from .ui_components import DarkThemeButton
+from .ui_components import DarkThemeButton, MiniDarkThemeButton
 from .rsi_org_scraper import get_org_members, get_org_info, get_org_members_count
 
 
@@ -50,14 +50,14 @@ class OrgMembersWidget(wx.Panel):
         # Header con título
         header_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
-        title_label = wx.StaticText(self, label="Organization Members")
+        title_label = wx.StaticText(self, label="Org Members")
         title_font = title_label.GetFont()
         title_font.SetPointSize(9)
         title_font.SetWeight(wx.FONTWEIGHT_BOLD)
         title_label.SetFont(title_font)
-        header_sizer.Add(title_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        header_sizer.Add(title_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 2)
         
-        main_sizer.Add(header_sizer, 0, wx.EXPAND | wx.ALL, 2)
+        main_sizer.Add(header_sizer, 0, wx.EXPAND | wx.ALL, 1)
         
         # Panel de búsqueda
         search_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -69,14 +69,14 @@ class OrgMembersWidget(wx.Panel):
             style=wx.TE_PROCESS_ENTER
         )
         self.org_input.Bind(wx.EVT_TEXT_ENTER, self._on_search)
-        search_sizer.Add(self.org_input, 1, wx.EXPAND | wx.RIGHT, 5)
+        search_sizer.Add(self.org_input, 1, wx.EXPAND | wx.RIGHT, 3)
         
         # Botón de búsqueda
         self.search_btn = DarkThemeButton(self, label="🔍 Search", size=(80, 25))
         self.search_btn.Bind(wx.EVT_BUTTON, self._on_search)
         search_sizer.Add(self.search_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         
-        main_sizer.Add(search_sizer, 0, wx.EXPAND | wx.ALL, 2)
+        main_sizer.Add(search_sizer, 0, wx.EXPAND | wx.ALL, 1)
         
         # Lista de miembros con tema dark automático
         self.members_list = UltimateListCtrlAdapter(
@@ -92,14 +92,19 @@ class OrgMembersWidget(wx.Panel):
         # Eventos
         self.members_list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_context_menu)
         
-        main_sizer.Add(self.members_list, 1, wx.EXPAND | wx.ALL, 2)
+        main_sizer.Add(self.members_list, 1, wx.EXPAND | wx.ALL, 1)
         
         # Panel de estado
-        self.status_label = wx.StaticText(self, label="Enter organization symbol to search")
+        self.status_label = wx.StaticText(self, label="Enter org symbol")
         status_font = self.status_label.GetFont()
         status_font.SetPointSize(8)
         self.status_label.SetFont(status_font)
-        main_sizer.Add(self.status_label, 0, wx.EXPAND | wx.ALL, 2)
+        main_sizer.Add(self.status_label, 0, wx.EXPAND | wx.ALL, 1)
+        
+        # Botón de limpiar
+        self.clear_btn = MiniDarkThemeButton(self, label="🗑️")
+        self.clear_btn.Bind(wx.EVT_BUTTON, self._on_clear)
+        main_sizer.Add(self.clear_btn, 0, wx.ALIGN_LEFT | wx.LEFT, 5)
         
         self.SetSizer(main_sizer)
     
@@ -136,6 +141,29 @@ class OrgMembersWidget(wx.Panel):
         if org_symbol:
             self._perform_search(org_symbol)
     
+    def _on_clear(self, event):
+        """Maneja la limpieza del widget"""
+        # Limpiar campo de entrada
+        self.org_input.SetValue("")
+        
+        # Limpiar lista de miembros
+        self._clear_members_list()
+        
+        # Resetear estado
+        with self.data_lock:
+            self.current_org_data = []
+            self.current_org_symbol = ""
+        
+        # Actualizar estado
+        self._update_status("Enter org symbol")
+        
+        # Emitir evento de limpieza
+        message_bus.emit("org_search_cleared", {
+            "source": "OrgMembersWidget"
+        }, "OrgMembersWidget")
+        
+        message_bus.publish("Organization search cleared", level=MessageLevel.INFO)
+    
     def _perform_search(self, org_symbol):
         """Ejecuta la búsqueda de organización"""
         if get_org_members_count(org_symbol) > 500:
@@ -151,7 +179,7 @@ class OrgMembersWidget(wx.Panel):
         
         self.is_searching = True
         self.current_org_symbol = org_symbol
-        self._update_status(f"Searching for organization: {org_symbol}")
+        self._update_status(f"Searching: {org_symbol}")
         self.search_btn.Enable(False)
         
         # Ejecutar búsqueda en thread separado
@@ -185,13 +213,19 @@ class OrgMembersWidget(wx.Panel):
             self.current_org_data = members
             self.current_org_symbol = org_symbol
         
+        # Contar miembros visibles (los que se muestran en la lista)
+        visible_members = [m for m in members if m.get('visibility') != 'R']
+        redacted_count = len(members) - len(visible_members)
+        
         self._update_members_list(members)
-        self._update_status(f"Found {len(members)} members for {org_symbol}")
+        self._update_status(f"Found {len(visible_members)} visible, {redacted_count} redacted")
         
         # Emitir evento de búsqueda completada
         message_bus.emit("org_search_complete", {
             "org_symbol": org_symbol,
-            "member_count": len(members)
+            "member_count": len(members),
+            "visible_count": len(visible_members),
+            "redacted_count": redacted_count
         }, "OrgMembersWidget")
     
     def _on_search_error(self, error_msg):
