@@ -780,6 +780,8 @@ class LogFileHandler(FileSystemEventHandler):
         patterns = []
         vip_list = self.config_manager.get('important_players', [])
         for pattern in [ p.strip() for p in vip_list.split(",")]:
+            if len(pattern) == 0:
+                continue
             try:
                 patterns.append(re.compile(
                     fr"<(?P<timestamp>.*?)>.*?(?P<vip>(?<!\w){re.escape(pattern)}(?!\w)).*?"
