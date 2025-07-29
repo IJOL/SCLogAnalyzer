@@ -553,3 +553,30 @@ class DarkThemeButton(buttons.GenButton):
         
         # Configurar bordes menores
         self.SetBezelWidth(1)  # Borde más fino
+
+
+class MiniDarkThemeButton(buttons.GenButton):
+    """Botón mini con tema oscuro que solo muestra el emoji"""
+    
+    def __init__(self, parent, label="", **kwargs):
+        # Configurar estilo con bordes menores
+        style = kwargs.get('style', 0) | wx.BORDER_NONE
+        kwargs['style'] = style
+        
+        # Tamaño mini por defecto
+        if 'size' not in kwargs:
+            kwargs['size'] = (30, 25)  # Tamaño más pequeño
+        
+        super().__init__(parent, label=label, **kwargs)
+        
+        # Configurar colores oscuros por defecto
+        self.SetBackgroundColour(wx.Colour(64, 64, 64))  # Fondo gris oscuro
+        self.SetForegroundColour(wx.Colour(240, 240, 240))  # Texto blanco
+        
+        # Configurar bordes menores
+        self.SetBezelWidth(1)  # Borde más fino
+        
+        # Configurar fuente más pequeña para el emoji
+        font = self.GetFont()
+        font.SetPointSize(10)  # Fuente más pequeña
+        self.SetFont(font)
