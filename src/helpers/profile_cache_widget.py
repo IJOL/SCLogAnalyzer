@@ -193,6 +193,9 @@ class ProfileCacheWidget(wx.Panel):
             discord_item = menu.Append(wx.ID_ANY, "🔊 Enviar a Discord")
             remove_item = menu.Append(wx.ID_ANY, "🗑️ Eliminar del cache")
             
+            # Separador y opciones VIP
+            self._extend_context_menu_with_vip(menu, player_name)
+            
             self.Bind(wx.EVT_MENU, lambda e: self._show_profile_details(player_name), details_item)
             self.Bind(wx.EVT_MENU, lambda e: self._broadcast_profile(player_name), broadcast_item)
             self.Bind(wx.EVT_MENU, lambda e: self._send_discord(player_name), discord_item)
@@ -254,6 +257,38 @@ class ProfileCacheWidget(wx.Panel):
             level=MessageLevel.INFO,
             metadata={"source": "profile_cache_widget"}
         )
+    
+    def _extend_context_menu_with_vip(self, menu, player_name):
+        """Añadir opciones VIP al menú contextual"""
+        from .config_utils import ConfigManager
+        
+        config_manager = ConfigManager.get_instance()
+        is_vip = config_manager.is_vip_player(player_name)
+        
+        menu.AppendSeparator()
+        
+        if is_vip:
+            vip_item = menu.Append(wx.ID_ANY, f"🚫 Borrar {player_name} de VIPs temporales")
+            self.Bind(wx.EVT_MENU, lambda evt: self._toggle_vip_player(player_name), vip_item)
+        else:
+            vip_item = menu.Append(wx.ID_ANY, f"⭐ Añadir {player_name} a VIPs temporales")
+            self.Bind(wx.EVT_MENU, lambda evt: self._toggle_vip_player(player_name), vip_item)
+
+    def _toggle_vip_player(self, player_name: str):
+        """Toggle jugador en VIP list usando ConfigManager"""
+        from .config_utils import ConfigManager
+        
+        config_manager = ConfigManager.get_instance()
+        was_vip = config_manager.is_vip_player(player_name)
+        success = config_manager.toggle_vip_player(player_name)
+        
+        if success:
+            action = "removed from" if was_vip else "added to"
+            message_bus.publish(
+                content=f"Player {player_name} {action} VIP list",
+                level=MessageLevel.INFO,
+                metadata={"source": "profile_cache_widget"}
+            )
     
 
 def _build_profile_text_block(player_name, profile_data):

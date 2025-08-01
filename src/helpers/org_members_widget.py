@@ -315,6 +315,10 @@ class OrgMembersWidget(wx.Panel):
         copy_name_item = menu.Append(wx.ID_ANY, f"📋 Copy Name: {member.get('display_name', member.get('username', 'Unknown'))}")
         self.Bind(wx.EVT_MENU, lambda evt: self._on_copy_name(member), copy_name_item)
         
+        # Separador y opciones VIP
+        member_name = member.get('username', member.get('display_name', 'Unknown'))
+        self._extend_context_menu_with_vip(menu, member_name)
+        
         # Mostrar menú
         self.PopupMenu(menu, point)
         menu.Destroy()
@@ -350,5 +354,37 @@ class OrgMembersWidget(wx.Panel):
             wx.TheClipboard.Close()
             
             message_bus.publish(f"Copied to clipboard: {member_name}", level=MessageLevel.INFO)
+    
+    def _extend_context_menu_with_vip(self, menu, member_name):
+        """Añadir opciones VIP al menú contextual"""
+        from .config_utils import ConfigManager
+        
+        config_manager = ConfigManager.get_instance()
+        is_vip = config_manager.is_vip_player(member_name)
+        
+        menu.AppendSeparator()
+        
+        if is_vip:
+            vip_item = menu.Append(wx.ID_ANY, f"🚫 Borrar {member_name} de VIPs temporales")
+            self.Bind(wx.EVT_MENU, lambda evt: self._toggle_vip_player(member_name), vip_item)
+        else:
+            vip_item = menu.Append(wx.ID_ANY, f"⭐ Añadir {member_name} a VIPs temporales")
+            self.Bind(wx.EVT_MENU, lambda evt: self._toggle_vip_player(member_name), vip_item)
+
+    def _toggle_vip_player(self, member_name: str):
+        """Toggle jugador en VIP list usando ConfigManager"""
+        from .config_utils import ConfigManager
+        
+        config_manager = ConfigManager.get_instance()
+        was_vip = config_manager.is_vip_player(member_name)
+        success = config_manager.toggle_vip_player(member_name)
+        
+        if success:
+            action = "removed from" if was_vip else "added to"
+            message_bus.publish(
+                content=f"Player {member_name} {action} VIP list",
+                level=MessageLevel.INFO,
+                metadata={"source": "org_members_widget"}
+            )
     
  

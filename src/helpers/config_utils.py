@@ -561,6 +561,68 @@ class ConfigManager:
             r'(?:/?|[/?]\S+)$', re.IGNORECASE)
         return re.match(regex, url) is not None
 
+    def _parse_vip_string(self, vip_string: str) -> list:
+        """Parse VIP string separated by commas or spaces"""
+        import re
+        if not vip_string:
+            return []
+        # Split by commas or spaces, filter empty elements
+        players = re.split(r'[,\s]+', vip_string.strip())
+        return [p.strip() for p in players if p.strip()]
+
+    def is_vip_player(self, player_name: str) -> bool:
+        """Check if player is VIP"""
+        with self._lock:
+            current_vips = self.get('important_players', '')
+            players = self._parse_vip_string(current_vips)
+            return player_name in players
+
+    def add_vip_player(self, player_name: str) -> bool:
+        """Add player to important_players"""
+        with self._lock:
+            current_vips = self.get('important_players', '')
+            players = self._parse_vip_string(current_vips)
+            
+            if player_name not in players:
+                players.append(player_name)
+                new_vips = ', '.join(players)
+                self.set('important_players', new_vips)
+                
+                # Emit event for configuration update
+                message_bus.publish(f"Added {player_name} to VIPs", MessageLevel.INFO)
+                message_bus.emit('config_updated', 'important_players')
+                return True
+            return False
+
+    def remove_vip_player(self, player_name: str) -> bool:
+        """Remove player from important_players"""
+        with self._lock:
+            current_vips = self.get('important_players', '')
+            players = self._parse_vip_string(current_vips)
+            
+            if player_name in players:
+                players.remove(player_name)
+                new_vips = ', '.join(players)
+                self.set('important_players', new_vips)
+                
+                # Emit event for configuration update
+                message_bus.publish(f"Removed {player_name} from VIPs", MessageLevel.INFO)
+                message_bus.emit('config_updated', 'important_players')
+                return True
+            return False
+
+    def toggle_vip_player(self, player_name: str) -> bool:
+        """Toggle player in VIP list"""
+        if self.is_vip_player(player_name):
+            return self.remove_vip_player(player_name)
+        else:
+            return self.add_vip_player(player_name)
+
+    @staticmethod
+    def get_instance():
+        """Get the singleton ConfigManager instance"""
+        return get_config_manager()
+
     def __getattr__(self, name):
         """
         Transparently retrieve configuration values as attributes.

@@ -164,6 +164,7 @@ class LogFileHandler(FileSystemEventHandler):
         message_bus.on("force_broadcast_profile", self._on_force_broadcast_profile)
         message_bus.on("send_discord", self._on_send_discord)
         message_bus.on("send_realtime", self._on_send_realtime)
+        message_bus.on("config_updated", self._on_config_updated)
 
     def __getattr__(self, name):
         """
@@ -1213,6 +1214,23 @@ class LogFileHandler(FileSystemEventHandler):
                 content=f"Error in force_broadcast_profile: {str(e)}",
                 level=MessageLevel.ERROR,
                 metadata={"source": "log_analyzer", "action": "force_broadcast_error"}
+            )
+
+    def _on_config_updated(self, config_key):
+        """Handler for config_updated events from message bus"""
+        if config_key == 'important_players':
+            # Get old pattern count for logging
+            old_count = len(self.vip_patterns) if hasattr(self, 'vip_patterns') else 0
+            
+            # Recompile VIP patterns
+            self.vip_patterns = self.compile_vip_patterns()
+            new_count = len(self.vip_patterns)
+            
+            # Log confirmation of recompilation
+            message_bus.publish(
+                content=f"VIP patterns recompiled: {old_count} -> {new_count} patterns",
+                level=MessageLevel.INFO,
+                metadata={"source": "log_analyzer", "action": "vip_recompilation"}
             )
 
     def should_broadcast_profile(self, data, pattern_name):
