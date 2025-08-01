@@ -589,7 +589,7 @@ class ConfigManager:
                 self.set('important_players', new_vips)
                 
                 # Emit event for configuration update
-                message_bus.publish(f"Added {player_name} to VIPs", MessageLevel.INFO)
+                message_bus.publish(content=f"Added {player_name} to VIPs", level=MessageLevel.INFO)
                 message_bus.emit('config_updated', 'important_players')
                 return True
             return False
@@ -606,7 +606,8 @@ class ConfigManager:
                 self.set('important_players', new_vips)
                 
                 # Emit event for configuration update
-                message_bus.publish(f"Removed {player_name} from VIPs", MessageLevel.INFO)
+                message_bus.publish(content=f"Removed {player_name} from VIPs", 
+                                    level=MessageLevel.INFO)
                 message_bus.emit('config_updated', 'important_players')
                 return True
             return False
