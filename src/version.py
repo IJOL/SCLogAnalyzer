@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 13
-RELEASE = 6
+RELEASE = 7
 MATURITY = "phoenix"  # "alpha", "beta", or "final"
-PATCH = "72a3b2e"
+PATCH = "6200fb5"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,17 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.13.x series,
+    "6200fb5: fix: Update message bus publish calls for VIP player management consistency",
+    "7580643: feat: Revamp TTL calculation and activity intensity metrics in StalledWidget",
+    "3c5d89b: feat: Implement VIP player management in OrgMembersWidget and ProfileCacheWidget",
+    "bbe7d5a: fix: Update message bus event names for consistency\n\n- Changed event name from \"config.saved\" to \"config_saved\" in the message bus to maintain uniformity across the application.\n- Updated related error handling to reflect the new event name.",
+    "4d61b05: fix: Prevent empty patterns in log analyzer\n\n- Added a check to skip empty patterns when compiling regex for important players in the LogFileHandler class, ensuring cleaner pattern matching and avoiding potential errors.",
+    "a61550c: feat: Enhance OrgMembersWidget functionality\n\n- Added a MiniDarkThemeButton for clearing the search input and member list.\n- Updated UI elements for better spacing and clarity, including title and status label adjustments.\n- Improved status updates to reflect visible and redacted member counts during searches.",
+    "71af939: refactor: Simplify organization data fetching logic\n\n- Removed retry mechanism for total member count validation in `_fetch_all_org_data`, simplifying the process.\n- Updated logging messages to reflect changes in data retrieval flow, enhancing clarity and maintainability.\n- Cleaned up commented-out code to improve overall code readability.",
+    "1b54db0: feat: Add MiniDarkThemeButton component\n\n- Introduced a new MiniDarkThemeButton class for a compact dark-themed button that displays only an emoji.\n- Configured default styles, colors, and font size to enhance UI consistency and usability.",
+
+    # Version v0.13.6-72a3b2e-phoenix-docker,
+    "cc11bcc: [chore] Increment version to v0.13.6-72a3b2e-phoenix",
     "72a3b2e: feat: Add member count warning in organization search\n\n- Introduced a check for organizations with more than 500 members during the search process, prompting a warning message to the user about potential loading delays.\n- Enhanced context menu handling to ensure accurate member retrieval based on the displayed username in the list.",
     "f466355: feat: Add handler for realtime reconnection event\n\n- Implemented a new event handler for the \"realtime_reconnected\" event to update the UI status when the connection is restored.\n- Enhanced the existing \"broadcast_ping_missing\" handler by removing commented-out code to improve code clarity and maintainability.",
     "7ac9ba1: feat: Enhance organization data retrieval with retry logic and validation\n\n- Implemented automatic retry mechanism for HTTP requests in the `_make_request_with_retry` function to handle throttling and network errors.\n- Added logging for progress and errors using MessageBus to improve monitoring during data scraping.\n- Introduced validation against total member count to ensure data integrity during organization data fetching.\n- Updated `_fetch_all_org_data` to support retries and detailed error handling, enhancing robustness of the scraping process.",
