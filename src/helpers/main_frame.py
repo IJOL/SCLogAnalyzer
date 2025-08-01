@@ -46,7 +46,7 @@ class LogAnalyzerFrame(wx.Frame):
         """Initialize the main application frame."""
         super().__init__(None, title="SC Log Analyzer", size=(800, 600))
         message_bus.on("datasource_changed", self.handle_datasource_change)
-        message_bus.on("config.saved", self.on_config_saved)
+        message_bus.on("config_saved", self.on_config_saved)
         
         # Set the application icon
         icon_path = os.path.join(get_template_base_dir(),'assets', "SCLogAnalyzer.ico")
@@ -925,7 +925,7 @@ class LogAnalyzerFrame(wx.Frame):
             
         except Exception as e:
             message_bus.publish(
-                content=f"Error processing config.saved event: {e}",
+                content=f"Error processing config_saved event: {e}",
                 level=MessageLevel.ERROR
             )
 

@@ -339,7 +339,7 @@ class ConfigDialog(wx.Dialog):
         new_config = self.config_manager.get_all()
         
         # Emit a single event with both old and new configurations
-        message_bus.emit("config.saved", 
+        message_bus.emit("config_saved", 
                         old_config=old_config, 
                         new_config=new_config, 
                         config_manager=self.config_manager)

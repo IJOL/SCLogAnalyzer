@@ -784,7 +784,8 @@ class LogFileHandler(FileSystemEventHandler):
                 continue
             try:
                 patterns.append(re.compile(
-                    fr"<(?P<timestamp>.*?)>.*?(?P<vip>(?<!\w){re.escape(pattern)}(?!\w)).*?"
+                    fr"<(?P<timestamp>.*?)>.*?(?P<vip>(?<!\w){re.escape(pattern)}(?!\w)).*?",
+                    re.IGNORECASE
                 ))
             except Exception:
                 pass  # Silently ignore invalid patterns
