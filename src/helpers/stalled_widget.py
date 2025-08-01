@@ -101,59 +101,43 @@ class StalledWidget(wx.Panel):
         message_bus.on("remote_realtime_event", self._handle_remote_event)
     
     def _calculate_progressive_ttl(self, player_data, player_name):
-        """Calcula TTL progresivo con penalizaciones agresivas por reincidencia"""
-        # TTL base progresivo
-        ttl = self._calculate_base_ttl(player_name)
+        """NEW TTL calculation with 300s initial and max 600s"""
         
-        # Factores de importancia actuales
+        # PHASE 1: Base TTL (300s for first appearance)
+        if self._is_first_appearance(player_name):
+            base_ttl = 300  # 5 minutes for new sightings
+        else:
+            base_ttl = 200  # 3.33 minutes for returning players
+        
+        # PHASE 2: Conservative increments
         sources_count = len(player_data['sources'])
         total_stalls = player_data['count']
         
-        # +45s por cada fuente adicional
+        # Modest source bonuses: +30s per additional reporter (max 4 sources = +90s)
         if sources_count > 1:
-            ttl += (sources_count - 1) * 45
+            source_bonus = min((sources_count - 1) * 30, 90)
+            base_ttl += source_bonus
         
-        # +4s por cada stall adicional (máximo 30 stalls = +120s)
+        # Small stall increments: +2s per additional stall (max 50 stalls = +100s) 
         if total_stalls > 1:
-            extra_stalls = min(total_stalls - 1, 30)
-            ttl += extra_stalls * 4
+            stall_bonus = min((total_stalls - 1) * 2, 100)
+            base_ttl += stall_bonus
         
-        # NUEVO: Penalizaciones por reincidencia histórica
+        # PHASE 3: Historical persistence bonus (modest)
         historical_detections = player_data.get('historical_detections', 0)
         if historical_detections > 0:
-            # 4ta detección: 2 minutos base
-            if historical_detections == 4:
-                ttl = max(ttl, 120)
-            # 5ta detección en adelante: +40 segundos por detección adicional
-            elif historical_detections >= 5:
-                additional_penalty = (historical_detections - 4) * 40
-                ttl = max(ttl, 120 + additional_penalty)
+            # +10s per historical detection (max +50s)
+            history_bonus = min(historical_detections * 10, 50)
+            base_ttl += history_bonus
         
-        # Bonus por persistencia: si tiene más de 10 stalls de la misma fuente
-        max_single_source = max((src['count'] for src in player_data['sources'].values()), default=0)
-        if max_single_source >= 10:
-            ttl += 60
-        
-        # Bonus por múltiples avistamientos
-        if sources_count >= 4:
-            ttl += 90
-        elif sources_count >= 3:
-            ttl += 60
-        
-        # TTL máximo de 6 minutos
-        final_ttl = min(ttl, 360)
+        # PHASE 4: Apply maximum limit
+        final_ttl = min(base_ttl, 600)  # Maximum 10 minutes
         
         return final_ttl
     
-    def _calculate_base_ttl(self, player_name):
-        """Calcula TTL base progresivo basado en historial"""
-        base_ttl = self.base_ttl_seconds  # TTL base inicial
-        
-        if player_name in self.historical_cache:
-            multiplier = self.historical_cache[player_name]['base_ttl_multiplier']
-            base_ttl *= multiplier
-        
-        return base_ttl
+    def _is_first_appearance(self, player_name):
+        """Check if this is the first appearance of a player"""
+        return player_name not in self.historical_cache
     
     def _move_to_historical_cache(self, player_name):
         """Mueve datos activos a cache histórico con multiplicadores más agresivos"""
@@ -205,73 +189,55 @@ class StalledWidget(wx.Panel):
             # Eliminar del cache histórico
             del self.historical_cache[player_name]
     
-    def _calculate_heat_color(self, player_data):
-        """Calcula color basado en actividad reciente (últimos 90s)"""
-        recent_detections = 0
-        current_time = datetime.now()
+    def _calculate_activity_intensity(self, player_data):
+        """Calculate color intensity based on sighting count and reporter diversity"""
         
-        for source_data in player_data['sources'].values():
-            time_diff = current_time - source_data['last_seen']
-            if time_diff.total_seconds() <= 90:  # 3 períodos de 30s
-                recent_detections += source_data['count']
+        # METRIC 1: Total sighting frequency
+        total_stalls = player_data['count']
+        stall_score = min(total_stalls / 10.0, 1.0)  # Normalize to 0-1 (10+ stalls = max)
         
-        # Calcular intensidad (0-255)
-        if recent_detections >= 10:
-            intensity = 255  # Rojo máximo
-        elif recent_detections >= 5:
-            intensity = 200  # Rojo intenso
-        elif recent_detections >= 3:
-            intensity = 150  # Rojo medio
-        elif recent_detections >= 1:
-            intensity = 100  # Rojo suave
-        else:
-            intensity = 230  # Blanco (normal)
+        # METRIC 2: Reporter diversity  
+        sources_count = len(player_data['sources'])
+        diversity_score = min(sources_count / 4.0, 1.0)  # Normalize to 0-1 (4+ sources = max)
         
-        return wx.Colour(intensity, 50, 50)
+        # METRIC 3: Recent activity (last 2 minutes instead of 90s)
+        recent_activity = self._count_recent_activity(player_data, window_seconds=120)
+        recent_score = min(recent_activity / 8.0, 1.0)  # Normalize to 0-1 (8+ recent = max)
+        
+        # COMPOSITE INTENSITY: Weighted combination
+        intensity = (
+            stall_score * 0.4 +      # 40% weight on total activity
+            diversity_score * 0.35 + # 35% weight on reporter diversity  
+            recent_score * 0.25      # 25% weight on recent activity
+        )
+        
+        return intensity  # Returns 0.0 to 1.0
     
-    def _calculate_background_color(self, player_data):
-        """Calcula color de fondo basado en actividad reciente (últimos 90s)"""
-        recent_detections = 0
-        current_time = datetime.now()
+    def _intensity_to_color(self, intensity):
+        """Convert intensity (0-1) to background color"""
         
-        for source_data in player_data['sources'].values():
-            time_diff = current_time - source_data['last_seen']
-            if time_diff.total_seconds() <= 90:  # 3 períodos de 30s
-                recent_detections += source_data['count']
-        
-        # Colores de fondo que contrastan bien con texto blanco
-        if recent_detections >= 10:
-            return wx.Colour(180, 30, 30)   # Rojo oscuro intenso
-        elif recent_detections >= 5:
-            return wx.Colour(140, 40, 40)   # Rojo oscuro medio
-        elif recent_detections >= 3:
-            return wx.Colour(100, 50, 50)   # Rojo oscuro suave
-        elif recent_detections >= 1:
-            return wx.Colour(80, 60, 60)    # Rojo muy oscuro
-        else:
-            return wx.Colour(80, 80, 80)    # Gris normal (fondo base)
+        if intensity >= 0.8:    # High intensity (80-100%)
+            return wx.Colour(180, 30, 30)   # Dark red
+        elif intensity >= 0.6:  # Medium-high intensity (60-80%)
+            return wx.Colour(140, 40, 40)   # Medium red
+        elif intensity >= 0.4:  # Medium intensity (40-60%)
+            return wx.Colour(100, 50, 50)   # Light red
+        elif intensity >= 0.2:  # Low intensity (20-40%)
+            return wx.Colour(80, 60, 60)    # Very light red
+        else:                   # Minimal intensity (0-20%)
+            return wx.Colour(80, 80, 80)    # Normal dark theme background
     
-    def _calculate_heat_level(self, player_data):
-        """Calcula nivel de actividad reciente (0-4) para determinar si mostrar punto coloreado"""
+    def _count_recent_activity(self, player_data, window_seconds=120):
+        """Count activity within the specified time window"""
         recent_detections = 0
         current_time = datetime.now()
         
         for source_data in player_data['sources'].values():
             time_diff = current_time - source_data['last_seen']
-            if time_diff.total_seconds() <= 90:  # 3 períodos de 30s
+            if time_diff.total_seconds() <= window_seconds:
                 recent_detections += source_data['count']
         
-        # Retornar nivel de actividad (0 = normal, 1-4 = actividad creciente)
-        if recent_detections >= 10:
-            return 4  # Actividad máxima
-        elif recent_detections >= 5:
-            return 3  # Actividad alta
-        elif recent_detections >= 3:
-            return 2  # Actividad media
-        elif recent_detections >= 1:
-            return 1  # Actividad baja
-        else:
-            return 0  # Sin actividad reciente
+        return recent_detections
     
     def _get_historical_stats(self, player_name):
         """Obtiene estadísticas incluyendo cache histórico"""
@@ -412,29 +378,46 @@ class StalledWidget(wx.Panel):
                 ttl_remaining = timedelta(seconds=player_ttl) - time_since_last
                 ttl_seconds = max(0, int(ttl_remaining.total_seconds()))
                 
-                # Mostrar incluso si TTL es 0, pero marcar como "expirando"
-                # El cleanup real se encarga de eliminar los datos
+                # Better TTL display formatting for longer times
                 if ttl_seconds <= 0:
                     ttl_display = "0s"
-                else:
+                elif ttl_seconds < 60:
                     ttl_display = f"{ttl_seconds}s"
+                elif ttl_seconds < 600:  # Less than 10 minutes
+                    minutes = ttl_seconds // 60
+                    seconds = ttl_seconds % 60
+                    ttl_display = f"{minutes}:{seconds:02d}"
+                else:  # 10+ minutes
+                    minutes = ttl_seconds // 60
+                    ttl_display = f"{minutes}m"
                 
                 # Información de fuentes
                 sources_count = len(data['sources'])
                 last_source = data['last_source']
                 
-                # Formato "hace X tiempo" más legible
-                minutes_ago = int(time_since_last.total_seconds() / 60)
-                if minutes_ago == 0:
-                    last_display = "ahora"
-                elif minutes_ago == 1:
-                    last_display = "1min"
+                # More readable "time ago" format for longer TTL times
+                seconds_ago = int(time_since_last.total_seconds())
+                if seconds_ago < 60:
+                    last_display = "ahora" if seconds_ago < 30 else f"{seconds_ago}s"
                 else:
-                    last_display = f"{minutes_ago}min"
+                    minutes_ago = int(seconds_ago / 60)
+                    if minutes_ago == 1:
+                        last_display = "1min"
+                    elif minutes_ago < 10:
+                        last_display = f"{minutes_ago}min"
+                    else:
+                        last_display = f"{minutes_ago}m"
                 
-                # Añadir punto indicador al nombre del jugador (solo visual)
-                heat_level = self._calculate_heat_level(data)
-                player_display = f"● {player}" if heat_level > 0 else f"○ {player}"
+                # Add activity indicator to player name (visual only)
+                activity_intensity = self._calculate_activity_intensity(data)
+                if activity_intensity >= 0.6:    # High activity
+                    player_display = f"● {player}"  # Filled circle
+                elif activity_intensity >= 0.3:  # Medium activity  
+                    player_display = f"◐ {player}"  # Half-filled circle
+                elif activity_intensity > 0.1:   # Low activity
+                    player_display = f"○ {player}"  # Empty circle
+                else:                           # Minimal activity
+                    player_display = f"  {player}"  # No indicator
                 
                 # Añadir fila con todas las columnas
                 index = self.stalled_list.InsertItem(self.stalled_list.GetItemCount(), player_display)
@@ -446,15 +429,15 @@ class StalledWidget(wx.Panel):
                 # Almacenar nombre limpio para acceso posterior
                 self.row_to_player[index] = player
                 
-                # Aplicar fondo coloreado basado en actividad reciente
-                if heat_level > 0:
-                    background_color = self._calculate_background_color(data)
-                    self.stalled_list.SetItemBackgroundColour(index, background_color)
-                    # Texto siempre blanco para máximo contraste
+                # Apply background color based on activity intensity
+                activity_intensity = self._calculate_activity_intensity(data)
+                background_color = self._intensity_to_color(activity_intensity)
+                self.stalled_list.SetItemBackgroundColour(index, background_color)
+                
+                # Text color: white for high intensity, light gray for low intensity
+                if activity_intensity > 0.2:
                     self.stalled_list.SetItemTextColour(index, wx.Colour(255, 255, 255))
                 else:
-                    # Sin actividad: fondo normal, texto blanco
-                    self.stalled_list.SetItemBackgroundColour(index, wx.Colour(80, 80, 80))
                     self.stalled_list.SetItemTextColour(index, wx.Colour(230, 230, 230))
     
     def _get_player_name_by_index(self, index):
