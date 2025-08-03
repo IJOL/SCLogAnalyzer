@@ -363,6 +363,7 @@ class ConfigManager:
                             config[key] = {}
                         config = config[key]
                     config[keys[-1]] = value
+                    message_bus.emit('config_updated', key_path)
                 return True
             except Exception as e:
                 message_bus.publish(
@@ -590,7 +591,6 @@ class ConfigManager:
                 
                 # Emit event for configuration update
                 message_bus.publish(content=f"Added {player_name} to VIPs", level=MessageLevel.INFO)
-                message_bus.emit('config_updated', 'important_players')
                 return True
             return False
 
@@ -608,7 +608,6 @@ class ConfigManager:
                 # Emit event for configuration update
                 message_bus.publish(content=f"Removed {player_name} from VIPs", 
                                     level=MessageLevel.INFO)
-                message_bus.emit('config_updated', 'important_players')
                 return True
             return False
 

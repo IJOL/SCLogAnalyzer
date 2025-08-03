@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from concurrent.futures import ThreadPoolExecutor
 import uuid
 import json
 from datetime import datetime
@@ -717,6 +718,7 @@ class RealtimeBridge:
             metadata={"source": "realtime_bridge"}
         )
 
+    from concurrent.futures import ThreadPoolExecutor
 
     def _ping_missing_loop(self):
         while self._ping_missing_check_active:
@@ -740,7 +742,12 @@ class RealtimeBridge:
                                 level=MessageLevel.INFO,
                                 metadata={"source": "realtime_bridge"}
                             )
-                            result = self.reconnect()
+                            with ThreadPoolExecutor(max_workers=1) as executor:
+                                # Ejecutar reconexión en un thread separado para no bloquear el bucle de eventos
+                                f = executor.submit(self.reconnect)
+                                # Iniciar reconexión en un thread separado
+                                result = f.result()
+                                
                             if result:
                                 message_bus.emit("realtime_reconnected")
                                 message_bus.publish(
