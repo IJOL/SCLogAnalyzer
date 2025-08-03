@@ -1,10 +1,10 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 13
-RELEASE = 7
-MATURITY = "phoenix"  # "alpha", "beta", or "final"
-PATCH = "6200fb5"
+MINOR = 14
+RELEASE = 0
+MATURITY = "grimhex"  # "alpha", "beta", or "final"
+PATCH = "1cd3a0b"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,14 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.13.x series,
+    "1cd3a0b: feat: Add overlay settings for StalledWidget and SharedLogsWidget with position, size, opacity, and click-through options",
+    "b14be24: feat: Add opacity slider and delayed save functionality to DynamicOverlay",
+    "ae5183b: feat: Integrate OverlayMixin into SharedLogsWidget and StalledWidget for enhanced overlay functionality",
+    "1c54e1f: feat: Implement OverlayMixin for universal overlay functionality in widgets",
+    "0cd424c: feat: Add OverlayManager for dynamic overlay management with factory pattern",
+    "60b6948: feat: Implement dynamic overlay system with hybrid polling and widget support",
+    "bfb7c6c: fix: Emit configuration update events consistently in ConfigManager and improve reconnection handling in RealtimeBridge",
+    "9a934d5: [chore] Increment version to v0.13.7-6200fb5-phoenix",
     "6200fb5: fix: Update message bus publish calls for VIP player management consistency",
     "7580643: feat: Revamp TTL calculation and activity intensity metrics in StalledWidget",
     "3c5d89b: feat: Implement VIP player management in OrgMembersWidget and ProfileCacheWidget",
