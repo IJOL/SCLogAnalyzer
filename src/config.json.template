@@ -63,5 +63,19 @@
         "startup": "🚀 *Startup Alert* **{username}** {script_version}",
         "vip": "👑🌟 {username} detected VIP: {vip}",
         "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n {all}"
+    },
+    "overlay_settings": {
+        "StalledWidget_overlay": {
+            "position": {"x": 250, "y": 250},
+            "size": {"width": 400, "height": 300},
+            "opacity": 200,
+            "click_through": false
+        },
+        "SharedLogsWidget_overlay": {
+            "position": {"x": 350, "y": 350},
+            "size": {"width": 600, "height": 450},
+            "opacity": 200,
+            "click_through": false
+        }
     }
 }
