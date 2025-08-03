@@ -77,6 +77,10 @@ class DynamicOverlay(wx.Frame):
         self.mouse_polling_timer = None    # Heavy mouse polling (25ms, only when needed)
         self.polling_lock = threading.Lock()
         
+        # Save throttling for slider
+        self.save_timer = None             # Timer to batch config saves
+        self.save_delay_ms = 1000          # Wait 1 second after last change
+        
         # Key state tracking
         self.ctrl_pressed = False
         self.alt_pressed = False
@@ -122,12 +126,26 @@ class DynamicOverlay(wx.Frame):
         title_font = wx.Font(8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         self.title_text.SetFont(title_font)
         
+        # Opacity slider
+        self.opacity_slider = wx.Slider(
+            self.title_panel, 
+            value=int((self.opacity_level/255)*100),  # Convert 0-255 to 0-100
+            minValue=20, maxValue=100,                # Range 20-100%
+            size=(80, 20),                           # Compact size
+            style=wx.SL_HORIZONTAL
+        )
+        self.opacity_slider.Bind(wx.EVT_SLIDER, self._on_opacity_slider_change)
+        self.opacity_slider.SetToolTip(f"Transparencia: {int((self.opacity_level/255)*100)}%")
+        self.opacity_slider.SetForegroundColour(wx.Colour(180, 190, 200))
+        self.opacity_slider.SetBackgroundColour(wx.Colour(35, 40, 45))
+        
         # Status indicator
         self.status_indicator = wx.StaticText(self.title_panel, label="●")
         self.status_indicator.SetForegroundColour(wx.Colour(100, 150, 100))
         self.status_indicator.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
         
         title_sizer.Add(self.title_text, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        title_sizer.Add(self.opacity_slider, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         title_sizer.Add(self.status_indicator, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         self.title_panel.SetSizer(title_sizer)
         
@@ -177,7 +195,7 @@ class DynamicOverlay(wx.Frame):
         # Window events
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key_press)
-        self.Bind(wx.EVT_RIGHT_UP, self._on_normal_right_click)
+        # NO bind global right-click - let widget handle its own right-clicks
         
         # Dragging events (title bar only)
         self.title_panel.Bind(wx.EVT_LEFT_DOWN, self._on_drag_start)
@@ -193,6 +211,11 @@ class DynamicOverlay(wx.Frame):
         try:
             self.hwnd = self.GetHandle()
             self._apply_opacity(self.opacity_level)
+            
+            # Setup initial resize capabilities (normal mode by default)
+            if not self.click_through_enabled:
+                self._setup_resize_capabilities()
+            
             self._update_status_indicator("ready")
             self._log_message("Overlay transparency setup complete", MessageLevel.INFO)
         except Exception as e:
@@ -415,20 +438,34 @@ class DynamicOverlay(wx.Frame):
             ex_style = win32gui.GetWindowLong(self.hwnd, win32con.GWL_EXSTYLE)
             
             if self.click_through_enabled:
-                # Disable click-through
+                # NORMAL MODE: Disable click-through, enable resize, show header
                 new_ex_style = ex_style & ~win32con.WS_EX_TRANSPARENT
                 self.click_through_enabled = False
                 self._stop_key_polling()
                 self._stop_mouse_polling()
+                
+                # Show header and recalculate layout
+                self.title_panel.Show()
+                self.main_panel.Layout()
+                self.Layout()
+                
+                self._setup_resize_capabilities()  # Enable resize capabilities
                 self._update_status_indicator("ready")
-                self._log_message("Click-through disabled", MessageLevel.DEBUG)
+                self._log_message("Click-through disabled - Normal mode with header", MessageLevel.DEBUG)
             else:
-                # Enable click-through
+                # GAMING MODE: Enable click-through, disable resize, hide header
                 new_ex_style = ex_style | win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
                 self.click_through_enabled = True
+                
+                # Hide header and recalculate layout
+                self.title_panel.Hide()
+                self.main_panel.Layout()
+                self.Layout()
+                
+                self._setup_resize_capabilities()  # Configure for gaming mode
                 self._start_key_polling()
                 self._update_status_indicator("key_polling")
-                self._log_message("Click-through enabled - Hybrid polling active", MessageLevel.DEBUG)
+                self._log_message("Click-through enabled - Gaming mode header hidden", MessageLevel.DEBUG)
 
             win32gui.SetWindowLong(self.hwnd, win32con.GWL_EXSTYLE, new_ex_style)
             win32gui.SetLayeredWindowAttributes(self.hwnd, 0, self.opacity_level, win32con.LWA_ALPHA)
@@ -440,24 +477,58 @@ class DynamicOverlay(wx.Frame):
             self._log_message(f"Click-through toggle error: {str(e)}", MessageLevel.ERROR)
             return False
     
-    def cycle_opacity(self):
-        """Cycle through opacity levels."""
-        opacity_steps = [255, 200, 150, 100, 60]
-        
+    def _setup_resize_capabilities(self):
+        """Configure window for mouse-based resizing"""
+        if not self.click_through_enabled:
+            # NORMAL MODE: Enable resize borders WITHOUT system caption
+            # Use only resize border, no system title bar (we have our own)
+            new_style = wx.STAY_ON_TOP | wx.RESIZE_BORDER
+            self.SetWindowStyle(new_style)
+        else:
+            # GAMING MODE: Borderless and click-through
+            new_style = wx.STAY_ON_TOP | wx.BORDER_NONE
+            self.SetWindowStyle(new_style)
+    
+    def _on_opacity_slider_change(self, event):
+        """Handle real-time opacity changes from slider"""
         try:
-            current_index = opacity_steps.index(self.opacity_level) if self.opacity_level in opacity_steps else -1
-            next_index = (current_index + 1) % len(opacity_steps)
-            new_opacity = opacity_steps[next_index]
+            slider_value = self.opacity_slider.GetValue()  # 20-100
+            opacity_value = int((slider_value / 100.0) * 255)  # Convert to 0-255 range
             
-            if self._apply_opacity(new_opacity):
-                pct = int((new_opacity/255)*100)
-                self._log_message(f"Opacity changed to {pct}%", MessageLevel.INFO)
-                return True
+            # Apply opacity immediately for real-time feedback (without saving)
+            self.opacity_level = opacity_value
+            if self.hwnd:
+                if self.CanSetTransparent():
+                    self.SetTransparent(opacity_value)
+                
+                ex_style = win32gui.GetWindowLong(self.hwnd, win32con.GWL_EXSTYLE)
+                if not (ex_style & win32con.WS_EX_LAYERED):
+                    win32gui.SetWindowLong(self.hwnd, win32con.GWL_EXSTYLE, ex_style | win32con.WS_EX_LAYERED)
+                win32gui.SetLayeredWindowAttributes(self.hwnd, 0, opacity_value, win32con.LWA_ALPHA)
+            
+            # Update tooltip with current percentage
+            self.opacity_slider.SetToolTip(f"Transparencia: {slider_value}%")
+            
+            # Throttle saves - restart timer on each change
+            if self.save_timer:
+                self.save_timer.Stop()
+            
+            self.save_timer = wx.Timer(self)
+            self.Bind(wx.EVT_TIMER, self._on_delayed_save, self.save_timer)
+            self.save_timer.Start(self.save_delay_ms, wx.TIMER_ONE_SHOT)
                 
         except Exception as e:
-            self._log_message(f"Opacity cycle failed: {str(e)}", MessageLevel.ERROR)
-        
-        return False
+            self._log_message(f"Opacity slider error: {str(e)}", MessageLevel.ERROR)
+    
+    def _on_delayed_save(self, event):
+        """Save settings after delay to batch multiple changes"""
+        try:
+            self._save_overlay_settings()
+            if self.save_timer:
+                self.save_timer.Stop()
+                self.save_timer = None
+        except Exception as e:
+            self._log_message(f"Delayed save error: {str(e)}", MessageLevel.ERROR)
     
     # Event Handlers
     
@@ -474,10 +545,21 @@ class DynamicOverlay(wx.Frame):
         else:
             event.Skip()
     
-    def _on_normal_right_click(self, event):
-        """Handle normal right-click (when not in click-through mode)."""
-        if not self.click_through_enabled:
-            self._show_overlay_context_menu(event.GetPosition(), from_hybrid=False)
+    def _cleanup_overlay(self):
+        """Clean up overlay resources."""
+        try:
+            self._stop_key_polling()
+            self._stop_mouse_polling()
+            
+            # Stop save timer if running
+            if self.save_timer:
+                self.save_timer.Stop()
+                self.save_timer = None
+            
+            self._save_overlay_settings()
+        except Exception as e:
+            self._log_message(f"Cleanup error: {str(e)}", MessageLevel.ERROR)
+    
     
     def _on_title_right_click(self, event):
         """Handle right-click specifically on title bar - show control menu."""
@@ -514,25 +596,12 @@ class DynamicOverlay(wx.Frame):
         try:
             menu = wx.Menu()
             
-            if from_hybrid:
-                # Success indicator for hybrid detection
-                success_item = menu.Append(wx.ID_ANY, "✓ Hybrid Overlay Menu (Ctrl+Alt+Right)")
-                menu.AppendSeparator()
-            
-            # Opacity control
-            opacity_item = menu.Append(wx.ID_ANY, "Change Opacity")
-            self.Bind(wx.EVT_MENU, lambda evt: self.cycle_opacity(), opacity_item)
-            
             # Click-through toggle
             ct_label = "Disable Click-Through" if self.click_through_enabled else "Enable Click-Through"
             ct_item = menu.Append(wx.ID_ANY, ct_label)
             self.Bind(wx.EVT_MENU, lambda evt: self.toggle_click_through(), ct_item)
             
             menu.AppendSeparator()
-            
-            
-            # Performance info
-            perf_item = menu.Append(wx.ID_ANY, f"Stats: {self.key_polls} keys, {self.mouse_polls} mouse")
             
             # Close
             close_item = menu.Append(wx.ID_ANY, "Close Overlay")
@@ -565,95 +634,40 @@ class DynamicOverlay(wx.Frame):
         try:
             menu = wx.Menu()
             
-            # Header con nombre del widget
-            header_item = menu.Append(wx.ID_ANY, f"📋 {self.widget_class.__name__} Overlay")
-            header_item.Enable(False)
-            menu.AppendSeparator()
-            
-            # Opacity control con indicador actual
-            opacity_pct = int((self.opacity_level/255)*100)
-            opacity_item = menu.Append(wx.ID_ANY, f"🔅 Opacidad ({opacity_pct}%) - Click para cambiar")
-            self.Bind(wx.EVT_MENU, lambda evt: self.cycle_opacity(), opacity_item)
-            
-            # Click-through toggle con indicador de estado
+            # Click-through toggle
             if self.click_through_enabled:
-                ct_item = menu.Append(wx.ID_ANY, "🖱️ Deshabilitar Click-Through")
-                ct_icon = "🔴"
+                ct_item = menu.Append(wx.ID_ANY, "Deshabilitar Click-Through")
             else:
-                ct_item = menu.Append(wx.ID_ANY, "🖱️ Habilitar Click-Through")
-                ct_icon = "🟢"
+                ct_item = menu.Append(wx.ID_ANY, "Habilitar Click-Through")
             
             self.Bind(wx.EVT_MENU, lambda evt: self.toggle_click_through(), ct_item)
-            
-            menu.AppendSeparator()
-            
-            # Size presets
-            size_submenu = wx.Menu()
-            
-            # Current size
-            current_size = self.GetSize()
-            current_item = size_submenu.Append(wx.ID_ANY, f"📐 Actual: {current_size.width}x{current_size.height}")
-            current_item.Enable(False)
-            size_submenu.AppendSeparator()
-            
-            # Preset sizes
-            size_presets = [
-                ("Pequeño", (400, 300)),
-                ("Mediano", (600, 400)), 
-                ("Grande", (800, 500)),
-                ("Muy Grande", (1000, 600))
-            ]
-            
-            for name, size in size_presets:
-                size_item = size_submenu.Append(wx.ID_ANY, f"{name} ({size[0]}x{size[1]})")
-                self.Bind(wx.EVT_MENU, lambda evt, s=size: self._resize_overlay(s), size_item)
-            
-            menu.AppendSubMenu(size_submenu, "📏 Cambiar Tamaño")
             
             # Position presets
             pos_submenu = wx.Menu()
             
-            # Current position
-            current_pos = self.GetPosition()
-            current_pos_item = pos_submenu.Append(wx.ID_ANY, f"📍 Actual: {current_pos.x}, {current_pos.y}")
-            current_pos_item.Enable(False)
-            pos_submenu.AppendSeparator()
-            
             # Preset positions
             pos_presets = [
-                ("🔝 Arriba Izquierda", (50, 50)),
-                ("🔝 Arriba Derecha", (800, 50)),
-                ("🔽 Abajo Izquierda", (50, 400)),
-                ("🔽 Abajo Derecha", (800, 400)),
-                ("🎯 Centro", (400, 300))
+                ("Arriba Izquierda", (50, 50)),
+                ("Arriba Derecha", (800, 50)),
+                ("Abajo Izquierda", (50, 400)),
+                ("Abajo Derecha", (800, 400)),
+                ("Centro", (400, 300))
             ]
             
             for name, pos in pos_presets:
                 pos_item = pos_submenu.Append(wx.ID_ANY, name)
                 self.Bind(wx.EVT_MENU, lambda evt, p=pos: self._move_overlay(p), pos_item)
             
-            menu.AppendSubMenu(pos_submenu, "📍 Mover a...")
-            
-            menu.AppendSeparator()
-            
-            # Performance info
-            stats = self.get_performance_stats()
-            if self.click_through_enabled:
-                perf_text = f"📊 Rendimiento: {stats['key_polls']} keys, {stats['mouse_polls']} mouse"
-            else:
-                perf_text = f"📊 Tiempo activo: {int(stats['uptime_seconds'])}s"
-            
-            perf_item = menu.Append(wx.ID_ANY, perf_text)
-            perf_item.Enable(False)
+            menu.AppendSubMenu(pos_submenu, "Mover a...")
             
             # Reset settings
-            reset_item = menu.Append(wx.ID_ANY, "🔄 Restaurar Configuración")
+            reset_item = menu.Append(wx.ID_ANY, "Restaurar Configuración")
             self.Bind(wx.EVT_MENU, lambda evt: self._reset_overlay_settings(), reset_item)
             
             menu.AppendSeparator()
             
             # Close
-            close_item = menu.Append(wx.ID_ANY, "❌ Cerrar Overlay")
+            close_item = menu.Append(wx.ID_ANY, "Cerrar Overlay")
             self.Bind(wx.EVT_MENU, lambda evt: self.Close(), close_item)
             
             # Show menu at title bar position
