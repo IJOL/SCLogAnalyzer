@@ -5,8 +5,9 @@ import re
 
 from .message_bus import message_bus, MessageLevel
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from .overlay_mixin import OverlayMixin
 
-class SharedLogsWidget(UltimateListCtrlAdapter):
+class SharedLogsWidget(UltimateListCtrlAdapter, OverlayMixin):
     """Widget auto-contenido para logs compartidos con sistema de primera instancia controladora"""
     
     # Variables de clase compartidas
@@ -226,6 +227,9 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         get_profile_item = menu.Append(wx.ID_ANY, "🔍 Get Profile")
         self.Bind(wx.EVT_MENU, lambda evt: self._on_get_profile(evt, clicked_idx), get_profile_item)
 
+        # Opción de overlay
+        self._extend_context_menu_with_overlay(menu, clicked_idx)
+
         # Separador y opción "Limpiar lista"
         if menu.GetMenuItemCount() > 0:
             menu.AppendSeparator()
@@ -296,6 +300,11 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
         SharedLogsWidget._shared_log_entries.clear()
         self._notify_all_instances()
     
+    def _extend_context_menu_with_overlay(self, menu, clicked_idx):
+        """Añadir opción de overlay al menú contextual"""
+        context_data = {"clicked_index": clicked_idx, "source": "shared_logs"}
+        self.add_overlay_toggle_option(menu, context_data)
+
     def __del__(self):
         """Cleanup al destruir instancia"""
         try:
@@ -306,5 +315,8 @@ class SharedLogsWidget(UltimateListCtrlAdapter):
                 # Remover de la lista de oyentes
                 if self in SharedLogsWidget._listener_instances:
                     SharedLogsWidget._listener_instances.remove(self)
+            
+            # Limpiar overlays asociados
+            self.cleanup_overlays()
         except (AttributeError, ValueError):
             pass  # Ignorar errores de cleanup durante destrucción

@@ -9,9 +9,10 @@ from datetime import datetime, timedelta
 from .message_bus import message_bus, MessageLevel
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 from .ui_components import DarkThemeButton
+from .overlay_mixin import OverlayMixin
 
 
-class StalledWidget(wx.Panel):
+class StalledWidget(wx.Panel, OverlayMixin):
     """Widget para tracking de usuarios stalled con múltiples fuentes"""
     
     def __init__(self, parent, base_ttl_seconds=30):
@@ -478,6 +479,9 @@ class StalledWidget(wx.Panel):
         stats_item = menu.Append(wx.ID_ANY, f"Ver estadísticas")
         self.Bind(wx.EVT_MENU, lambda evt: self._on_show_player_stats(player_name), stats_item)
         
+        # Opción de overlay
+        self._extend_context_menu_with_overlay(menu, player_name)
+        
         # Mostrar menú
         self.PopupMenu(menu, event.GetPoint())
         menu.Destroy()
@@ -654,9 +658,18 @@ Detalle por fuente:
             self.ui_refresh_timer.Stop()
             del self.ui_refresh_timer
     
+    def _extend_context_menu_with_overlay(self, menu, player_name):
+        """Añadir opción de overlay al menú contextual"""
+        context_data = {"player_name": player_name, "source": "stalled_widget"}
+        self.add_overlay_toggle_option(menu, context_data)
+
     def __del__(self):
         """Cleanup al destruir el widget"""
-        self.cleanup_timers()
+        try:
+            self.cleanup_timers()
+            self.cleanup_overlays()  # Limpiar overlays asociados
+        except:
+            pass  # Evitar errores durante shutdown
     
     def _get_sources_info(self, player_name):
         """Obtiene información detallada de las fuentes que reportan un jugador"""
