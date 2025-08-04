@@ -212,11 +212,15 @@ class DynamicOverlay(wx.Frame):
             self.hwnd = self.GetHandle()
             self._apply_opacity(self.opacity_level)
             
-            # Setup initial resize capabilities (normal mode by default)
-            if not self.click_through_enabled:
+            # Apply saved click-through state if it was enabled
+            if self.click_through_enabled:
+                # Apply click-through mode directly without toggle (avoid state confusion)
+                self._apply_click_through_mode()
+            else:
+                # Setup initial resize capabilities (normal mode)
                 self._setup_resize_capabilities()
+                self._update_status_indicator("ready")
             
-            self._update_status_indicator("ready")
             self._log_message("Overlay transparency setup complete", MessageLevel.INFO)
         except Exception as e:
             self._log_message(f"Transparency setup error: {str(e)}", MessageLevel.ERROR)
@@ -408,6 +412,38 @@ class DynamicOverlay(wx.Frame):
             self._log_message(f"Menu trigger error: {str(e)}", MessageLevel.ERROR)
     
     # Windows API and Transparency Management
+    
+    def _apply_click_through_mode(self):
+        """Apply click-through mode directly (for initialization, not toggle)."""
+        try:
+            if not self.hwnd:
+                self._log_message("No window handle for click-through initialization", MessageLevel.WARNING)
+                return False
+            
+            # Set Windows API flags for click-through
+            ex_style = win32gui.GetWindowLong(self.hwnd, win32con.GWL_EXSTYLE)
+            new_ex_style = ex_style | win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
+            win32gui.SetWindowLong(self.hwnd, win32con.GWL_EXSTYLE, new_ex_style)
+            win32gui.SetLayeredWindowAttributes(self.hwnd, 0, self.opacity_level, win32con.LWA_ALPHA)
+            
+            # Hide header and recalculate layout
+            self.title_panel.Hide()
+            self.main_panel.Layout()
+            self.Layout()
+            
+            # Configure for gaming mode (borderless)
+            self._setup_resize_capabilities()
+            
+            # Start key polling for Ctrl+Alt detection
+            self._start_key_polling()
+            self._update_status_indicator("key_polling")
+            
+            self._log_message("Click-through mode applied during initialization", MessageLevel.DEBUG)
+            return True
+            
+        except Exception as e:
+            self._log_message(f"Click-through initialization error: {str(e)}", MessageLevel.ERROR)
+            return False
     
     def _apply_opacity(self, opacity: int) -> bool:
         """Apply opacity using Windows API."""
@@ -642,24 +678,7 @@ class DynamicOverlay(wx.Frame):
             
             self.Bind(wx.EVT_MENU, lambda evt: self.toggle_click_through(), ct_item)
             
-            # Position presets
-            pos_submenu = wx.Menu()
-            
-            # Preset positions
-            pos_presets = [
-                ("Arriba Izquierda", (50, 50)),
-                ("Arriba Derecha", (800, 50)),
-                ("Abajo Izquierda", (50, 400)),
-                ("Abajo Derecha", (800, 400)),
-                ("Centro", (400, 300))
-            ]
-            
-            for name, pos in pos_presets:
-                pos_item = pos_submenu.Append(wx.ID_ANY, name)
-                self.Bind(wx.EVT_MENU, lambda evt, p=pos: self._move_overlay(p), pos_item)
-            
-            menu.AppendSubMenu(pos_submenu, "Mover a...")
-            
+
             # Reset settings
             reset_item = menu.Append(wx.ID_ANY, "Restaurar Configuración")
             self.Bind(wx.EVT_MENU, lambda evt: self._reset_overlay_settings(), reset_item)
