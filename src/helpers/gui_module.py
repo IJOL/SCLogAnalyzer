@@ -10,9 +10,7 @@ import win32con  # Required for window constants like SW_RESTORE
 import win32process  # Required for process-related functions
 import win32api  # Required for sending keystrokes
 import psutil  # Required for process management
-import winreg
 import wx.adv  # Import wx.adv for taskbar icon support
-import sys
 
 from version import get_version  # Using absolute import for module in parent directory
 from .config_utils import get_application_path, get_template_base_dir, get_template_path  # Direct import from same directory
