@@ -162,6 +162,9 @@ class LogAnalyzerFrame(wx.Frame):
         # Initially hide debug elements
         self.update_debug_ui_visibility()
 
+        # Initialize hotkey system after MessageBus is ready
+        wx.CallAfter(self._initialize_hotkey_system)
+
         # --- Suscripción para broadcast_ping_missing: siempre delega a hilo principal con wx.CallAfter ---
         message_bus.on("broadcast_ping_missing", lambda *a, **k: wx.CallAfter(self.handle_broadcast_ping_missing))
         message_bus.on("realtime_reconnected", lambda *a, **k: wx.CallAfter(self.handle_realtime_reconnected))
@@ -181,6 +184,79 @@ class LogAnalyzerFrame(wx.Frame):
         You can safely start wx.Timer or update UI here.
         """
         self.SetStatusText("Warning: No pings received in 120s. Realtime reconnecting...")
+    
+    def _initialize_hotkey_system(self):
+        """Inicializar sistema de hotkeys con manejo de errores"""
+        try:
+            if self.config_manager.get('hotkey_system.enabled', True):
+                from .hotkey_utils import get_hotkey_manager
+                from .overlay_manager import OverlayManager
+                
+                # Obtener instancia singleton del HotkeyManager
+                self.hotkey_manager = get_hotkey_manager()
+                
+                # Iniciar sistema de hotkeys
+                self.hotkey_manager.start_listening()
+                
+                # Registrar hotkeys de sistema
+                self._initialize_system_hotkeys()
+                
+                # Inicializar hotkeys de overlays
+                OverlayManager.initialize_hotkeys()
+                
+                message_bus.publish(
+                    content="Hotkey system initialized successfully",
+                    level=MessageLevel.INFO
+                )
+            else:
+                message_bus.publish(
+                    content="Hotkey system disabled in configuration",
+                    level=MessageLevel.INFO
+                )
+                
+        except Exception as e:
+            message_bus.publish(
+                content=f"Hotkey system initialization failed: {e}",
+                level=MessageLevel.ERROR
+            )
+    
+    def _initialize_system_hotkeys(self):
+        """Registrar hotkeys específicos del sistema principal"""
+        try:
+            # Registrar hotkeys de sistema
+            self.hotkey_manager.register_hotkey("ctrl+alt+m", "system_toggle_monitoring", "Toggle Monitoring")
+            self.hotkey_manager.register_hotkey("ctrl+alt+s", "system_auto_shard", "Auto Shard")
+            self.hotkey_manager.register_hotkey("ctrl+alt+c", "system_open_config", "Open Config")
+            self.hotkey_manager.register_hotkey("ctrl+alt+r", "system_toggle_recording", "Toggle Recording")
+            
+            # Registrar handlers de sistema
+            message_bus.on("system_toggle_monitoring", lambda: self.on_monitor(None))
+            message_bus.on("system_auto_shard", lambda: self.on_autoshard(None))
+            message_bus.on("system_open_config", lambda: self.on_edit_config(None))
+            message_bus.on("system_toggle_recording", lambda: self._toggle_recording_via_hotkey())
+            
+            message_bus.publish(
+                content="System hotkeys registered successfully",
+                level=MessageLevel.DEBUG
+            )
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error registering system hotkeys: {e}",
+                level=MessageLevel.ERROR
+            )
+    
+    def _toggle_recording_via_hotkey(self):
+        """Toggle recording via hotkey - safe wrapper"""
+        try:
+            if hasattr(self, 'recording_switch') and self.recording_switch:
+                # Simular click en el recording switch
+                wx.CallAfter(self.recording_switch._on_click, None)
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error toggling recording via hotkey: {e}",
+                level=MessageLevel.ERROR
+            )
 
     def _create_ui_components(self):
         """Create all UI components for the main application window."""
@@ -941,6 +1017,10 @@ class LogAnalyzerFrame(wx.Frame):
         # Cleanup recording switch timer
         if hasattr(self, 'recording_switch'):
             self.recording_switch.cleanup_timer()
+        
+        # Cleanup hotkey system
+        if hasattr(self, 'hotkey_manager'):
+            self.hotkey_manager.shutdown()
         
         # Restore original stdout
         sys.stdout = sys.__stdout__

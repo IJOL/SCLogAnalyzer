@@ -264,6 +264,88 @@ class OverlayManager:
         return False
     
     @classmethod
+    def initialize_hotkeys(cls):
+        """
+        Registrar hotkeys para gestión de overlays - se llama desde main_frame
+        
+        Método descentralizado que auto-registra los hotkeys de overlay
+        usando lazy imports para evitar dependencias circulares.
+        """
+        try:
+            # Importar hotkey_utils aquí para evitar import circular
+            from .hotkey_utils import get_hotkey_manager
+            
+            hotkey_manager = get_hotkey_manager()
+            
+            # WIDGETS CON OVERLAYMIXIN (funcionalidad overlay ya integrada):
+            hotkey_manager.register_hotkey("ctrl+alt+1", "overlay_toggle_stalled", "Toggle Stalled Widget Overlay")
+            hotkey_manager.register_hotkey("ctrl+alt+2", "overlay_toggle_shared_logs", "Toggle Shared Logs Overlay")
+            
+            # Hotkeys globales de overlay
+            hotkey_manager.register_hotkey("ctrl+alt+0", "overlay_toggle_all", "Toggle All Overlays")
+            hotkey_manager.register_hotkey("ctrl+alt+escape", "overlay_close_all", "Emergency Close All")
+            
+            # Registrar handlers para widgets con OverlayMixin
+            message_bus.on("overlay_toggle_stalled", lambda: cls._toggle_widget_overlay("StalledWidget"))
+            message_bus.on("overlay_toggle_shared_logs", lambda: cls._toggle_widget_overlay("SharedLogsWidget"))
+            message_bus.on("overlay_toggle_all", cls._toggle_all_overlays)
+            message_bus.on("overlay_close_all", cls.close_all_overlays)
+            
+            cls._log_message("Overlay hotkeys registered successfully", MessageLevel.INFO)
+            
+        except Exception as e:
+            cls._log_message(f"Error registering overlay hotkeys: {e}", MessageLevel.ERROR)
+    
+    @classmethod
+    def _toggle_widget_overlay(cls, widget_class_name: str):
+        """Toggle overlay usando lazy import para evitar circular imports"""
+        try:
+            if widget_class_name == "StalledWidget":
+                from .stalled_widget import StalledWidget
+                cls.toggle_overlay(StalledWidget)
+            elif widget_class_name == "SharedLogsWidget": 
+                from .shared_logs_widget import SharedLogsWidget
+                cls.toggle_overlay(SharedLogsWidget)
+            else:
+                cls._log_message(f"Unknown widget class for overlay: {widget_class_name}", MessageLevel.WARNING)
+        except ImportError as e:
+            cls._log_message(f"Error importing {widget_class_name}: {e}", MessageLevel.ERROR)
+        except Exception as e:
+            cls._log_message(f"Error toggling {widget_class_name} overlay: {e}", MessageLevel.ERROR)
+    
+    @classmethod
+    def _toggle_all_overlays(cls):
+        """Toggle todos los overlays activos"""
+        try:
+            active_overlays = cls.get_active_overlays()
+            if not active_overlays:
+                # No hay overlays activos, crear overlays por defecto
+                cls._log_message("No active overlays found, creating default overlays", MessageLevel.INFO)
+                cls._toggle_widget_overlay("StalledWidget")
+                cls._toggle_widget_overlay("SharedLogsWidget")
+            else:
+                # Hay overlays activos, ocultarlos/mostrarlos
+                hidden_count = 0
+                shown_count = 0
+                
+                for overlay_id, overlay in active_overlays.items():
+                    try:
+                        if overlay and not overlay.IsBeingDeleted():
+                            if overlay.IsShown():
+                                overlay.Hide()
+                                hidden_count += 1
+                            else:
+                                overlay.Show()
+                                shown_count += 1
+                    except Exception as e:
+                        cls._log_message(f"Error toggling overlay {overlay_id}: {e}", MessageLevel.WARNING)
+                
+                cls._log_message(f"Toggle all overlays: {shown_count} shown, {hidden_count} hidden", MessageLevel.INFO)
+                        
+        except Exception as e:
+            cls._log_message(f"Error in toggle all overlays: {e}", MessageLevel.ERROR)
+    
+    @classmethod
     def _log_message(cls, message: str, level: MessageLevel = MessageLevel.INFO):
         """
         Log message a través del MessageBus
