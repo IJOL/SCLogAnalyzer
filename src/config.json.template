@@ -64,6 +64,21 @@
         "vip": "👑🌟 {username} detected VIP: {vip}",
         "actor_profile": "{username} 🧑‍🚀📋 {player_name}: {org} {enlisted} {action}\n {all}"
     },
+    "hotkey_system": {
+        "enabled": true,
+        "game_focus_required": true,
+        "target_windows": ["Star Citizen", "Stanton"]
+    },
+    "hotkeys": {
+        "overlay_toggle_stalled": "ctrl+alt+1",
+        "overlay_toggle_shared_logs": "ctrl+alt+2",
+        "overlay_toggle_all": "ctrl+alt+0",
+        "overlay_close_all": "ctrl+alt+escape",
+        "system_toggle_monitoring": "ctrl+alt+m",
+        "system_auto_shard": "ctrl+alt+s",
+        "system_open_config": "ctrl+alt+c",
+        "system_toggle_recording": "ctrl+alt+r"
+    },
     "overlay_settings": {
         "StalledWidget_overlay": {
             "position": {"x": 250, "y": 250},
