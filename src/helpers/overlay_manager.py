@@ -273,25 +273,26 @@ class OverlayManager:
         """
         try:
             # Importar hotkey_utils aquí para evitar import circular
-            from .hotkey_utils import get_hotkey_manager
+            from .hotkey_manager import get_hotkey_manager
             
             hotkey_manager = get_hotkey_manager()
             
             # WIDGETS CON OVERLAYMIXIN (funcionalidad overlay ya integrada):
-            hotkey_manager.register_hotkey("ctrl+alt+1", "overlay_toggle_stalled", "Toggle Stalled Widget Overlay")
-            hotkey_manager.register_hotkey("ctrl+alt+2", "overlay_toggle_shared_logs", "Toggle Shared Logs Overlay")
+            hotkey_manager.register_hotkey("ctrl+alt+1", "overlay_toggle_stalled", "Toggle Stalled Widget Overlay", "Overlay")
+            hotkey_manager.register_hotkey("ctrl+alt+2", "overlay_toggle_shared_logs", "Toggle Shared Logs Overlay", "Overlay")
             
             # Hotkeys globales de overlay
-            hotkey_manager.register_hotkey("ctrl+alt+0", "overlay_toggle_all", "Toggle All Overlays")
-            hotkey_manager.register_hotkey("ctrl+alt+escape", "overlay_close_all", "Emergency Close All")
+            hotkey_manager.register_hotkey("ctrl+alt+0", "overlay_toggle_all", "Toggle All Overlays", "Overlay")
+            hotkey_manager.register_hotkey("ctrl+alt+escape", "overlay_close_all", "Emergency Close All", "Overlay")
             
-            # Registrar handlers para widgets con OverlayMixin
-            message_bus.on("overlay_toggle_stalled", lambda: cls._toggle_widget_overlay("StalledWidget"))
-            message_bus.on("overlay_toggle_shared_logs", lambda: cls._toggle_widget_overlay("SharedLogsWidget"))
-            message_bus.on("overlay_toggle_all", cls._toggle_all_overlays)
-            message_bus.on("overlay_close_all", cls.close_all_overlays)
+            # Registrar handlers para widgets con OverlayMixin - thread safe
+            import wx
+            message_bus.on("overlay_toggle_stalled", lambda: wx.CallAfter(cls._toggle_widget_overlay, "StalledWidget"))
+            message_bus.on("overlay_toggle_shared_logs", lambda: wx.CallAfter(cls._toggle_widget_overlay, "SharedLogsWidget"))
+            message_bus.on("overlay_toggle_all", lambda: wx.CallAfter(cls._toggle_all_overlays))
+            message_bus.on("overlay_close_all", lambda: wx.CallAfter(cls.close_all_overlays))
             
-            cls._log_message("Overlay hotkeys registered successfully", MessageLevel.INFO)
+            cls._log_message("Overlay hotkeys registered successfully")
             
         except Exception as e:
             cls._log_message(f"Error registering overlay hotkeys: {e}", MessageLevel.ERROR)
