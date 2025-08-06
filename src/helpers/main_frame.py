@@ -189,7 +189,7 @@ class LogAnalyzerFrame(wx.Frame):
         """Inicializar sistema de hotkeys con manejo de errores"""
         try:
             if self.config_manager.get('hotkey_system.enabled', True):
-                from .hotkey_utils import get_hotkey_manager
+                from .hotkey_manager import get_hotkey_manager
                 from .overlay_manager import OverlayManager
                 
                 # Obtener instancia singleton del HotkeyManager
@@ -224,16 +224,18 @@ class LogAnalyzerFrame(wx.Frame):
         """Registrar hotkeys específicos del sistema principal"""
         try:
             # Registrar hotkeys de sistema
-            self.hotkey_manager.register_hotkey("ctrl+alt+m", "system_toggle_monitoring", "Toggle Monitoring")
-            self.hotkey_manager.register_hotkey("ctrl+alt+s", "system_auto_shard", "Auto Shard")
-            self.hotkey_manager.register_hotkey("ctrl+alt+c", "system_open_config", "Open Config")
-            self.hotkey_manager.register_hotkey("ctrl+alt+r", "system_toggle_recording", "Toggle Recording")
+            self.hotkey_manager.register_hotkey("ctrl+alt+m", "system_toggle_monitoring", "Toggle Monitoring", "System")
+            self.hotkey_manager.register_hotkey("ctrl+alt+s", "system_auto_shard", "Auto Shard", "System")  
+            self.hotkey_manager.register_hotkey("ctrl+alt+c", "system_open_config", "Open Config", "System")
+            self.hotkey_manager.register_hotkey("ctrl+alt+r", "system_toggle_recording", "Toggle Recording", "System")
+            self.hotkey_manager.register_hotkey("ctrl+alt+n", "system_toggle_notifications", "Toggle Notifications", "System")
             
-            # Registrar handlers de sistema
-            message_bus.on("system_toggle_monitoring", lambda: self.on_monitor(None))
-            message_bus.on("system_auto_shard", lambda: self.on_autoshard(None))
-            message_bus.on("system_open_config", lambda: self.on_edit_config(None))
-            message_bus.on("system_toggle_recording", lambda: self._toggle_recording_via_hotkey())
+            # Registrar handlers de sistema - usar wx.CallAfter para thread safety
+            message_bus.on("system_toggle_monitoring", lambda: wx.CallAfter(self.on_monitor, None))
+            message_bus.on("system_auto_shard", lambda: wx.CallAfter(self.on_autoshard, None))
+            message_bus.on("system_open_config", lambda: wx.CallAfter(self.on_edit_config, None))
+            message_bus.on("system_toggle_recording", lambda: wx.CallAfter(self.on_recording, None))
+            message_bus.on("system_toggle_notifications", lambda: wx.CallAfter(self.on_toggle_notifications, None))
             
             message_bus.publish(
                 content="System hotkeys registered successfully",
@@ -246,17 +248,6 @@ class LogAnalyzerFrame(wx.Frame):
                 level=MessageLevel.ERROR
             )
     
-    def _toggle_recording_via_hotkey(self):
-        """Toggle recording via hotkey - safe wrapper"""
-        try:
-            if hasattr(self, 'recording_switch') and self.recording_switch:
-                # Simular click en el recording switch
-                wx.CallAfter(self.recording_switch._on_click, None)
-        except Exception as e:
-            message_bus.publish(
-                content=f"Error toggling recording via hotkey: {e}",
-                level=MessageLevel.ERROR
-            )
 
     def _create_ui_components(self):
         """Create all UI components for the main application window."""
@@ -1243,7 +1234,7 @@ class LogAnalyzerFrame(wx.Frame):
 
     def on_simulate_notification(self, event):
         # Muestra una notificación de prueba.
-        message_bus.publish('log_message', content='Esta es una notificación de prueba.', level=MessageLevel.INFO, metadata={'show_notification': True})
+        message_bus.emit('show_windows_notification', 'Esta es una notificación de prueba.')
 
     def on_profile_request(self, event):
         dlg = wx.TextEntryDialog(self, "Introduce el nombre del jugador:", "Profile Request")
