@@ -147,6 +147,7 @@ class ConfigDialog(wx.Dialog):
         self.colors_grid = self.add_colors_tab(notebook, "Colors", self.config_data.get("colors", {}))  # Add colors tab
         self.tabs_grid = self.add_tab(notebook, "Dynamic Tabs", "tabs")  # Add tabs configuration grid
         self.add_vips_tab(notebook, "VIP Players", self.config_data.get("important_players", ""))
+        self.add_hotkeys_tab(notebook, "⌨️ Hotkeys")  # Add hotkeys configuration tab
 
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -391,6 +392,32 @@ class ConfigDialog(wx.Dialog):
         raw = self.vip_text_ctrl.GetValue()
         items = [x.strip() for x in raw.split('\n') if x.strip()]
         return ','.join(items)
+    
+    def add_hotkeys_tab(self, notebook, title):
+        """Add hotkeys configuration tab to the notebook"""
+        try:
+            from .hotkey_capture_widget import HotkeyConfigPanel
+            
+            # Create hotkeys panel
+            hotkeys_panel = HotkeyConfigPanel(notebook, self.config_manager)
+            notebook.AddPage(hotkeys_panel, title)
+            
+            # Store reference for saving
+            self.hotkeys_panel = hotkeys_panel
+            
+        except ImportError as e:
+            # Fallback if hotkey widget isn't available
+            panel = wx.Panel(notebook)
+            sizer = wx.BoxSizer(wx.VERTICAL)
+            
+            error_text = wx.StaticText(
+                panel, 
+                label=f"⚠️ Hotkey configuration not available\n\nError: {e}\n\nHotkeys can be configured manually in config.json"
+            )
+            sizer.Add(error_text, 1, wx.EXPAND | wx.ALL, 20)
+            
+            panel.SetSizer(sizer)
+            notebook.AddPage(panel, title)
 
 class ProcessDialog(wx.Dialog):
     """Dialog for selecting a file and processing it."""
