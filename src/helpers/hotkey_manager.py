@@ -22,6 +22,7 @@ class HotkeyManager:
     
     def __init__(self, config_manager):
         self.hotkeys: Dict[str, str] = {}  # combination -> event_name (vacío al inicio)
+        self.hotkey_metadata: Dict[str, dict] = {}  # event_name -> {description, category, default_combination}
         self.config_manager = config_manager
         self.listener: Optional[keyboard.GlobalHotKeys] = None
         self.listener_lock = threading.Lock()
@@ -50,37 +51,31 @@ class HotkeyManager:
             self.game_focus_required = hotkey_config.get('game_focus_required', True)
             
             if self.game_focus_required:
-                target_windows = hotkey_config.get('target_windows', ["Star Citizen", "Stanton"])
+                target_windows = hotkey_config.get('target_windows', ["Star Citizen"])
+                # Añadir la propia aplicación a las ventanas objetivo
+                target_windows = list(target_windows)  # Hacer copia para no modificar el original
+                target_windows.append('SC Log Analyzer')
                 self.game_focus_detector = GameFocusDetector(target_windows)
                 self.game_focus_detector.add_focus_callback(self._on_focus_change)
                 self.game_focus_detector.start_monitoring()
                 
                 message_bus.publish(
-                    "GameFocusDetector initialized for hotkey restriction",
-                    MessageLevel.DEBUG
+                    content="GameFocusDetector initialized for hotkey restriction",
+                    level=MessageLevel.INFO
                 )
         except Exception as e:
             message_bus.publish(
-                f"Error initializing GameFocusDetector: {e}",
-                MessageLevel.WARNING
+                content=f"Error initializing GameFocusDetector: {e}",
+                level=MessageLevel.WARNING
             )
             self.game_focus_required = False
     
     def _on_focus_change(self, focused: bool, window_info: str):
         """Callback para cambios de foco del juego"""
+        old_focused = self.is_game_focused
         self.is_game_focused = focused
-        if focused:
-            message_bus.publish(
-                f"Game focused - hotkeys enabled: {window_info}",
-                MessageLevel.DEBUG
-            )
-        else:
-            message_bus.publish(
-                f"Game not focused - hotkeys restricted: {window_info}",
-                MessageLevel.DEBUG
-            )
-    
-    def register_hotkey(self, default_combination: str, event_name: str, description: str = ""):
+            
+    def register_hotkey(self, default_combination: str, event_name: str, description: str = "", category: str = "General"):
         """
         Registrar hotkey con configuración config-first
         
@@ -88,6 +83,7 @@ class HotkeyManager:
             default_combination: Combinación por defecto (ej: "ctrl+alt+1")
             event_name: Nombre del evento a emitir en MessageBus
             description: Descripción del hotkey para UI
+            category: Categoría para organizar en UI (System, Overlay, etc.)
         """
         try:
             # Config-first: usar config si existe, fallback a default
@@ -98,34 +94,35 @@ class HotkeyManager:
             if actual_combination in self.hotkeys:
                 existing_event = self.hotkeys[actual_combination]
                 message_bus.publish(
-                    f"Hotkey conflict: '{actual_combination}' already registered for '{existing_event}', overwriting with '{event_name}'",
-                    MessageLevel.WARNING
+                    content=f"Hotkey conflict: '{actual_combination}' overwritten {existing_event} -> {event_name}",
+                    level=MessageLevel.WARNING
                 )
             
-            # Registrar
+            # Registrar hotkey y metadata
             self.hotkeys[actual_combination] = event_name
+            self.hotkey_metadata[event_name] = {
+                'description': description,
+                'category': category, 
+                'default_combination': default_combination,
+                'current_combination': actual_combination
+            }
             self.stats['registered_hotkeys'] = len(self.hotkeys)
-            
-            message_bus.publish(
-                f"Hotkey registered: {actual_combination} -> {event_name} ({description})",
-                MessageLevel.DEBUG
-            )
             
             # Reiniciar listener con nuevos hotkeys
             self._restart_listener()
             
         except Exception as e:
             message_bus.publish(
-                f"Error registering hotkey {default_combination} -> {event_name}: {e}",
-                MessageLevel.ERROR
+                content=f"Error registering hotkey {default_combination} -> {event_name}: {e}",
+                level=MessageLevel.ERROR
             )
     
     def _validate_combination(self, combo: str, fallback: str, event_name: str) -> str:
         """Validar combinación de hotkey, usar fallback si inválida"""
         if not combo or not self._is_valid_combo_format(combo):
             message_bus.publish(
-                f"Invalid hotkey '{combo}' for event '{event_name}', using default '{fallback}'",
-                MessageLevel.WARNING
+                content=f"Invalid hotkey '{combo}' for {event_name}, using default '{fallback}'",
+                level=MessageLevel.WARNING
             )
             return fallback
         return combo
@@ -161,21 +158,21 @@ class HotkeyManager:
         try:
             if not self.config_manager.get('hotkey_system.enabled', True):
                 message_bus.publish(
-                    "Hotkey system disabled in configuration",
-                    MessageLevel.INFO
+                    content="Hotkey system disabled in configuration",
+                    level=MessageLevel.INFO
                 )
                 return
             
             self._restart_listener()
             message_bus.publish(
-                f"Hotkey system started with {len(self.hotkeys)} registered hotkeys",
-                MessageLevel.INFO
+                content=f"Hotkey system started with {len(self.hotkeys)} hotkeys",
+                level=MessageLevel.INFO
             )
             
         except Exception as e:
             message_bus.publish(
-                f"Error starting hotkey listener: {e}",
-                MessageLevel.ERROR
+                content=f"Error starting hotkey listener: {e}",
+                level=MessageLevel.ERROR
             )
     
     def stop_listening(self):
@@ -185,14 +182,10 @@ class HotkeyManager:
                 try:
                     self.listener.stop()
                     self.listener = None
-                    message_bus.publish(
-                        "Hotkey listener stopped",
-                        MessageLevel.DEBUG
-                    )
                 except Exception as e:
                     message_bus.publish(
-                        f"Error stopping hotkey listener: {e}",
-                        MessageLevel.WARNING
+                        content=f"Error stopping hotkey listener: {e}",
+                        level=MessageLevel.WARNING
                     )
     
     def shutdown(self):
@@ -205,13 +198,13 @@ class HotkeyManager:
                 self.game_focus_detector.stop_monitoring()
             
             message_bus.publish(
-                "HotkeyManager shutdown completed",
-                MessageLevel.INFO
+                content="HotkeyManager shutdown completed",
+                level=MessageLevel.INFO
             )
         except Exception as e:
             message_bus.publish(
-                f"Error during HotkeyManager shutdown: {e}",
-                MessageLevel.ERROR
+                content=f"Error during HotkeyManager shutdown: {e}",
+                level=MessageLevel.ERROR
             )
     
     def _restart_listener(self):
@@ -245,16 +238,11 @@ class HotkeyManager:
                 if hotkey_mapping:
                     self.listener = keyboard.GlobalHotKeys(hotkey_mapping)
                     self.listener.start()
-                    
-                    message_bus.publish(
-                        f"Hotkey listener restarted with {len(hotkey_mapping)} combinations",
-                        MessageLevel.DEBUG
-                    )
                 
             except Exception as e:
                 message_bus.publish(
-                    f"Error creating hotkey listener: {e}",
-                    MessageLevel.ERROR
+                    content=f"Error creating hotkey listener: {e}",
+                    level=MessageLevel.ERROR
                 )
                 self.listener = None
     
@@ -265,15 +253,55 @@ class HotkeyManager:
             parts = combination.lower().split('+')
             pynput_parts = []
             
+            # Mapping de teclas especiales que requieren formato <key> en pynput
+            special_keys = {
+                'ctrl': '<ctrl>',
+                'alt': '<alt>', 
+                'shift': '<shift>',
+                'cmd': '<cmd>',
+                'win': '<cmd>',  # Windows key maps to cmd in pynput
+                'escape': '<esc>',
+                'esc': '<esc>',
+                'enter': '<enter>',
+                'return': '<enter>',
+                'space': '<space>',
+                'tab': '<tab>',
+                'backspace': '<backspace>',
+                'delete': '<delete>',
+                'home': '<home>',
+                'end': '<end>',
+                'page_up': '<page_up>',
+                'page_down': '<page_down>',
+                'up': '<up>',
+                'down': '<down>',
+                'left': '<left>',
+                'right': '<right>',
+                'insert': '<insert>',
+                'caps_lock': '<caps_lock>',
+                'scroll_lock': '<scroll_lock>',
+                'num_lock': '<num_lock>',
+                'print_screen': '<print_screen>',
+                'pause': '<pause>',
+                'menu': '<menu>'
+            }
+            
             for part in parts:
                 part = part.strip()
-                if part in {'ctrl', 'alt', 'shift', 'cmd', 'win'}:
+                if part in special_keys:
+                    pynput_parts.append(special_keys[part])
+                elif part.startswith('f') and len(part) > 1 and part[1:].isdigit():
+                    # Teclas de función F1-F24
                     pynput_parts.append(f'<{part}>')
                 else:
+                    # Teclas regulares (letras, números)
                     pynput_parts.append(part)
             
             return '+'.join(pynput_parts)
-        except Exception:
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error converting hotkey format '{combination}': {e}",
+                level=MessageLevel.ERROR
+            )
             return None
     
     def _on_hotkey_pressed(self, event_name: str):
@@ -284,25 +312,16 @@ class HotkeyManager:
             # Verificar si el juego debe tener foco
             if self.game_focus_required and not self.is_game_focused:
                 self.stats['blocked_presses'] += 1
-                message_bus.publish(
-                    f"Hotkey blocked (game not focused): {event_name}",
-                    MessageLevel.DEBUG
-                )
                 return
             
             # Emitir evento en MessageBus
             self.stats['successful_presses'] += 1
             message_bus.emit(event_name)
             
-            message_bus.publish(
-                f"Hotkey executed: {event_name}",
-                MessageLevel.DEBUG
-            )
-            
         except Exception as e:
             message_bus.publish(
-                f"Error processing hotkey event {event_name}: {e}",
-                MessageLevel.ERROR
+                content=f"Error processing hotkey event {event_name}: {e}",
+                level=MessageLevel.ERROR
             )
     
     def get_registered_hotkeys(self) -> Dict[str, str]:
@@ -312,6 +331,102 @@ class HotkeyManager:
     def get_stats(self) -> Dict[str, int]:
         """Obtener estadísticas del sistema de hotkeys"""
         return self.stats.copy()
+    
+    def get_registered_hotkeys_info(self) -> Dict[str, dict]:
+        """
+        Obtener información completa de hotkeys registrados
+        
+        Returns:
+            Dict con event_name -> {description, category, default_combination, current_combination}
+        """
+        return self.hotkey_metadata.copy()
+    
+    def get_hotkeys_by_category(self) -> Dict[str, Dict[str, dict]]:
+        """
+        Obtener hotkeys organizados por categoría
+        
+        Returns:
+            Dict con category -> {event_name -> {description, default_combination, current_combination}}
+        """
+        by_category = {}
+        for event_name, metadata in self.hotkey_metadata.items():
+            category = metadata['category']
+            if category not in by_category:
+                by_category[category] = {}
+            by_category[category][event_name] = metadata
+        return by_category
+
+
+# === Singleton Management - trasladado de hotkey_utils.py ===
+import threading
+from typing import Optional
+
+# Variables globales para singleton thread-safe
+_hotkey_manager_instance: Optional[HotkeyManager] = None
+_hotkey_manager_lock = threading.Lock()
+
+
+def get_hotkey_manager() -> HotkeyManager:
+    """
+    Obtener instancia singleton del HotkeyManager de forma thread-safe.
+    
+    Sigue el mismo patrón que get_config_manager() para consistencia
+    con el resto del codebase.
+    
+    Returns:
+        HotkeyManager: Instancia única del gestor de hotkeys
+    """
+    global _hotkey_manager_instance
+    
+    with _hotkey_manager_lock:
+        if _hotkey_manager_instance is None:
+            # Obtener ConfigManager usando la función existente
+            from .config_utils import get_config_manager
+            config_manager = get_config_manager()
+            
+            # Crear instancia única de HotkeyManager
+            _hotkey_manager_instance = HotkeyManager(config_manager)
+            
+            # Log de inicialización usando el sistema de logging del proyecto
+            try:
+                from .message_bus import message_bus, MessageLevel
+                message_bus.publish(
+                    content="HotkeyManager singleton instance created",
+                    level=MessageLevel.INFO
+                )
+            except ImportError:
+                # Fallback si MessageBus no está disponible
+                print("HotkeyManager singleton instance created")
+        
+        return _hotkey_manager_instance
+
+
+def reset_hotkey_manager():
+    """
+    Reset del singleton para testing.
+    
+    SOLO para uso en tests - no usar en código de producción.
+    """
+    global _hotkey_manager_instance
+    
+    with _hotkey_manager_lock:
+        if _hotkey_manager_instance is not None:
+            try:
+                _hotkey_manager_instance.shutdown()
+            except:
+                pass
+            _hotkey_manager_instance = None
+
+
+def is_hotkey_manager_initialized() -> bool:
+    """
+    Verificar si el HotkeyManager ya está inicializado.
+    
+    Returns:
+        bool: True si la instancia existe
+    """
+    global _hotkey_manager_instance
+    return _hotkey_manager_instance is not None
 
 
 def main():

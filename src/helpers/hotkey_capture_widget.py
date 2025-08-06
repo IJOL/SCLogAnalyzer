@@ -8,6 +8,7 @@ en el sistema de configuración de SC Log Analyzer.
 """
 
 import wx
+import wx.lib.scrolledpanel
 from typing import Callable, Optional, Set
 
 
@@ -34,38 +35,40 @@ class HotkeyCapture(wx.Panel):
         self._apply_dark_theme()
     
     def _create_ui(self, label: str):
-        """Crear interfaz del widget"""
+        """Crear interfaz del widget más compacta"""
         sizer = wx.BoxSizer(wx.HORIZONTAL)
         
-        # Label descriptivo
+        # Label descriptivo más corto
         label_text = wx.StaticText(self, label=f"{label}:")
-        label_text.SetMinSize((200, -1))
-        sizer.Add(label_text, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        label_text.SetMinSize((180, -1))
+        sizer.Add(label_text, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 2)
         
-        # Display del hotkey actual
+        # Display del hotkey actual - MOSTRAR VALOR INICIAL
         self.hotkey_display = wx.TextCtrl(self, value=self.current_hotkey, style=wx.TE_READONLY)
-        sizer.Add(self.hotkey_display, 1, wx.EXPAND | wx.ALL, 5)
+        self.hotkey_display.SetMinSize((120, -1))  # Tamaño fijo más pequeño
+        sizer.Add(self.hotkey_display, 0, wx.EXPAND | wx.ALL, 2)
         
-        # Botón de captura
-        self.capture_btn = wx.Button(self, label="🎯 Capturar")
+        # Botones más pequeños
+        self.capture_btn = wx.Button(self, label="Capturar")
+        self.capture_btn.SetMinSize((65, -1))
         self.capture_btn.Bind(wx.EVT_BUTTON, self._on_capture_click)
-        sizer.Add(self.capture_btn, 0, wx.ALL, 5)
+        sizer.Add(self.capture_btn, 0, wx.ALL, 2)
         
-        # Botón de limpiar
-        clear_btn = wx.Button(self, label="🗑️ Limpiar")
+        clear_btn = wx.Button(self, label="Limpiar")  
+        clear_btn.SetMinSize((55, -1))
         clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_click)
-        sizer.Add(clear_btn, 0, wx.ALL, 5)
+        sizer.Add(clear_btn, 0, wx.ALL, 2)
         
         self.SetSizer(sizer)
     
     def _apply_dark_theme(self):
-        """Aplicar tema oscuro al widget"""
-        # Colores oscuros para el display
-        self.hotkey_display.SetBackgroundColour(wx.Colour(45, 45, 45))
-        self.hotkey_display.SetForegroundColour(wx.Colour(255, 255, 255))
+        """Aplicar tema legible - fondo claro con texto oscuro"""
+        # Colores legibles para el display
+        self.hotkey_display.SetBackgroundColour(wx.Colour(240, 240, 240))
+        self.hotkey_display.SetForegroundColour(wx.Colour(0, 0, 0))
         
-        # Color de fondo del panel
-        self.SetBackgroundColour(wx.Colour(32, 32, 32))
+        # Color de fondo del panel - usar default del sistema
+        # self.SetBackgroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW))
     
     def _on_capture_click(self, event):
         """Manejar click del botón de captura"""
@@ -136,7 +139,17 @@ class HotkeyCapture(wx.Panel):
             wx.WXK_RETURN: "enter",
             wx.WXK_ESCAPE: "escape",
             wx.WXK_TAB: "tab",
-            wx.WXK_BACK: "backspace"
+            wx.WXK_BACK: "backspace",
+            wx.WXK_DELETE: "delete",
+            wx.WXK_HOME: "home",
+            wx.WXK_END: "end",
+            wx.WXK_PAGEUP: "page_up",
+            wx.WXK_PAGEDOWN: "page_down",
+            wx.WXK_UP: "up",
+            wx.WXK_DOWN: "down", 
+            wx.WXK_LEFT: "left",
+            wx.WXK_RIGHT: "right",
+            wx.WXK_INSERT: "insert"
         }
         
         # Teclas especiales
@@ -188,7 +201,10 @@ class HotkeyCapture(wx.Panel):
             hotkey: Nueva combinación de hotkey (formato: "ctrl+alt+1")
         """
         self.current_hotkey = hotkey
-        self.hotkey_display.SetValue(hotkey)
+        
+        # Mostrar el valor actual o placeholder si está vacío
+        display_value = hotkey if hotkey else "(sin configurar)"
+        self.hotkey_display.SetValue(display_value)
         
         # Notificar callback si existe
         if self.callback:
@@ -227,7 +243,9 @@ class HotkeyCapture(wx.Panel):
         valid_modifiers = {'ctrl', 'alt', 'shift', 'cmd'}
         valid_keys = set('abcdefghijklmnopqrstuvwxyz0123456789')
         valid_keys.update([f'f{i}' for i in range(1, 25)])  # F1-F24
-        valid_keys.update(['space', 'enter', 'tab', 'escape', 'backspace'])
+        valid_keys.update(['space', 'enter', 'tab', 'escape', 'esc', 'backspace', 'delete', 
+                          'home', 'end', 'page_up', 'page_down', 'up', 'down', 'left', 'right',
+                          'insert', 'caps_lock', 'scroll_lock', 'num_lock', 'print_screen', 'pause', 'menu'])
         
         for part in parts:
             part = part.strip()
@@ -251,7 +269,7 @@ class HotkeyCapture(wx.Panel):
 
 
 class HotkeyConfigPanel(wx.Panel):
-    """Panel completo de configuración de hotkeys"""
+    """Panel completo de configuración de hotkeys - sin botones propios"""
     
     def __init__(self, parent, config_manager):
         """
@@ -269,143 +287,156 @@ class HotkeyConfigPanel(wx.Panel):
         self._load_current_hotkeys()
     
     def _create_ui(self):
-        """Crear interfaz del panel"""
+        """Crear interfaz del panel compacta"""
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         
-        # Título
-        title = wx.StaticText(self, label="⌨️ Configuración de Hotkeys")
+        # Título más pequeño
+        title = wx.StaticText(self, label="⌨️ Hotkeys")
         title_font = title.GetFont()
-        title_font.SetPointSize(14)
+        title_font.SetPointSize(12)
         title_font.SetWeight(wx.FONTWEIGHT_BOLD)
         title.SetFont(title_font)
-        main_sizer.Add(title, 0, wx.ALL | wx.CENTER, 10)
+        main_sizer.Add(title, 0, wx.ALL | wx.CENTER, 5)
         
-        # Scroll panel para las configuraciones
-        scroll_panel = wx.ScrolledWindow(self)
-        scroll_panel.SetScrollRate(5, 5)
-        scroll_sizer = wx.BoxSizer(wx.VERTICAL)
+        # Panel scrollable para el contenido
+        scrolled_panel = wx.lib.scrolledpanel.ScrolledPanel(self)
+        scrolled_panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        scrolled_panel.SetBackgroundColour(wx.Colour(240, 240, 240))
+        config_sizer = wx.BoxSizer(wx.VERTICAL)
         
-        # Sección de Overlays
-        overlay_box = wx.StaticBox(scroll_panel, label="🖼️ Hotkeys de Overlays")
-        overlay_sizer = wx.StaticBoxSizer(overlay_box, wx.VERTICAL)
+        # Sección de Overlays - más compacta
+        # Crear widgets dinámicamente basado en hotkeys registrados
+        try:
+            from .hotkey_manager import get_hotkey_manager
+            hotkey_manager = get_hotkey_manager()
+            hotkeys_by_category = hotkey_manager.get_hotkeys_by_category()
+            
+            # Mapeo de iconos por categoría
+            category_icons = {
+                'Overlay': '🖼️',
+                'System': '🛠️',
+                'General': '⚙️'
+            }
+            
+            first_category = True
+            for category_name in sorted(hotkeys_by_category.keys()):
+                # Spacer entre categorías (excepto la primera)
+                if not first_category:
+                    config_sizer.Add(wx.StaticLine(scrolled_panel), 0, wx.EXPAND | wx.ALL, 5)
+                first_category = False
+                
+                # Añadir label de categoría
+                icon = category_icons.get(category_name, '📋')
+                category_label = wx.StaticText(scrolled_panel, label=f"{icon} {category_name}:")
+                category_label.SetFont(wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+                config_sizer.Add(category_label, 0, wx.ALL, 3)
+                
+                # Añadir widgets de hotkeys de esta categoría
+                category_hotkeys = hotkeys_by_category[category_name]
+                for event_name, metadata in category_hotkeys.items():
+                    description = metadata['description']
+                    widget = HotkeyCapture(scrolled_panel, description, callback=lambda hk, en=event_name: self._on_hotkey_changed(en, hk))
+                    self.hotkey_widgets[event_name] = widget
+                    config_sizer.Add(widget, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
+                    
+        except Exception as e:
+            # Fallback si hay algún problema - mostrar mensaje de error
+            error_label = wx.StaticText(scrolled_panel, label="Error loading hotkeys dynamically")
+            config_sizer.Add(error_label, 0, wx.ALL, 5)
         
-        overlay_hotkeys = [
-            ("overlay_toggle_stalled", "Toggle Stalled Widget"),
-            ("overlay_toggle_shared_logs", "Toggle Shared Logs"),
-            ("overlay_toggle_all", "Toggle All Overlays"),
-            ("overlay_close_all", "Emergency Close All")
-        ]
+        # Info más corta
+        config_sizer.Add(wx.StaticLine(scrolled_panel), 0, wx.EXPAND | wx.ALL, 5)
+        info_text = wx.StaticText(scrolled_panel, 
+            label="💡 Usa 'Capturar' para cambiar hotkey. Cambios se guardan con 'Accept'.")
+        info_text.SetFont(wx.Font(8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_ITALIC, wx.FONTWEIGHT_NORMAL))
+        config_sizer.Add(info_text, 0, wx.ALL, 5)
         
-        for event_name, description in overlay_hotkeys:
-            widget = HotkeyCapture(scroll_panel, description, callback=lambda hk, en=event_name: self._on_hotkey_changed(en, hk))
-            self.hotkey_widgets[event_name] = widget
-            overlay_sizer.Add(widget, 0, wx.EXPAND | wx.ALL, 5)
-        
-        scroll_sizer.Add(overlay_sizer, 0, wx.EXPAND | wx.ALL, 10)
-        
-        # Sección de Sistema
-        system_box = wx.StaticBox(scroll_panel, label="🛠️ Hotkeys de Sistema")
-        system_sizer = wx.StaticBoxSizer(system_box, wx.VERTICAL)
-        
-        system_hotkeys = [
-            ("system_toggle_monitoring", "Toggle Monitoring"),
-            ("system_auto_shard", "Auto Shard"),
-            ("system_open_config", "Open Config"),
-            ("system_toggle_recording", "Toggle Recording")
-        ]
-        
-        for event_name, description in system_hotkeys:
-            widget = HotkeyCapture(scroll_panel, description, callback=lambda hk, en=event_name: self._on_hotkey_changed(en, hk))
-            self.hotkey_widgets[event_name] = widget
-            system_sizer.Add(widget, 0, wx.EXPAND | wx.ALL, 5)
-        
-        scroll_sizer.Add(system_sizer, 0, wx.EXPAND | wx.ALL, 10)
-        
-        scroll_panel.SetSizer(scroll_sizer)
-        main_sizer.Add(scroll_panel, 1, wx.EXPAND | wx.ALL, 5)
-        
-        # Botones de acción
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        
-        reset_btn = wx.Button(self, label="↺ Restaurar Defaults")
-        reset_btn.Bind(wx.EVT_BUTTON, self._on_reset_defaults)
-        button_sizer.Add(reset_btn, 0, wx.ALL, 5)
-        
-        button_sizer.AddStretchSpacer()
-        
-        apply_btn = wx.Button(self, label="✓ Aplicar")
-        apply_btn.Bind(wx.EVT_BUTTON, self._on_apply_changes)
-        button_sizer.Add(apply_btn, 0, wx.ALL, 5)
-        
-        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        scrolled_panel.SetSizer(config_sizer)
+        main_sizer.Add(scrolled_panel, 1, wx.EXPAND | wx.ALL, 5)
         
         self.SetSizer(main_sizer)
     
     def _load_current_hotkeys(self):
-        """Cargar hotkeys actuales desde configuración"""
+        """Cargar hotkeys actuales dinámicamente desde HotkeyManager registrados"""
+        try:
+            from .hotkey_manager import get_hotkey_manager
+            hotkey_manager = get_hotkey_manager()
+            
+            # Obtener hotkeys registrados dinámicamente 
+            registered_hotkeys = hotkey_manager.get_registered_hotkeys_info()
+            
+            for event_name, metadata in registered_hotkeys.items():
+                if event_name in self.hotkey_widgets:
+                    # Usar combinación actual (ya procesada por ConfigManager)
+                    current_combination = metadata.get('current_combination', '')
+                    # Convertir de formato pynput a formato config para mostrar
+                    display_combination = self._convert_from_pynput_format(current_combination)
+                    self.hotkey_widgets[event_name].set_hotkey(display_combination)
+                    
+        except Exception as e:
+            # Fallback si hay algún problema
+            pass
+        
+        # Guardar estado inicial DESPUÉS de cargar valores
+        self.initial_state = {}
         for event_name, widget in self.hotkey_widgets.items():
-            current_hotkey = self.config_manager.get(f'hotkeys.{event_name}', '')
-            widget.set_hotkey(current_hotkey)
+            self.initial_state[event_name] = widget.get_hotkey()
+    
+    def get_modified_hotkeys(self):
+        """Solo devuelve lo que cambió respecto al estado inicial"""
+        modified = {}
+        for event_name, widget in self.hotkey_widgets.items():
+            current = widget.get_hotkey()
+            initial = self.initial_state.get(event_name, '')
+            
+            if current != initial:
+                modified[f'hotkeys.{event_name}'] = current
+        
+        return modified
+    
+    def _convert_from_pynput_format(self, pynput_combination: str) -> str:
+        """Convertir de formato pynput a formato config para mostrar"""
+        if not pynput_combination:
+            return ''
+        
+        # Mapeo inverso de pynput a config
+        reverse_mapping = {
+            '<ctrl>': 'ctrl',
+            '<alt>': 'alt', 
+            '<shift>': 'shift',
+            '<cmd>': 'cmd',
+            '<esc>': 'escape',
+            '<enter>': 'enter',
+            '<space>': 'space',
+            '<tab>': 'tab'
+        }
+        
+        result = pynput_combination
+        for pynput_key, config_key in reverse_mapping.items():
+            result = result.replace(pynput_key, config_key)
+        
+        return result
     
     def _on_hotkey_changed(self, event_name: str, hotkey: str):
-        """Callback cuando se cambia un hotkey"""
+        """Callback cuando se cambia un hotkey - solo actualizar en memoria, no guardar"""
         # Validar hotkey
         if hotkey and not self.hotkey_widgets[event_name].validate_hotkey(hotkey):
             wx.MessageBox(
                 f"Formato de hotkey inválido: '{hotkey}'",
-                "Error de Validación",
+                "Error de Validación", 
                 wx.OK | wx.ICON_ERROR
             )
             return
         
-        # Actualizar configuración
+        # Solo actualizar en memoria - no guardar hasta que user presione Accept
         self.config_manager.set(f'hotkeys.{event_name}', hotkey)
-        
-        # Log del cambio
-        try:
-            from .message_bus import message_bus, MessageLevel
-            message_bus.publish(
-                f"Hotkey changed: {event_name} = '{hotkey}'",
-                MessageLevel.DEBUG
-            )
-        except ImportError:
-            print(f"Hotkey changed: {event_name} = '{hotkey}'")
     
-    def _on_reset_defaults(self, event):
-        """Restaurar hotkeys a valores por defecto"""
-        defaults = {
-            "overlay_toggle_stalled": "ctrl+alt+1",
-            "overlay_toggle_shared_logs": "ctrl+alt+2",
-            "overlay_toggle_all": "ctrl+alt+0",
-            "overlay_close_all": "ctrl+alt+escape",
-            "system_toggle_monitoring": "ctrl+alt+m",
-            "system_auto_shard": "ctrl+alt+s",
-            "system_open_config": "ctrl+alt+c",
-            "system_toggle_recording": "ctrl+alt+r"
-        }
-        
-        for event_name, default_hotkey in defaults.items():
-            if event_name in self.hotkey_widgets:
-                self.hotkey_widgets[event_name].set_hotkey(default_hotkey)
-    
-    def _on_apply_changes(self, event):
-        """Aplicar cambios de configuración"""
-        try:
-            # Guardar configuración
-            self.config_manager.save_config()
-            
-            wx.MessageBox(
-                "Configuración de hotkeys aplicada correctamente.\n\nLos cambios serán efectivos inmediatamente.",
-                "Configuración Aplicada",
-                wx.OK | wx.ICON_INFORMATION
-            )
-            
-        except Exception as e:
-            wx.MessageBox(
-                f"Error aplicando configuración: {e}",
-                "Error",
-                wx.OK | wx.ICON_ERROR
-            )
+    def get_current_hotkeys(self):
+        """Obtener configuración actual de hotkeys desde los widgets"""
+        current_config = {}
+        for event_name, widget in self.hotkey_widgets.items():
+            current_config[f'hotkeys.{event_name}'] = widget.get_hotkey()
+        return current_config
 
 
 def main():

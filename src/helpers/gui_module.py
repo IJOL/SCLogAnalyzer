@@ -331,6 +331,11 @@ class ConfigDialog(wx.Dialog):
         # Save VIP string (from textarea)
         self.config_manager.set("important_players", self.get_vip_string())
         
+        # Save hotkeys data - only modified values
+        hotkey_config = self.hotkeys_panel.get_modified_hotkeys()
+        for key, value in hotkey_config.items():
+            self.config_manager.set(key, value)
+        
         # Save to file
         self.config_manager.save_config()
         
