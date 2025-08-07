@@ -753,15 +753,6 @@ class DynamicOverlay(wx.Frame):
         except:
             print(f"[Overlay:{self.overlay_id}] {message}")
     
-    def _cleanup_overlay(self):
-        """Clean up overlay resources."""
-        try:
-            self._stop_key_polling()
-            self._stop_mouse_polling()
-            self._save_overlay_settings()
-        except Exception as e:
-            self._log_message(f"Cleanup error: {str(e)}", MessageLevel.ERROR)
-    
     # Public API
     
     def get_widget_instance(self):
