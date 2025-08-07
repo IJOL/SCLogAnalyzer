@@ -166,9 +166,10 @@ class OrgMembersWidget(wx.Panel):
     
     def _perform_search(self, org_symbol):
         """Ejecuta la búsqueda de organización"""
-        if get_org_members_count(org_symbol) > 500:
+        num_members = get_org_members_count(org_symbol)
+        if num_members > 500:
             result = wx.MessageBox(
-                "This organization has more than 500 members. This may take a while to load.\n\nDo you want to continue?",
+                f"This organization has {num_members} members. This may take a while to load.\n\nDo you want to continue?",
                 "Warning", 
                 wx.OK | wx.CANCEL | wx.ICON_WARNING
             )
