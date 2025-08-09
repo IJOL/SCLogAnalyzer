@@ -167,11 +167,6 @@ class OverlayMixin:
             # Mostrar overlay
             overlay.Show()
             
-            # Log de éxito
-            self._log_overlay_message(
-                f"Overlay creado para {self.__class__.__name__}",
-                MessageLevel.INFO
-            )
             
         except Exception as e:
             self._log_overlay_message(
@@ -195,6 +190,8 @@ class OverlayMixin:
         """
         try:
             # Obtener argumentos para la instanciación del widget
+
+
             widget_args, widget_kwargs = self._get_overlay_widget_args(context_data)
             
             # Toggle usando OverlayManager
@@ -210,17 +207,9 @@ class OverlayMixin:
             if overlay:
                 # Se creó un nuevo overlay
                 overlay.Show()
-                self._log_overlay_message(
-                    f"Overlay abierto para {self.__class__.__name__}",
-                    MessageLevel.INFO
-                )
             else:
                 # Se cerró un overlay existente
-                self._log_overlay_message(
-                    f"Overlay cerrado para {self.__class__.__name__}",
-                    MessageLevel.INFO
-                )
-                
+                pass
         except Exception as e:
             self._log_overlay_message(
                 f"Error en toggle overlay para {self.__class__.__name__}: {str(e)}",
