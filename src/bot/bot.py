@@ -11,8 +11,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import the config manager and data provider from helpers
-from helpers.config_utils import get_config_manager
-from helpers.data_provider import get_data_provider
+from helpers.core.config_utils import get_config_manager
+from helpers.core.data_provider import get_data_provider
 
 # Configure logging
 logging.basicConfig(

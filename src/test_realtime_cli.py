@@ -15,10 +15,10 @@ import random
 os.environ['SCLOG_DISABLE_STDOUT_REDIRECT'] = '1'
 
 sys.path.append('./src')
-from helpers.realtime_bridge import RealtimeBridge
-from helpers.config_utils import ConfigManager
-from helpers.message_bus import message_bus, setup_console_handler
-from helpers import supabase_manager
+from helpers.core.realtime_bridge import RealtimeBridge
+from helpers.core.config_utils import ConfigManager
+from helpers.core.message_bus import message_bus, setup_console_handler
+from helpers.core import supabase_manager
 
 setup_console_handler(debug=True, replay_history=False)
 message_bus.set_debug_mode(True)

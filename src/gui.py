@@ -13,7 +13,7 @@ import wx
 import sys
 import os
 import traceback
-from helpers.main_frame import LogAnalyzerFrame, main
+from helpers.ui.main_frame import LogAnalyzerFrame, main
 
 def global_exception_handler(exc_type, exc_value, exc_traceback):
     """Global exception handler to catch any unhandled exceptions"""
@@ -26,7 +26,7 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
     
     # Try to log through message bus if available
     try:
-        from helpers.message_bus import message_bus, MessageLevel
+        from helpers.core.message_bus import message_bus, MessageLevel
         message_bus.publish(
             content=f"GLOBAL EXCEPTION: {exc_type.__name__}: {str(exc_value)}",
             level=MessageLevel.ERROR
