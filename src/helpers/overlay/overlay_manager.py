@@ -20,11 +20,22 @@ from ..core.message_bus import message_bus, MessageLevel
 class OverlayManager:
     """Factory y gestor de overlays dinámicos con integración MessageBus"""
     
-    # Registry de overlays activos
-    _active_overlays: Dict[str, DynamicOverlay] = {}
+    # Singleton instance
+    _instance = None
+    
+    def __init__(self):
+        """Inicializar instancia singleton"""
+        # Registry de overlays activos - ahora como variable de instancia
+        self._active_overlays: Dict[str, DynamicOverlay] = {}
     
     @classmethod
-    def create_overlay(cls, 
+    def get_instance(cls) -> 'OverlayManager':
+        """Obtener instancia singleton de OverlayManager"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
+    def create_overlay(self, 
                       widget_class: Type[wx.Panel], 
                       widget_args: Optional[list] = None,
                       widget_kwargs: Optional[Dict[str, Any]] = None,
@@ -57,17 +68,17 @@ class OverlayManager:
                 overlay_id = f"{widget_class.__name__}_overlay_{timestamp}"
             
             # Verificar si ya existe un overlay con este ID
-            if overlay_id in cls._active_overlays:
-                existing_overlay = cls._active_overlays[overlay_id]
+            if overlay_id in self._active_overlays:
+                existing_overlay = self._active_overlays[overlay_id]
                 if existing_overlay and not existing_overlay.IsBeingDeleted():
                     # Si ya existe, traerlo al frente
                     existing_overlay.Raise()
                     existing_overlay.RequestUserAttention()
-                    cls._log_message(f"Overlay existente traído al frente: {overlay_id}", MessageLevel.INFO)
+                    self._log_message(f"Overlay existente traído al frente: {overlay_id}", MessageLevel.INFO)
                     return existing_overlay
                 else:
                     # Si existe pero está siendo eliminado, limpiar referencia
-                    del cls._active_overlays[overlay_id]
+                    del self._active_overlays[overlay_id]
             
             # Preparar argumentos para DynamicOverlay
             overlay_kwargs = {
@@ -91,24 +102,23 @@ class OverlayManager:
             overlay = DynamicOverlay(**overlay_kwargs)
             
             # Registrar overlay activo
-            cls._active_overlays[overlay_id] = overlay
+            self._active_overlays[overlay_id] = overlay
             
             # Configurar cleanup automático cuando se cierre
-            overlay.Bind(wx.EVT_CLOSE, lambda evt: cls._on_overlay_close(overlay_id, evt))
+            overlay.Bind(wx.EVT_CLOSE, lambda evt: self._on_overlay_close(overlay_id, evt))
             
             
             return overlay
             
         except Exception as e:
             # Log de error
-            cls._log_message(
+            self._log_message(
                 f"Error creando overlay {overlay_id or 'unknown'}: {str(e)}",
                 MessageLevel.ERROR
             )
             raise
     
-    @classmethod
-    def get_active_overlays(cls) -> Dict[str, DynamicOverlay]:
+    def get_active_overlays(self) -> Dict[str, DynamicOverlay]:
         """
         Obtener todos los overlays activos
         
@@ -117,17 +127,16 @@ class OverlayManager:
         """
         # Limpiar referencias a overlays eliminados
         to_remove = []
-        for overlay_id, overlay in cls._active_overlays.items():
+        for overlay_id, overlay in self._active_overlays.items():
             if not overlay or overlay.IsBeingDeleted():
                 to_remove.append(overlay_id)
         
         for overlay_id in to_remove:
-            del cls._active_overlays[overlay_id]
+            del self._active_overlays[overlay_id]
         
-        return cls._active_overlays.copy()
+        return self._active_overlays.copy()
     
-    @classmethod
-    def close_overlay(cls, overlay_id: str) -> bool:
+    def close_overlay(self, overlay_id: str) -> bool:
         """
         Cerrar overlay específico por ID
         
@@ -137,19 +146,18 @@ class OverlayManager:
         Returns:
             bool: True si el overlay fue cerrado exitosamente
         """
-        if overlay_id in cls._active_overlays:
-            overlay = cls._active_overlays[overlay_id]
+        if overlay_id in self._active_overlays:
+            overlay = self._active_overlays[overlay_id]
             if overlay and not overlay.IsBeingDeleted():
                 # Eliminar del registry ANTES de cerrar para evitar race condition
-                del cls._active_overlays[overlay_id]
+                del self._active_overlays[overlay_id]
                 overlay.Close()
                 return True
         return False
     
-    @classmethod
-    def close_all_overlays(cls):
+    def close_all_overlays(self):
         """Cerrar todos los overlays activos"""
-        overlays_to_close = list(cls._active_overlays.values())
+        overlays_to_close = list(self._active_overlays.values())
         closed_count = 0
         
         for overlay in overlays_to_close:
@@ -157,11 +165,10 @@ class OverlayManager:
                 overlay.Close()
                 closed_count += 1
         
-        cls._active_overlays.clear()
-        cls._log_message(f"Cerrados {closed_count} overlays", MessageLevel.INFO)
+        self._active_overlays.clear()
+        self._log_message(f"Cerrados {closed_count} overlays", MessageLevel.INFO)
     
-    @classmethod
-    def toggle_overlay(cls, widget_class: Type[wx.Panel], 
+    def toggle_overlay(self, widget_class: Type[wx.Panel], 
                       widget_args: Optional[list] = None,
                       widget_kwargs: Optional[Dict[str, Any]] = None,
                       **kwargs) -> DynamicOverlay:
@@ -184,7 +191,7 @@ class OverlayManager:
         
         # Buscar si existe un overlay de esta clase
         existing_overlay_id = None
-        for overlay_id, overlay in cls._active_overlays.items():
+        for overlay_id, overlay in self._active_overlays.items():
             if (overlay and not overlay.IsBeingDeleted() and 
                 overlay_id.startswith(base_overlay_id)):
                 existing_overlay_id = overlay_id
@@ -192,11 +199,11 @@ class OverlayManager:
         
         if existing_overlay_id:
             # Si existe, cerrarlo
-            cls.close_overlay(existing_overlay_id)
+            self.close_overlay(existing_overlay_id)
             return None
         else:
             # Si no existe, crearlo
-            overlay = cls.create_overlay(
+            overlay = self.create_overlay(
                 widget_class=widget_class,
                 widget_args=widget_args,
                 widget_kwargs=widget_kwargs,
@@ -208,8 +215,7 @@ class OverlayManager:
                 overlay.Show()
             return overlay
     
-    @classmethod
-    def _on_overlay_close(cls, overlay_id: str, event):
+    def _on_overlay_close(self, overlay_id: str, event):
         """
         Callback para cleanup cuando se cierra un overlay
         
@@ -217,24 +223,22 @@ class OverlayManager:
             overlay_id: ID del overlay que se está cerrando
             event: Evento de cierre
         """
-        if overlay_id in cls._active_overlays:
-            del cls._active_overlays[overlay_id]
+        if overlay_id in self._active_overlays:
+            del self._active_overlays[overlay_id]
         
-        cls._log_message(f"Overlay limpiado del registry: {overlay_id}", MessageLevel.DEBUG)
+        self._log_message(f"Overlay limpiado del registry: {overlay_id}", MessageLevel.DEBUG)
         event.Skip()  # Permitir que el evento continúe
     
-    @classmethod
-    def get_overlay_count(cls) -> int:
+    def get_overlay_count(self) -> int:
         """
         Obtener número de overlays activos
         
         Returns:
             int: Número de overlays actualmente activos
         """
-        return len(cls.get_active_overlays())
+        return len(self.get_active_overlays())
     
-    @classmethod
-    def has_overlay(cls, overlay_id: str) -> bool:
+    def has_overlay(self, overlay_id: str) -> bool:
         """
         Verificar si existe un overlay específico
         
@@ -244,10 +248,9 @@ class OverlayManager:
         Returns:
             bool: True si el overlay existe y está activo
         """
-        return overlay_id in cls.get_active_overlays()
+        return overlay_id in self.get_active_overlays()
     
-    @classmethod
-    def has_overlay_for_widget(cls, widget_class: Type[wx.Panel]) -> bool:
+    def has_overlay_for_widget(self, widget_class: Type[wx.Panel]) -> bool:
         """
         Verificar si existe un overlay para una clase de widget específica
         
@@ -258,13 +261,12 @@ class OverlayManager:
             bool: True si existe al menos un overlay de esta clase de widget
         """
         base_overlay_id = f"{widget_class.__name__}_overlay"
-        for overlay_id in cls.get_active_overlays():
+        for overlay_id in self.get_active_overlays():
             if overlay_id.startswith(base_overlay_id):
                 return True
         return False
     
-    @classmethod
-    def initialize_hotkeys(cls):
+    def initialize_hotkeys(self):
         """
         Registrar hotkeys para gestión de overlays - se llama desde main_frame
         
@@ -286,62 +288,37 @@ class OverlayManager:
             hotkey_manager.register_hotkey("ctrl+alt+escape", "overlay_close_all", "Emergency Close All", "Overlay")
             
             # Registrar handlers para widgets con OverlayMixin - thread safe
-            import wx
-            message_bus.on("overlay_toggle_stalled", lambda: wx.CallAfter(cls._toggle_widget_overlay, "StalledWidget"))
-            message_bus.on("overlay_toggle_shared_logs", lambda: wx.CallAfter(cls._toggle_shared_logs_overlay))
-            message_bus.on("overlay_toggle_all", lambda: wx.CallAfter(cls._toggle_all_overlays))
-            message_bus.on("overlay_close_all", lambda: wx.CallAfter(cls.close_all_overlays))
-            
-            cls._log_message("Overlay hotkeys registered successfully")
-            
-        except Exception as e:
-            cls._log_message(f"Error registering overlay hotkeys: {e}", MessageLevel.ERROR)
-    
-    @classmethod
-    def _toggle_widget_overlay(cls, widget_class_name: str):
-        """Toggle overlay usando lazy import para evitar circular imports"""
-        try:
-            if widget_class_name == "StalledWidget":
-                from ..widgets.stalled_widget import StalledWidget
-                cls.toggle_overlay(StalledWidget)
-            elif widget_class_name == "SharedLogsWidget": 
-                from ..widgets.shared_logs_widget import SharedLogsWidget
-                cls.toggle_overlay(SharedLogsWidget)
-            else:
-                cls._log_message(f"Unknown widget class for overlay: {widget_class_name}", MessageLevel.WARNING)
-        except ImportError as e:
-            cls._log_message(f"Error importing {widget_class_name}: {e}", MessageLevel.ERROR)
-        except Exception as e:
-            cls._log_message(f"Error toggling {widget_class_name} overlay: {e}", MessageLevel.ERROR)
-    
-    @classmethod
-    def _toggle_shared_logs_overlay(cls):
-        """Toggle SharedLogsWidget overlay usando instancia controladora"""
-        try:
+            # Lazy imports para evitar import circular
+            from ..widgets.stalled_widget import StalledWidget
             from ..widgets.shared_logs_widget import SharedLogsWidget
             
-            # Usar la instancia controladora si existe
-            if SharedLogsWidget._controller_instance:
-                SharedLogsWidget._controller_instance._toggle_widget_overlay()
-            else:
-                cls._log_message("No SharedLogsWidget controller instance found", MessageLevel.WARNING)
-                # Fallback al método estático
-                cls._toggle_widget_overlay("SharedLogsWidget")
-        except ImportError as e:
-            cls._log_message(f"Error importing SharedLogsWidget: {e}", MessageLevel.ERROR)
+            import wx
+            instance = self
+            message_bus.on("overlay_toggle_stalled", lambda: wx.CallAfter(lambda: instance.toggle_overlay(StalledWidget)))
+            message_bus.on("overlay_toggle_shared_logs", lambda: wx.CallAfter(lambda: instance.toggle_overlay(SharedLogsWidget)))
+            message_bus.on("overlay_toggle_all", lambda: wx.CallAfter(self._toggle_all_overlays))
+            message_bus.on("overlay_close_all", lambda: wx.CallAfter(self.close_all_overlays))
+            
+            self._log_message("Overlay hotkeys registered successfully")
+            
         except Exception as e:
-            cls._log_message(f"Error toggling SharedLogsWidget overlay: {e}", MessageLevel.ERROR)
+            self._log_message(f"Error registering overlay hotkeys: {e}", MessageLevel.ERROR)
     
-    @classmethod
-    def _toggle_all_overlays(cls):
+    
+    
+    def _toggle_all_overlays(self):
         """Toggle todos los overlays activos"""
         try:
-            active_overlays = cls.get_active_overlays()
+            # Lazy imports para evitar import circular
+            from ..widgets.stalled_widget import StalledWidget
+            from ..widgets.shared_logs_widget import SharedLogsWidget
+            
+            active_overlays = self.get_active_overlays()
             if not active_overlays:
                 # No hay overlays activos, crear overlays por defecto
-                cls._log_message("No active overlays found, creating default overlays", MessageLevel.INFO)
-                cls._toggle_widget_overlay("StalledWidget")
-                cls._toggle_shared_logs_overlay()
+                self._log_message("No active overlays found, creating default overlays", MessageLevel.INFO)
+                self.toggle_overlay(StalledWidget)
+                self.toggle_overlay(SharedLogsWidget)
             else:
                 # Hay overlays activos, ocultarlos/mostrarlos
                 hidden_count = 0
@@ -357,15 +334,14 @@ class OverlayManager:
                                 overlay.Show()
                                 shown_count += 1
                     except Exception as e:
-                        cls._log_message(f"Error toggling overlay {overlay_id}: {e}", MessageLevel.WARNING)
+                        self._log_message(f"Error toggling overlay {overlay_id}: {e}", MessageLevel.WARNING)
                 
-                cls._log_message(f"Toggle all overlays: {shown_count} shown, {hidden_count} hidden", MessageLevel.INFO)
+                self._log_message(f"Toggle all overlays: {shown_count} shown, {hidden_count} hidden", MessageLevel.INFO)
                         
         except Exception as e:
-            cls._log_message(f"Error in toggle all overlays: {e}", MessageLevel.ERROR)
+            self._log_message(f"Error in toggle all overlays: {e}", MessageLevel.ERROR)
     
-    @classmethod
-    def _log_message(cls, message: str, level: MessageLevel = MessageLevel.INFO):
+    def _log_message(self, message: str, level: MessageLevel = MessageLevel.INFO):
         """
         Log message a través del MessageBus
         
@@ -397,7 +373,7 @@ def create_widget_overlay(widget_class: Type[wx.Panel],
     Returns:
         DynamicOverlay: Instancia del overlay creado
     """
-    return OverlayManager.create_overlay(
+    return OverlayManager.get_instance().create_overlay(
         widget_class=widget_class,
         widget_args=widget_args,
         widget_kwargs=widget_kwargs,
@@ -421,7 +397,7 @@ def toggle_widget_overlay(widget_class: Type[wx.Panel],
     Returns:
         Optional[DynamicOverlay]: El overlay creado, o None si se cerró uno existente
     """
-    return OverlayManager.toggle_overlay(
+    return OverlayManager.get_instance().toggle_overlay(
         widget_class=widget_class,
         widget_args=widget_args,
         widget_kwargs=widget_kwargs,
@@ -436,12 +412,12 @@ def get_active_overlay_count() -> int:
     Returns:
         int: Número de overlays actualmente activos
     """
-    return OverlayManager.get_overlay_count()
+    return OverlayManager.get_instance().get_overlay_count()
 
 
 def close_all_overlays():
     """Función de conveniencia para cerrar todos los overlays"""
-    OverlayManager.close_all_overlays()
+    OverlayManager.get_instance().close_all_overlays()
 
 
 # Validación del sistema para testing

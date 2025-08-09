@@ -114,7 +114,7 @@ class OverlayMixin:
         """
         try:
             # Determinar si ya existe un overlay de este widget
-            has_overlay = OverlayManager.has_overlay_for_widget(self.__class__)
+            has_overlay = OverlayManager.get_instance().has_overlay_for_widget(self.__class__)
             
             # Texto dinámico según estado
             if has_overlay:
@@ -155,7 +155,7 @@ class OverlayMixin:
             widget_args, widget_kwargs = self._get_overlay_widget_args(context_data)
             
             # Crear overlay usando OverlayManager
-            overlay = OverlayManager.create_overlay(
+            overlay = OverlayManager.get_instance().create_overlay(
                 widget_class=self.__class__,
                 widget_args=widget_args,
                 widget_kwargs=widget_kwargs,
@@ -195,7 +195,7 @@ class OverlayMixin:
             widget_args, widget_kwargs = self._get_overlay_widget_args(context_data)
             
             # Toggle usando OverlayManager
-            overlay = OverlayManager.toggle_overlay(
+            overlay = OverlayManager.get_instance().toggle_overlay(
                 widget_class=self.__class__,
                 widget_args=widget_args,
                 widget_kwargs=widget_kwargs,
@@ -203,13 +203,6 @@ class OverlayMixin:
                 size=self._get_overlay_default_size(),
                 position=self._get_overlay_default_position()
             )
-            
-            if overlay:
-                # Se creó un nuevo overlay
-                overlay.Show()
-            else:
-                # Se cerró un overlay existente
-                pass
         except Exception as e:
             self._log_overlay_message(
                 f"Error en toggle overlay para {self.__class__.__name__}: {str(e)}",
@@ -279,7 +272,7 @@ class OverlayMixin:
         try:
             # Cerrar todos los overlays de este tipo de widget
             widget_class_name = self.__class__.__name__
-            active_overlays = OverlayManager.get_active_overlays()
+            active_overlays = OverlayManager.get_instance().get_active_overlays()
             
             overlays_to_close = []
             for overlay_id, overlay in active_overlays.items():
@@ -287,7 +280,7 @@ class OverlayMixin:
                     overlays_to_close.append(overlay_id)
             
             for overlay_id in overlays_to_close:
-                OverlayManager.close_overlay(overlay_id)
+                OverlayManager.get_instance().close_overlay(overlay_id)
                 
             if overlays_to_close:
                 self._log_overlay_message(
@@ -347,7 +340,7 @@ def add_overlay_option_to_menu(widget_instance,
     # Crear función de callback
     def create_overlay(event):
         try:
-            overlay = OverlayManager.create_overlay(
+            overlay = OverlayManager.get_instance().create_overlay(
                 widget_class=widget_instance.__class__,
                 widget_args=[],
                 widget_kwargs={},

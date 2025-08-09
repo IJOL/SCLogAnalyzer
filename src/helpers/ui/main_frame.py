@@ -208,7 +208,7 @@ class LogAnalyzerFrame(wx.Frame):
                 self._initialize_system_hotkeys()
                 
                 # Inicializar hotkeys de overlays
-                OverlayManager.initialize_hotkeys()
+                OverlayManager.get_instance().initialize_hotkeys()
                 
                 message_bus.publish(
                     content="Hotkey system initialized successfully",
