@@ -10,6 +10,7 @@ from .message_bus import message_bus, MessageLevel
 from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
 from .ui_components import DarkThemeButton
 from .overlay_mixin import OverlayMixin
+from .debug_utils import critical_path, trace
 
 
 class StalledWidget(wx.Panel, OverlayMixin):
@@ -99,7 +100,7 @@ class StalledWidget(wx.Panel, OverlayMixin):
     
     def _subscribe_to_events(self):
         """Suscribe a eventos del message bus"""
-        message_bus.on("remote_realtime_event", self._handle_remote_event)
+        self.message_bus_subscription_id = message_bus.on("remote_realtime_event", self._handle_remote_event)
     
     def _calculate_progressive_ttl(self, player_data, player_name):
         """NEW TTL calculation with 300s initial and max 600s"""
@@ -314,18 +315,21 @@ class StalledWidget(wx.Panel, OverlayMixin):
         # Actualizar UI
         wx.CallAfter(self._refresh_ui)
     
+    @critical_path
     def _start_ttl_timer(self):
         """Inicia el timer para limpieza automática TTL"""
         self.ttl_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._cleanup_expired_data, self.ttl_timer)
         self.ttl_timer.Start(30000)  # Revisar cada 30 segundos
     
+    @critical_path
     def _start_ui_refresh_timer(self):
         """Inicia el timer para actualización periódica de UI (TTL, tiempos)"""
         self.ui_refresh_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._periodic_ui_refresh, self.ui_refresh_timer)
         self.ui_refresh_timer.Start(2000)  # Actualizar UI cada 2 segundos
     
+    @critical_path
     def _cleanup_expired_data(self, event):
         """Limpia datos expirados según TTL progresivo"""
         current_time = datetime.now()
@@ -347,6 +351,7 @@ class StalledWidget(wx.Panel, OverlayMixin):
         if expired_players:
             wx.CallAfter(self._refresh_ui)
     
+    @critical_path
     def _periodic_ui_refresh(self, event):
         """Actualización periódica de UI para mostrar TTL y tiempos en tiempo real"""
         # Solo refrescar si hay datos y el widget es visible
@@ -646,8 +651,10 @@ Detalle por fuente:
                 }
         return None
     
+    @critical_path
     def cleanup_timers(self):
         """Limpia y detiene todos los timers"""
+        
         # Detener timer TTL
         if hasattr(self, 'ttl_timer') and self.ttl_timer:
             self.ttl_timer.Stop()
@@ -663,13 +670,22 @@ Detalle por fuente:
         context_data = {"player_name": player_name, "source": "stalled_widget"}
         self.add_overlay_toggle_option(menu, context_data)
 
-    def __del__(self):
-        """Cleanup al destruir el widget"""
+    @critical_path
+    def Destroy(self):
+        """Cleanup oficial wxPython antes de destrucción"""
         try:
+            # Desconectar MessageBus subscription
+            if hasattr(self, 'message_bus_subscription_id'):
+                message_bus.off(self.message_bus_subscription_id)
+            
+            # Detener timers wx
             self.cleanup_timers()
-            self.cleanup_overlays()  # Limpiar overlays asociados
-        except:
-            pass  # Evitar errores durante shutdown
+            
+        except Exception as e:
+            pass  # Ignore cleanup errors
+        
+        return super().Destroy()
+
     
     def _get_sources_info(self, player_name):
         """Obtiene información detallada de las fuentes que reportan un jugador"""
