@@ -14,14 +14,18 @@ import io
 
 # Global constant to control tracing
 # Set this to True to enable function call tracing
-ENABLE_FUNCTION_TRACING = True
+ENABLE_FUNCTION_TRACING = False  # Disabled by default for production
+
+# Global constant to control critical path debugging
+# Set this to True to enable enhanced debugging for timer handlers and cleanup methods
+ENABLE_CRITICAL_PATH_DEBUG = False  # Disabled by default for production
 
 # Configure a dedicated logger for tracing that's separate from the main application logs
 _trace_logger = logging.getLogger('function_tracer')
 _trace_logger.setLevel(logging.DEBUG)
 
 # Set this to False to completely disable file handler creation
-_ENABLE_FILE_LOGGING = True
+_ENABLE_FILE_LOGGING = ENABLE_FUNCTION_TRACING  # Only enable file logging when tracing is enabled
 
 if _ENABLE_FILE_LOGGING:
     # Determine the log file path
@@ -67,8 +71,9 @@ def trace(func: F) -> F:
                 # Format arguments
         arg_str = _format_arguments(func, args, kwargs)
         
-        # Log function entry
-        _trace_logger.debug(f"ENTER | {module_name}.{func_name} | Args: {arg_str}")
+        # Log function entry with thread info for better debugging
+        thread_name = _get_current_thread_name()
+        _trace_logger.debug(f"ENTER | Thread: {thread_name} | {module_name}.{func_name} | Args: {arg_str}")
         
         start_time = time.time()
         try:
@@ -82,15 +87,20 @@ def trace(func: F) -> F:
             result_str = _format_result(result)
             
             # Log function exit with result
-            _trace_logger.debug(f"EXIT  | {module_name}.{func_name} | Duration: {duration:.6f}s | Result: {result_str}")
+            _trace_logger.debug(f"EXIT  | Thread: {thread_name} | {module_name}.{func_name} | Duration: {duration:.6f}s | Result: {result_str}")
             
             return result
         except Exception as e:
             # Calculate execution time even for exceptions
             duration = time.time() - start_time
             
-            # Log the exception
-            _trace_logger.error(f"ERROR | {module_name}.{func_name} | Duration: {duration:.6f}s | Exception: {e.__class__.__name__}: {str(e)}")
+            # Log the exception with full traceback for critical methods
+            if _is_critical_path_function(func_name):
+                import traceback
+                tb_str = traceback.format_exc()
+                _trace_logger.error(f"CRITICAL ERROR | Thread: {thread_name} | {module_name}.{func_name} | Duration: {duration:.6f}s | Exception: {e.__class__.__name__}: {str(e)} | Traceback: {tb_str}")
+            else:
+                _trace_logger.error(f"ERROR | Thread: {thread_name} | {module_name}.{func_name} | Duration: {duration:.6f}s | Exception: {e.__class__.__name__}: {str(e)}")
             
             # Re-raise the exception
             raise
@@ -205,3 +215,109 @@ def get_function_tracing_status() -> bool:
         True if function tracing is enabled, False otherwise
     """
     return ENABLE_FUNCTION_TRACING
+
+def _is_critical_path_function(func_name: str) -> bool:
+    """
+    Determine if a function is on a critical path requiring enhanced debugging.
+    
+    Args:
+        func_name: The function name to check
+        
+    Returns:
+        True if the function is critical and needs enhanced debugging
+    """
+    if not ENABLE_CRITICAL_PATH_DEBUG:
+        return False
+        
+    critical_patterns = [
+        'cleanup_timers',
+        '_cleanup_expired_data', 
+        '_periodic_ui_refresh',
+        '_start_ttl_timer',
+        '_start_ui_refresh_timer',
+        'Destroy',
+        'cleanup',
+        'timer',
+        'overlay'
+    ]
+    
+    return any(pattern.lower() in func_name.lower() for pattern in critical_patterns)
+
+def critical_path(func: F) -> F:
+    """
+    Enhanced decorator for critical path functions with detailed logging.
+    Provides comprehensive debugging for timer handlers, cleanup methods, and overlay operations.
+    
+    Args:
+        func: The critical function to trace
+        
+    Returns:
+        The wrapped function with enhanced tracing
+    """
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        # If tracing is disabled, just call the function directly
+        if not ENABLE_FUNCTION_TRACING:
+            return func(*args, **kwargs)
+        
+        # Get enhanced function info
+        module_name = func.__module__
+        func_name = func.__qualname__
+        thread_name = _get_current_thread_name()
+        
+        # Format arguments with more detail for critical functions
+        arg_str = _format_arguments(func, args, kwargs)
+        
+        # Enhanced entry logging for critical paths
+        _trace_logger.info(f"🔥 CRITICAL ENTER | Thread: {thread_name} | {module_name}.{func_name} | Args: {arg_str}")
+        
+        start_time = time.time()
+        try:
+            # Call the function
+            result = func(*args, **kwargs)
+            
+            # Calculate execution time
+            duration = time.time() - start_time
+            
+            # Format the result
+            result_str = _format_result(result)
+            
+            # Enhanced exit logging
+            _trace_logger.info(f"✅ CRITICAL EXIT  | Thread: {thread_name} | {module_name}.{func_name} | Duration: {duration:.6f}s | Result: {result_str}")
+            
+            return result
+        except Exception as e:
+            # Calculate execution time even for exceptions
+            duration = time.time() - start_time
+            
+            # Enhanced error logging with full traceback
+            import traceback
+            tb_str = traceback.format_exc()
+            _trace_logger.error(f"💥 CRITICAL FATAL | Thread: {thread_name} | {module_name}.{func_name} | Duration: {duration:.6f}s | Exception: {e.__class__.__name__}: {str(e)} | Full Traceback:\n{tb_str}")
+            
+            # Re-raise the exception
+            raise
+    
+    return wrapper  # type: ignore
+
+def _get_current_thread_name() -> str:
+    """
+    Get the current thread name for debugging.
+    
+    Returns:
+        Current thread name or ID
+    """
+    import threading
+    current_thread = threading.current_thread()
+    return current_thread.name if current_thread.name else f"Thread-{current_thread.ident}"
+
+def set_critical_path_debug(enabled: bool) -> None:
+    """
+    Enable or disable critical path debugging.
+    
+    Args:
+        enabled: True to enable critical path debugging, False to disable
+    """
+    global ENABLE_CRITICAL_PATH_DEBUG
+    ENABLE_CRITICAL_PATH_DEBUG = enabled
+    _trace_logger.info(f"Critical path debugging {'enabled' if enabled else 'disabled'}")
