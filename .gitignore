@@ -210,3 +210,5 @@ node_modules/
 # tasks.json
 # tasks/ 
 
+overlay_hybrid_efficient.py
+poc_hotkey_system.py
