@@ -12,11 +12,42 @@ except Exception:
 import wx
 import sys
 import os
+import traceback
 from helpers.main_frame import LogAnalyzerFrame, main
+
+def global_exception_handler(exc_type, exc_value, exc_traceback):
+    """Global exception handler to catch any unhandled exceptions"""
+    error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    print(f"\n=== GLOBAL EXCEPTION CAUGHT ===")
+    print(f"Exception Type: {exc_type.__name__}")
+    print(f"Exception Message: {str(exc_value)}")
+    print(f"Full Traceback:\n{error_msg}")
+    print(f"=== END GLOBAL EXCEPTION ===")
+    
+    # Try to log through message bus if available
+    try:
+        from helpers.message_bus import message_bus, MessageLevel
+        message_bus.publish(
+            content=f"GLOBAL EXCEPTION: {exc_type.__name__}: {str(exc_value)}",
+            level=MessageLevel.ERROR
+        )
+        message_bus.publish(
+            content=f"TRACEBACK: {error_msg}",
+            level=MessageLevel.ERROR
+        )
+    except:
+        pass
+    
+    # Call the original handler to maintain normal behavior
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
 # This is the new entry point for the SC Log Analyzer application
 # The actual implementation has been moved to the helpers module
 # for better organization and maintainability.
 
 if __name__ == "__main__":
+    # Install global exception handler
+    sys.excepthook = global_exception_handler
+    print("=== GLOBAL EXCEPTION HANDLER INSTALLED ===")
+    
     main()
