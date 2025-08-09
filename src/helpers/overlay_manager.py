@@ -96,11 +96,6 @@ class OverlayManager:
             # Configurar cleanup automático cuando se cierre
             overlay.Bind(wx.EVT_CLOSE, lambda evt: cls._on_overlay_close(overlay_id, evt))
             
-            # Log de éxito
-            cls._log_message(
-                f"Overlay creado: {overlay_id} ({widget_class.__name__})",
-                MessageLevel.INFO
-            )
             
             return overlay
             
@@ -145,8 +140,9 @@ class OverlayManager:
         if overlay_id in cls._active_overlays:
             overlay = cls._active_overlays[overlay_id]
             if overlay and not overlay.IsBeingDeleted():
+                # Eliminar del registry ANTES de cerrar para evitar race condition
+                del cls._active_overlays[overlay_id]
                 overlay.Close()
-                cls._log_message(f"Overlay cerrado: {overlay_id}", MessageLevel.INFO)
                 return True
         return False
     
@@ -200,13 +196,17 @@ class OverlayManager:
             return None
         else:
             # Si no existe, crearlo
-            return cls.create_overlay(
+            overlay = cls.create_overlay(
                 widget_class=widget_class,
                 widget_args=widget_args,
                 widget_kwargs=widget_kwargs,
                 overlay_id=kwargs.get('overlay_id', base_overlay_id),
                 **{k: v for k, v in kwargs.items() if k != 'overlay_id'}
             )
+            # Mostrar el overlay si se creó exitosamente
+            if overlay:
+                overlay.Show()
+            return overlay
     
     @classmethod
     def _on_overlay_close(cls, overlay_id: str, event):
@@ -288,7 +288,7 @@ class OverlayManager:
             # Registrar handlers para widgets con OverlayMixin - thread safe
             import wx
             message_bus.on("overlay_toggle_stalled", lambda: wx.CallAfter(cls._toggle_widget_overlay, "StalledWidget"))
-            message_bus.on("overlay_toggle_shared_logs", lambda: wx.CallAfter(cls._toggle_widget_overlay, "SharedLogsWidget"))
+            message_bus.on("overlay_toggle_shared_logs", lambda: wx.CallAfter(cls._toggle_shared_logs_overlay))
             message_bus.on("overlay_toggle_all", lambda: wx.CallAfter(cls._toggle_all_overlays))
             message_bus.on("overlay_close_all", lambda: wx.CallAfter(cls.close_all_overlays))
             
@@ -315,6 +315,24 @@ class OverlayManager:
             cls._log_message(f"Error toggling {widget_class_name} overlay: {e}", MessageLevel.ERROR)
     
     @classmethod
+    def _toggle_shared_logs_overlay(cls):
+        """Toggle SharedLogsWidget overlay usando instancia controladora"""
+        try:
+            from .shared_logs_widget import SharedLogsWidget
+            
+            # Usar la instancia controladora si existe
+            if SharedLogsWidget._controller_instance:
+                SharedLogsWidget._controller_instance._toggle_widget_overlay()
+            else:
+                cls._log_message("No SharedLogsWidget controller instance found", MessageLevel.WARNING)
+                # Fallback al método estático
+                cls._toggle_widget_overlay("SharedLogsWidget")
+        except ImportError as e:
+            cls._log_message(f"Error importing SharedLogsWidget: {e}", MessageLevel.ERROR)
+        except Exception as e:
+            cls._log_message(f"Error toggling SharedLogsWidget overlay: {e}", MessageLevel.ERROR)
+    
+    @classmethod
     def _toggle_all_overlays(cls):
         """Toggle todos los overlays activos"""
         try:
@@ -323,7 +341,7 @@ class OverlayManager:
                 # No hay overlays activos, crear overlays por defecto
                 cls._log_message("No active overlays found, creating default overlays", MessageLevel.INFO)
                 cls._toggle_widget_overlay("StalledWidget")
-                cls._toggle_widget_overlay("SharedLogsWidget")
+                cls._toggle_shared_logs_overlay()
             else:
                 # Hay overlays activos, ocultarlos/mostrarlos
                 hidden_count = 0
