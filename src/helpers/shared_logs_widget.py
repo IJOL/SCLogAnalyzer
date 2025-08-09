@@ -305,18 +305,20 @@ class SharedLogsWidget(UltimateListCtrlAdapter, OverlayMixin):
         context_data = {"clicked_index": clicked_idx, "source": "shared_logs"}
         self.add_overlay_toggle_option(menu, context_data)
 
-    def __del__(self):
-        """Cleanup al destruir instancia"""
+    def Destroy(self):
+        """Cleanup oficial wxPython antes de destrucción"""
         try:
-            if hasattr(self, 'is_controller') and self.is_controller:
-                # Si se destruye la controladora, resetear para que la próxima tome control
+            if self.is_controller:
+                # Desconectar MessageBus y limpiar referencia controladora
+                message_bus.off("remote_realtime_event", self._on_remote_log_event)
                 SharedLogsWidget._controller_instance = None
             else:
-                # Remover de la lista de oyentes
+                # Remover inmediatamente de lista de listeners
                 if self in SharedLogsWidget._listener_instances:
                     SharedLogsWidget._listener_instances.remove(self)
             
-            # Limpiar overlays asociados
-            self.cleanup_overlays()
-        except (AttributeError, ValueError):
-            pass  # Ignorar errores de cleanup durante destrucción
+        except:
+            pass  # Ignore cleanup errors
+        
+        return super().Destroy()
+
