@@ -25,6 +25,7 @@ from typing import Optional, Callable, Any, Dict, Tuple
 
 from .config_utils import ConfigManager
 from .message_bus import message_bus, MessageLevel
+from .debug_utils import critical_path, trace
 
 
 class DynamicOverlay(wx.Frame):
@@ -221,7 +222,6 @@ class DynamicOverlay(wx.Frame):
                 self._setup_resize_capabilities()
                 self._update_status_indicator("ready")
             
-            self._log_message("Overlay transparency setup complete", MessageLevel.INFO)
         except Exception as e:
             self._log_message(f"Transparency setup error: {str(e)}", MessageLevel.ERROR)
     
@@ -247,7 +247,6 @@ class DynamicOverlay(wx.Frame):
             # Load click-through state
             self.click_through_enabled = overlay_config.get('click_through', False)
             
-            self._log_message(f"Loaded settings for overlay: {self.overlay_id}", MessageLevel.INFO)
         except Exception as e:
             self._log_message(f"Failed to load overlay settings: {str(e)}", MessageLevel.WARNING)
     
@@ -268,7 +267,6 @@ class DynamicOverlay(wx.Frame):
             }
             
             self.config_manager.set(f'overlays.{self.overlay_id}', overlay_config)
-            self._log_message(f"Saved settings for overlay: {self.overlay_id}", MessageLevel.INFO)
         except Exception as e:
             self._log_message(f"Failed to save overlay settings: {str(e)}", MessageLevel.WARNING)
     
@@ -282,7 +280,6 @@ class DynamicOverlay(wx.Frame):
                 self.Bind(wx.EVT_TIMER, self._check_key_combination, self.key_polling_timer)
                 self.key_polling_timer.Start(100)  # Lightweight 100ms polling for keys only
                 self._update_status_indicator("key_polling")
-                self._log_message("Key polling started (100ms)", MessageLevel.DEBUG)
     
     def _stop_key_polling(self):
         """Stop key polling."""
@@ -290,7 +287,6 @@ class DynamicOverlay(wx.Frame):
             if self.key_polling_timer:
                 self.key_polling_timer.Stop()
                 self.key_polling_timer = None
-                self._log_message("Key polling stopped", MessageLevel.DEBUG)
     
     def _start_mouse_polling(self):
         """Start intensive mouse polling (only when Ctrl+Alt held)."""
@@ -300,7 +296,6 @@ class DynamicOverlay(wx.Frame):
                 self.Bind(wx.EVT_TIMER, self._check_mouse_and_right_click, self.mouse_polling_timer)
                 self.mouse_polling_timer.Start(25)  # Fast mouse polling when keys held
                 self._update_status_indicator("active_polling")
-                self._log_message("Mouse polling started (25ms)", MessageLevel.DEBUG)
     
     def _stop_mouse_polling(self):
         """Stop mouse polling."""
@@ -309,7 +304,6 @@ class DynamicOverlay(wx.Frame):
                 self.mouse_polling_timer.Stop()
                 self.mouse_polling_timer = None
                 self._update_status_indicator("key_polling")
-                self._log_message("Mouse polling stopped", MessageLevel.DEBUG)
     
     def _check_key_combination(self, event):
         """Lightweight key combination check (Ctrl+Alt only)."""
@@ -338,11 +332,9 @@ class DynamicOverlay(wx.Frame):
                 if new_combination_state:
                     # Keys pressed: start mouse polling
                     self._start_mouse_polling()
-                    self._log_message("Ctrl+Alt detected - Mouse polling activated", MessageLevel.DEBUG)
                 else:
                     # Keys released: stop mouse polling
                     self._stop_mouse_polling()
-                    self._log_message("Keys released - Mouse polling deactivated", MessageLevel.DEBUG)
                     
         except Exception as e:
             self._log_message(f"Key polling error: {str(e)}", MessageLevel.ERROR)
@@ -438,7 +430,6 @@ class DynamicOverlay(wx.Frame):
             self._start_key_polling()
             self._update_status_indicator("key_polling")
             
-            self._log_message("Click-through mode applied during initialization", MessageLevel.DEBUG)
             return True
             
         except Exception as e:
@@ -487,7 +478,6 @@ class DynamicOverlay(wx.Frame):
                 
                 self._setup_resize_capabilities()  # Enable resize capabilities
                 self._update_status_indicator("ready")
-                self._log_message("Click-through disabled - Normal mode with header", MessageLevel.DEBUG)
             else:
                 # GAMING MODE: Enable click-through, disable resize, hide header
                 new_ex_style = ex_style | win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
@@ -501,7 +491,6 @@ class DynamicOverlay(wx.Frame):
                 self._setup_resize_capabilities()  # Configure for gaming mode
                 self._start_key_polling()
                 self._update_status_indicator("key_polling")
-                self._log_message("Click-through enabled - Gaming mode header hidden", MessageLevel.DEBUG)
 
             win32gui.SetWindowLong(self.hwnd, win32con.GWL_EXSTYLE, new_ex_style)
             win32gui.SetLayeredWindowAttributes(self.hwnd, 0, self.opacity_level, win32con.LWA_ALPHA)
@@ -570,7 +559,11 @@ class DynamicOverlay(wx.Frame):
     
     def _on_close(self, event):
         """Handle window close."""
-        self._cleanup_overlay()
+        try:
+            self._cleanup_overlay()
+        except Exception as e:
+            self._log_message(f"[OVERLAY] ERROR in _cleanup_overlay(): {e}", MessageLevel.ERROR)
+        
         event.Skip()
     
     def _on_key_press(self, event):
@@ -581,6 +574,7 @@ class DynamicOverlay(wx.Frame):
         else:
             event.Skip()
     
+    @critical_path
     def _cleanup_overlay(self):
         """Clean up overlay resources."""
         try:
@@ -591,6 +585,12 @@ class DynamicOverlay(wx.Frame):
             if self.save_timer:
                 self.save_timer.Stop()
                 self.save_timer = None
+            
+            # CRITICAL FIX: Explicitly destroy embedded widget BEFORE overlay cleanup
+            # This prevents race condition where widget timers keep running after overlay cleanup
+            if hasattr(self, 'widget_instance') and self.widget_instance:
+                self.widget_instance.Destroy()  # Triggers StalledWidget.Destroy() immediately
+                self.widget_instance = None
             
             self._save_overlay_settings()
         except Exception as e:
