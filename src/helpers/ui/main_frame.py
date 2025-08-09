@@ -562,8 +562,8 @@ class LogAnalyzerFrame(wx.Frame):
                     level=MessageLevel.WARNING
                 )
                 
-                # Give the user time to see the message in the log
-                wx.CallLater(1000, lambda: wx.MessageBox(
+                # Show message box without timer - safer during startup
+                wx.CallAfter(lambda: wx.MessageBox(
                     f"Please check your configuration. The following settings need attention:\n\n{warning}",
                     "Configuration Warning",
                     wx.OK | wx.ICON_WARNING
