@@ -1,5 +1,8 @@
 {
     "log_file_path": "",
+    "live_log_path": "",
+    "ptu_log_path": "",
+    "auto_environment_detection": false,
     "discord_webhook_url": "{?discord_webhook_url}",
     "google_sheets_webhook": "{?google_sheets_webhook}",
     "google_sheets_mapping": ["player_death"],

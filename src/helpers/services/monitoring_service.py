@@ -101,13 +101,10 @@ class MonitoringService:
             datasource (str): The datasource to use ('googlesheets' or 'supabase')
         """
         try:
-            # Initialize environment detection before starting log analyzer
-            self.parent.config_manager.initialize_environment_detection()
-            
             # Start continuous environment monitoring if enabled
             self.parent.config_manager.start_environment_monitoring()
             
-            # Get the potentially updated log file path after environment detection
+            # Get the log file path (environment detection will happen in log_analyzer.startup)
             updated_log_file = self.parent.config_manager.get('log_file_path', log_file)
             
             # Call startup without passing event subscriptions

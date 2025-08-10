@@ -52,8 +52,9 @@ class KeyValueGrid(wx.Panel):
 
         # Add buttons at the bottom
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        add_button = DarkThemeButton(self, label="➕ Add", size=(40, 40))
-        add_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
+        add_button = DarkThemeButton(self, label="➕", size=(30, 30))
+        add_button.SetFont(wx.Font(wx.FontInfo(10)))
+        add_button.SetToolTip("Add new entry")
         button_sizer.Add(add_button, 0, wx.ALL, 5)
         main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT)
 
@@ -76,8 +77,9 @@ class KeyValueGrid(wx.Panel):
         value_ctrl = wx.TextCtrl(self, value=value_str, style=wx.TE_MULTILINE)
         value_ctrl.SetMinSize((200, 50))
 
-        delete_button = DarkThemeButton(self, label="➖ Remove", size=(40, 40))
-        delete_button.SetFont(wx.Font(wx.FontInfo(12).Bold()))
+        delete_button = DarkThemeButton(self, label="➖", size=(30, 30))
+        delete_button.SetFont(wx.Font(wx.FontInfo(10)))
+        delete_button.SetToolTip("Remove this entry")
 
         self.grid.Add(key_ctrl, 0, wx.EXPAND)
         self.grid.Add(value_ctrl, 1, wx.EXPAND)
@@ -115,7 +117,7 @@ class KeyValueGrid(wx.Panel):
 class ConfigDialog(wx.Dialog):
     """Resizable, modal dialog for editing configuration options."""
     def __init__(self, parent, config_manager):
-        super().__init__(parent, title="Edit Configuration", size=(600, 400),
+        super().__init__(parent, title="Edit Configuration", size=wx.DefaultSize,
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.config_manager = config_manager
         self.app_name = "SCLogAnalyzer"
@@ -133,7 +135,9 @@ class ConfigDialog(wx.Dialog):
 
         # Add tabs using the helper method
         self.general_controls = {}
+        self.additional_controls = {}
         self.add_general_tab(notebook, "General Config", self.config_data)
+        self.add_additional_data_tab(notebook, "Datos Adicionales", self.config_data)
         self.regex_patterns_grid = self.add_tab(notebook, "Regex Patterns", "regex_patterns")
         regex_keys = list(self.config_data.get("regex_patterns", {}).keys())
         regex_keys.append("mode_change")  # Add fixed options
@@ -163,6 +167,11 @@ class ConfigDialog(wx.Dialog):
         main_sizer.Add(button_sizer, 0, wx.ALL | wx.ALIGN_CENTER, 10)
 
         self.SetSizer(main_sizer)
+        
+        # Auto-fit to content and set minimum size
+        self.Fit()
+        self.SetMinSize((900, 500))  # Larger minimum size to show all tabs
+        self.SetSize((max(900, self.GetSize().width), max(500, self.GetSize().height)))
 
         # Bind events
         accept_button.Bind(wx.EVT_BUTTON, self.on_accept)
@@ -246,16 +255,129 @@ class ConfigDialog(wx.Dialog):
         row_sizer.Add(datasource_control, 1, wx.ALL | wx.EXPAND, 5)
         sizer.Add(row_sizer, 0, wx.EXPAND)
         
-        # Mark these keys as handled since we're replacing them with the datasource dropdown
-        special_keys_handled.add("use_googlesheet")
-        special_keys_handled.add("use_supabase")
-        special_keys_handled.add("datasource")
-        special_keys_handled.add("important_players")  # Username will be handled separately
+        # Add multi-environment section for LIVE/PTU log paths
+        multi_env_label = wx.StaticText(panel, label="Multi-Environment Detection (LIVE/PTU)")
+        multi_env_label.SetFont(wx.Font(wx.FontInfo().Bold()))
+        sizer.Add(multi_env_label, 0, wx.ALL, 5)
         
-        # Process other configuration keys
+        # Auto detection checkbox
+        auto_detect_checkbox = wx.CheckBox(panel, label="Enable automatic LIVE/PTU detection")
+        auto_detect_checkbox.SetValue(config_data.get("auto_environment_detection", False))
+        self.general_controls["auto_environment_detection"] = auto_detect_checkbox
+        sizer.Add(auto_detect_checkbox, 0, wx.ALL, 5)
+        
+        # LIVE log path
+        live_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        live_label = wx.StaticText(panel, label="LIVE log path")
+        live_control = wx.TextCtrl(panel, value=str(config_data.get("live_log_path", "")))
+        self.general_controls["live_log_path"] = live_control
+        live_browse_button = DarkThemeButton(panel, label="📁 Browse...")
+        live_browse_button.Bind(wx.EVT_BUTTON, lambda event, tc=live_control: self.on_browse_log_file(event, tc))
+        live_row_sizer.Add(live_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        live_row_sizer.Add(live_control, 1, wx.ALL | wx.EXPAND, 5)
+        live_row_sizer.Add(live_browse_button, 0, wx.ALL, 5)
+        sizer.Add(live_row_sizer, 0, wx.EXPAND)
+        
+        # PTU log path
+        ptu_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        ptu_label = wx.StaticText(panel, label="PTU log path")
+        ptu_control = wx.TextCtrl(panel, value=str(config_data.get("ptu_log_path", "")))
+        self.general_controls["ptu_log_path"] = ptu_control
+        ptu_browse_button = DarkThemeButton(panel, label="📁 Browse...")
+        ptu_browse_button.Bind(wx.EVT_BUTTON, lambda event, tc=ptu_control: self.on_browse_log_file(event, tc))
+        ptu_row_sizer.Add(ptu_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        ptu_row_sizer.Add(ptu_control, 1, wx.ALL | wx.EXPAND, 5)
+        ptu_row_sizer.Add(ptu_browse_button, 0, wx.ALL, 5)
+        sizer.Add(ptu_row_sizer, 0, wx.EXPAND)
+        
+        # Add separator
+        separator = wx.StaticLine(panel)
+        sizer.Add(separator, 0, wx.EXPAND | wx.ALL, 10)
+        
+        # Add main log file path (current/fallback)
+        log_path_label = wx.StaticText(panel, label="Main Log File Path (Current/Fallback)")
+        log_path_label.SetFont(wx.Font(wx.FontInfo().Bold()))
+        sizer.Add(log_path_label, 0, wx.ALL, 5)
+        
+        # Current log path
+        log_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        log_label = wx.StaticText(panel, label="Log file path")
+        log_control = wx.TextCtrl(panel, value=str(config_data.get("log_file_path", "")))
+        self.general_controls["log_file_path"] = log_control
+        log_browse_button = DarkThemeButton(panel, label="📁 Browse...")
+        log_browse_button.Bind(wx.EVT_BUTTON, lambda event, tc=log_control: self.on_browse_log_file(event, tc))
+        log_row_sizer.Add(log_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        log_row_sizer.Add(log_control, 1, wx.ALL | wx.EXPAND, 5)
+        log_row_sizer.Add(log_browse_button, 0, wx.ALL, 5)
+        sizer.Add(log_row_sizer, 0, wx.EXPAND)
+        
+        # Add another separator
+        separator2 = wx.StaticLine(panel)
+        sizer.Add(separator2, 0, wx.EXPAND | wx.ALL, 10)
+        
+        # Add webhooks and connection settings
+        conn_label = wx.StaticText(panel, label="Connection Settings (Webhooks & Keys)")
+        conn_label.SetFont(wx.Font(wx.FontInfo().Bold()))
+        sizer.Add(conn_label, 0, wx.ALL, 5)
+        
+        # Discord webhook
+        discord_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        discord_label = wx.StaticText(panel, label="Discord webhook URL")
+        discord_control = wx.TextCtrl(panel, value=str(config_data.get("discord_webhook_url", "")))
+        self.general_controls["discord_webhook_url"] = discord_control
+        discord_row_sizer.Add(discord_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        discord_row_sizer.Add(discord_control, 1, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(discord_row_sizer, 0, wx.EXPAND)
+        
+        # Google Sheets webhook
+        sheets_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        sheets_label = wx.StaticText(panel, label="Google Sheets webhook")
+        sheets_control = wx.TextCtrl(panel, value=str(config_data.get("google_sheets_webhook", "")))
+        self.general_controls["google_sheets_webhook"] = sheets_control
+        sheets_row_sizer.Add(sheets_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        sheets_row_sizer.Add(sheets_control, 1, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(sheets_row_sizer, 0, wx.EXPAND)
+        
+        # Supabase key
+        supabase_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        supabase_label = wx.StaticText(panel, label="Supabase key")
+        supabase_control = wx.TextCtrl(panel, value=str(config_data.get("supabase_key", "")))
+        self.general_controls["supabase_key"] = supabase_control
+        supabase_row_sizer.Add(supabase_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        supabase_row_sizer.Add(supabase_control, 1, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(supabase_row_sizer, 0, wx.EXPAND)
+
+        panel.SetSizer(sizer)
+        notebook.AddPage(panel, title)
+
+    def add_additional_data_tab(self, notebook, title, config_data):
+        """Add tab with additional/automatic configuration data."""
+        panel = wx.Panel(notebook)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        # Add description
+        desc_label = wx.StaticText(panel, label="Configuraciones adicionales generadas automáticamente desde template")
+        desc_label.SetFont(wx.Font(wx.FontInfo().Italic()))
+        sizer.Add(desc_label, 0, wx.ALL, 5)
+        
+        # Add separator
+        separator = wx.StaticLine(panel)
+        sizer.Add(separator, 0, wx.EXPAND | wx.ALL, 5)
+        
+        # Keys handled in General Config - skip these
+        special_keys_handled = {
+            "use_googlesheet", "use_supabase", "datasource", "important_players",
+            "auto_environment_detection", "live_log_path", "ptu_log_path", "log_file_path",
+            "discord_webhook_url", "google_sheets_webhook", "supabase_key",  # Now handled in General Config
+            "username",  # Skip username
+            # Skip complex nested objects that have their own tabs
+            "regex_patterns", "messages", "discord", "colors", "tabs", "hotkey_system"
+        }
+        
+        # Process remaining configuration keys automatically
         for key, value in config_data.items():
-            # Skip keys we've already handled with special controls
-            if key in special_keys_handled or key == "username":
+            # Skip keys we've already handled or complex objects
+            if key in special_keys_handled:
                 continue
                 
             if isinstance(value, (str, int, float, bool)):  # Only first-level simple values
@@ -263,14 +385,10 @@ class ConfigDialog(wx.Dialog):
                 control = wx.CheckBox(panel) if isinstance(value, bool) else wx.TextCtrl(panel, value=str(value))
                 if isinstance(value, bool):
                     control.SetValue(value)
-                self.general_controls[key] = control
+                self.additional_controls[key] = control
                 row_sizer = wx.BoxSizer(wx.HORIZONTAL)
                 row_sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
                 row_sizer.Add(control, 1, wx.ALL | wx.EXPAND, 5)
-                if key == "log_file_path":
-                    browse_button = DarkThemeButton(panel, label="📁 Browse...")
-                    browse_button.Bind(wx.EVT_BUTTON, lambda event, tc=control: self.on_browse_log_file(event, tc))
-                    row_sizer.Add(browse_button, 0, wx.ALL, 5)
                 sizer.Add(row_sizer, 0, wx.EXPAND)
 
         panel.SetSizer(sizer)
@@ -284,13 +402,9 @@ class ConfigDialog(wx.Dialog):
                 return
             text_ctrl.SetValue(file_dialog.GetPath())
 
-    def save_config(self):
-        """Save configuration using the ConfigManager."""
-        # Store original config before making changes
-        old_config = self.config_manager.get_all().copy()
-        
-        # Save general config values with automatic type detection
-        for key, control in self.general_controls.items():
+    def _save_controls_to_config(self, controls_dict, old_config):
+        """Helper method to save controls with type detection."""
+        for key, control in controls_dict.items():
             value = control.GetStringSelection() if isinstance(control, wx.Choice) else control.GetValue()
             
             # Get original value to detect type
@@ -307,6 +421,15 @@ class ConfigDialog(wx.Dialog):
                     pass  # Keep as string if conversion fails
             
             self.config_manager.set(key, value)
+
+    def save_config(self):
+        """Save configuration using the ConfigManager."""
+        # Store original config before making changes
+        old_config = self.config_manager.get_all().copy()
+        
+        # Save all control values using helper method
+        self._save_controls_to_config(self.general_controls, old_config)
+        self._save_controls_to_config(self.additional_controls, old_config)
 
         # Save regex patterns data
         regex_patterns_data = self.regex_patterns_grid.get_data()

@@ -209,8 +209,9 @@ class ConfigManager:
                     preserve_keys = preserve_keys or ["discord_webhook_url", "google_sheets_webhook", 
                                                      "log_file_path", "console_key", "version",
                                                      "supabase_key","datasource", "live_discord_webhook",
-                                                     "ac_discord_webhook"]
-                    
+                                                     "ac_discord_webhook", "live_log_path", "ptu_log_path",
+                                                     "auto_environment_detection"]
+
                     # Check if the config has already been renewed for this version
                     config_renew_version = self.get("version")
                     if config_renew_version == current_version:
