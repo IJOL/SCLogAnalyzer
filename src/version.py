@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 14
-RELEASE = 1
+RELEASE = 2
 MATURITY = "grimhex"  # "alpha", "beta", or "final"
-PATCH = "a05b6bb"
+PATCH = "7b24d09"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,10 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.14.x series,
+    "7b24d09: fix: Replace wx.CallLater with wx.CallAfter in initialize_config to prevent timer assertion error during startup",
+    "533a0b5: refactor: Implement singleton pattern for OverlayManager and update overlay handling methods",
+    "4b6b759: refactor: moved code to smaller modules and adjust everything to match",
+    "612a275: [chore] Increment version to v0.14.1-a05b6bb-grimhex",
     "a05b6bb: feat: Add new Python files to .gitignore for improved project cleanliness",
     "c00cd3f: feat: Enhance StalledWidget with improved timer management and cleanup handling",
     "c99b1b5: feat: Refactor cleanup process in SharedLogsWidget to improve destruction handling",
