@@ -407,8 +407,10 @@ class DynamicLabels:
             
         if self.version_label:
             self.version_label.SetLabel(f"{version}")
-            # MULTI-ENV-LOG-001 Fase 5: Colorear versión PTU en rojo (con manejo seguro de None)
-            if version and "PTU" in version.upper():
+            # Colorear versión en rojo si NO es pub (modo test: PTU/EPTU/otros)
+            is_test_mode = (version and 
+                           version.split('-')[0].lower() != 'pub')
+            if is_test_mode:
                 self.version_label.SetForegroundColour(wx.Colour(255, 0, 0))  # Red
             else:
                 self.version_label.SetForegroundColour(wx.Colour(0, 0, 0))    # Black (default)

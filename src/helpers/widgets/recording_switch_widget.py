@@ -25,6 +25,9 @@ class RecordingSwitchWidget(wx.Panel):
         last_toggle_time_str = self._get_registry_value('cooldown_start_time', None)
         self.last_toggle_time = float(last_toggle_time_str) if last_toggle_time_str else None
         
+        # Subscribe to version updates to detect test modes (PTU/EPTU)
+        message_bus.on("shard_version_update", self._on_version_update)
+        
         # Al iniciar: verificar si han pasado 5 minutos desde el último cambio
         if self.last_toggle_time:
             current_time = time.time()
@@ -202,6 +205,29 @@ class RecordingSwitchWidget(wx.Panel):
                 content=f"Error deleting registry value {value_name}: {e}",
                 level=MessageLevel.ERROR
             )
+
+    def _on_version_update(self, shard, version, username, mode=None, private=None):
+        """Handle version updates to detect test modes (PTU/EPTU vs PUB)."""
+        # Detectar si NO es live mode (pub)
+        is_test_mode = (version and 
+                       version.split('-')[0].lower() != 'pub')
+        
+        if is_test_mode:
+            # Forzar Rec OFF en modo test
+            self.recording_enabled = False
+            self.switch_button.Enable(False)
+            self.switch_button.SetToolTip("Grabación deshabilitada en modo test (PTU/EPTU)")
+        else:
+            # Rehabilitar en pub (live) - solo si no estamos en cooldown
+            current_time = time.time()
+            in_cooldown = (self.last_toggle_time and 
+                          current_time - self.last_toggle_time < self.cooldown_seconds)
+            
+            self.switch_button.Enable(not in_cooldown)
+            self.switch_button.SetToolTip("Control de grabación" if not in_cooldown 
+                                         else f"Cooldown activo - {int(self.cooldown_seconds - (current_time - self.last_toggle_time))}s restantes")
+        
+        self._update_ui_state()
 
     def cleanup_timer(self):
         if self.cooldown_timer:
