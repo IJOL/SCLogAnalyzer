@@ -537,6 +537,10 @@ class LogAnalyzerFrame(wx.Frame):
         try:
             # 1. Load configuration values from ConfigManager
             self.default_log_file_path = self.log_file_path
+            
+            # MULTI-ENV-LOG-001: Initialize environment detection before monitoring
+            self.config_manager.initialize_environment_detection()
+            
             self.discord_check.Check(self.use_discord or True)
             
             # 3. Validate critical settings and prompt for missing ones

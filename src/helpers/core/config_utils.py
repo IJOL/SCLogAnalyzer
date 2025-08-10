@@ -137,6 +137,11 @@ class ConfigManager:
         self.in_gui = in_gui  # Track whether we're running in GUI mode
         self.new_config = True  # Flag to indicate if a new config was created
         
+        # Environment monitoring thread control
+        self._env_monitoring_thread = None
+        self._env_monitoring_stop_event = threading.Event()
+        self._last_detected_environment = None
+        
         # No need to create an Event instance - using MessageBus event system instead
         
         self.load_config()
@@ -617,6 +622,201 @@ class ConfigManager:
             return self.remove_vip_player(player_name)
         else:
             return self.add_vip_player(player_name)
+
+    def detect_active_environment(self) -> str:
+        """
+        Detect which environment (LIVE/PTU) is currently active based on the most recent log file.
+        
+        Returns:
+            str: "live", "ptu", or "none"
+        """
+        with self._lock:
+            try:
+                # Check if auto detection is enabled
+                if not self.get('auto_environment_detection', False):
+                    return "none"
+                
+                live_path = self.get('live_log_path', '')
+                ptu_path = self.get('ptu_log_path', '')
+                
+                # Validate paths are configured
+                if not live_path or not ptu_path:
+                    return "none"
+                
+                # Check if files exist
+                if not os.path.exists(live_path):
+                    live_mtime = 0
+                else:
+                    live_mtime = os.path.getmtime(live_path)
+                
+                if not os.path.exists(ptu_path):
+                    ptu_mtime = 0
+                else:
+                    ptu_mtime = os.path.getmtime(ptu_path)
+                
+                # If neither file exists, return none
+                if live_mtime == 0 and ptu_mtime == 0:
+                    return "none"
+                
+                # Return the environment with the most recent log file
+                if live_mtime >= ptu_mtime:
+                    return "live"
+                else:
+                    return "ptu"
+                    
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Error detecting active environment: {e}",
+                    level=MessageLevel.ERROR
+                )
+                return "none"
+    
+    def initialize_environment_detection(self):
+        """
+        Initialize environment detection with 4 levels of fallback for complete backward compatibility.
+        Updates log_file_path automatically if all conditions are met.
+        """
+        with self._lock:
+            try:
+                # Level 1: Check if auto detection is disabled (default)
+                if not self.get('auto_environment_detection', False):
+                    message_bus.publish(
+                        content="Auto environment detection disabled, using configured log_file_path",
+                        level=MessageLevel.DEBUG
+                    )
+                    return
+                
+                # Level 2: Check if paths are configured
+                live_path = self.get('live_log_path', '')
+                ptu_path = self.get('ptu_log_path', '')
+                
+                if not live_path or not ptu_path:
+                    message_bus.publish(
+                        content="Environment paths not configured, using configured log_file_path",
+                        level=MessageLevel.DEBUG
+                    )
+                    return
+                
+                # Level 3: Detect active environment
+                active_env = self.detect_active_environment()
+                
+                if active_env == "none":
+                    message_bus.publish(
+                        content="No active environment detected, using configured log_file_path",
+                        level=MessageLevel.DEBUG
+                    )
+                    return
+                
+                # Level 4: Update log_file_path based on detected environment
+                if active_env == "live":
+                    target_path = live_path
+                    env_name = "LIVE"
+                elif active_env == "ptu":
+                    target_path = ptu_path
+                    env_name = "PTU"
+                else:
+                    return
+                
+                # Update configuration
+                self.set('log_file_path', target_path)
+                message_bus.publish(
+                    content=f"Environment auto-detection: Switched to {env_name} ({target_path})",
+                    level=MessageLevel.INFO
+                )
+                
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Error initializing environment detection, using configured log_file_path: {e}",
+                    level=MessageLevel.ERROR
+                )
+    
+    def start_environment_monitoring(self):
+        """
+        Start continuous environment monitoring thread (optional feature).
+        Monitors for environment changes every 30 seconds and emits events when changes are detected.
+        """
+        with self._lock:
+            # Only start if auto detection is enabled and not already running
+            if not self.get('auto_environment_detection', False):
+                return
+            
+            if self._env_monitoring_thread and self._env_monitoring_thread.is_alive():
+                return  # Already monitoring
+                
+            # Reset stop event
+            self._env_monitoring_stop_event.clear()
+            
+            # Start monitoring thread
+            self._env_monitoring_thread = threading.Thread(
+                target=self._environment_monitoring_loop,
+                daemon=True
+            )
+            self._env_monitoring_thread.start()
+            
+            message_bus.publish(
+                content="Started environment monitoring thread",
+                level=MessageLevel.DEBUG
+            )
+    
+    def stop_environment_monitoring(self):
+        """Stop the environment monitoring thread."""
+        with self._lock:
+            if self._env_monitoring_thread and self._env_monitoring_thread.is_alive():
+                self._env_monitoring_stop_event.set()
+                self._env_monitoring_thread.join(timeout=2.0)
+                message_bus.publish(
+                    content="Stopped environment monitoring thread",
+                    level=MessageLevel.DEBUG
+                )
+    
+    def _environment_monitoring_loop(self):
+        """Internal method for the environment monitoring thread loop."""
+        try:
+            while not self._env_monitoring_stop_event.is_set():
+                # Check current environment
+                current_env = self.detect_active_environment()
+                
+                # Compare with last detected environment
+                if (self._last_detected_environment is not None and 
+                    current_env != self._last_detected_environment and 
+                    current_env != "none"):
+                    
+                    # Environment changed - emit event for log handler restart
+                    old_path = self.get('log_file_path', '')
+                    
+                    # Update log_file_path based on new environment
+                    if current_env == "live":
+                        new_path = self.get('live_log_path', '')
+                        env_name = "LIVE"
+                    elif current_env == "ptu":
+                        new_path = self.get('ptu_log_path', '')
+                        env_name = "PTU"
+                    else:
+                        self._last_detected_environment = current_env
+                        continue
+                    
+                    if new_path and new_path != old_path:
+                        self.set('log_file_path', new_path)
+                        message_bus.publish(
+                            content=f"Environment changed: Switched from {self._last_detected_environment} to {env_name} ({new_path})",
+                            level=MessageLevel.INFO
+                        )
+                        
+                        # Emit event for log handler restart
+                        message_bus.emit('environment_changed', self._last_detected_environment, current_env, new_path)
+                
+                # Update last detected environment
+                self._last_detected_environment = current_env
+                
+                # Wait 30 seconds or until stop event is set
+                if self._env_monitoring_stop_event.wait(30.0):
+                    break  # Stop event was set
+                    
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error in environment monitoring thread: {e}",
+                level=MessageLevel.ERROR
+            )
 
     @staticmethod
     def get_instance():

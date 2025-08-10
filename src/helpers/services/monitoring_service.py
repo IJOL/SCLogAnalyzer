@@ -22,6 +22,9 @@ class MonitoringService:
         self.event_handler = None
         self.monitoring = False
         
+        # Subscribe to environment change events (MULTI-ENV-LOG-001 Fase 4)
+        message_bus.on("environment_changed", self._on_environment_changed)
+        
     def start_monitoring(self, delay_ms=0):
         """
         Start log file monitoring.
@@ -98,13 +101,22 @@ class MonitoringService:
             datasource (str): The datasource to use ('googlesheets' or 'supabase')
         """
         try:
+            # Initialize environment detection before starting log analyzer
+            self.parent.config_manager.initialize_environment_detection()
+            
+            # Start continuous environment monitoring if enabled
+            self.parent.config_manager.start_environment_monitoring()
+            
+            # Get the potentially updated log file path after environment detection
+            updated_log_file = self.parent.config_manager.get('log_file_path', log_file)
+            
             # Call startup without passing event subscriptions
             result = log_analyzer.startup(
                 process_all=process_all,
                 use_discord=use_discord,
                 process_once=False,
                 datasource=datasource,
-                log_file_path=log_file
+                log_file_path=updated_log_file
             )
 
             if result:
@@ -132,6 +144,10 @@ class MonitoringService:
             log_analyzer.stop_monitor(self.event_handler, self.observer)
             self.event_handler = None
             self.observer = None
+        
+        # Stop environment monitoring thread
+        self.parent.config_manager.stop_environment_monitoring()
+        
         self.monitoring = False  # Ensure monitoring state is updated
         wx.CallAfter(self.update_monitoring_buttons)
 
@@ -143,6 +159,41 @@ class MonitoringService:
             bool: True if monitoring is active, False otherwise
         """
         return self.monitoring
+    
+    def _on_environment_changed(self, old_env, new_env, new_path):
+        """
+        Handle environment change events by restarting the log file handler.
+        
+        Args:
+            old_env (str): The previous environment name
+            new_env (str): The new environment name
+            new_path (str): The new log file path
+        """
+        if self.monitoring and self.event_handler and self.observer:
+            try:
+                message_bus.publish(
+                    content=f"Environment changed from {old_env} to {new_env}, restarting log monitoring with {new_path}",
+                    level=MessageLevel.INFO
+                )
+                
+                # Store current monitoring parameters
+                process_all = True
+                use_discord = self.parent.config_manager.get('use_discord', True)
+                datasource = self.parent.config_manager.get('datasource', 'googlesheets')
+                
+                # Stop current monitoring
+                log_analyzer.stop_monitor(self.event_handler, self.observer)
+                self.event_handler = None
+                self.observer = None
+                
+                # Restart monitoring with new path
+                self.run_monitoring(new_path, process_all, use_discord, datasource)
+                
+            except Exception as e:
+                message_bus.publish(
+                    content=f"Error restarting monitoring after environment change: {e}",
+                    level=MessageLevel.ERROR
+                )
         
     def update_monitoring_buttons(self):
         """

@@ -139,8 +139,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.nickname_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Connection Complete> map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>.*?) localAddr=(?P<local_addr>.*?) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session_id>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+)")
         self.mode_end_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <Channel Disconnected> cause=(?P<cause>\d+) reason=\"(?P<reason>.*?)\" frame=(?P<frame>\d+) map=\"(?P<map>.*?)\" gamerules=\"(?P<gamerules>.*?)\" remoteAddr=(?P<remote_addr>[\d\.:\w]+) localAddr=(?P<local_addr>[\d\.:\w]+) connection=\{(?P<connection_major>\d+), (?P<connection_minor>\d+)\} session=(?P<session>[\w-]+) node_id=(?P<node_id>[\w-]+) nickname=\"(?P<nickname>.*?)\" playerGEID=(?P<player_geid>\d+) uptime_secs=(?P<uptime>[\d\.]+) \[(?P<tags>.*?)\]")
         # Add server endpoint regex to detect PU/PTU version
-        self.server_endpoint_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <ReuseChannel> Reusing channel for .* to endpoint dns:///(?P<server_version>[^\.]+)\..*? \(transport security: \d\)")
-
+        self.server_endpoint_regex = re.compile(r"<(?P<timestamp>.*?)> \[Notice\] <ReuseChannel> Reusing channel for .* to endpoint (?:dns:///)?(?P<server_version>[^\.]+)\..*? \(transport security: \d\)")
         # --- BLOQUEO DE GRABACIÓN POR LOBBY PRIVADO EN MODOS EA_* ---
         self.block_private_lobby_recording = False
         self.lobby_type_regex = re.compile(
@@ -1300,6 +1299,9 @@ def startup(process_all=False, use_discord=None, process_once=False, datasource=
             datasource=datasource,
             log_file_path=log_file_path
         )
+        
+        # Initialize environment detection (MULTI-ENV-LOG-001 Fase 3)
+        config_manager.initialize_environment_detection()
         
         # Log file path must exist
         if not os.path.exists(config_manager.get('log_file_path')):
