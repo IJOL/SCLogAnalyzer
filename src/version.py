@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 14
-RELEASE = 2
+RELEASE = 3
 MATURITY = "grimhex"  # "alpha", "beta", or "final"
-PATCH = "7b24d09"
+PATCH = "b79a854"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,11 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.14.x series,
+    "b79a854: refactor: Update import paths to use absolute imports from helpers module",
+    "d6646cc: feat: Enhance test mode detection in DynamicLabels and RecordingSwitchWidget",
+    "94fd05f: feat: Add multi-environment configuration options for log paths and auto-detection",
+    "6e017a4: feat: Implement multi-environment detection and monitoring in ConfigManager and UI components",
+    "f3406b1: [chore] Increment version to v0.14.2-7b24d09-grimhex",
     "7b24d09: fix: Replace wx.CallLater with wx.CallAfter in initialize_config to prevent timer assertion error during startup",
     "533a0b5: refactor: Implement singleton pattern for OverlayManager and update overlay handling methods",
     "4b6b759: refactor: moved code to smaller modules and adjust everything to match",
