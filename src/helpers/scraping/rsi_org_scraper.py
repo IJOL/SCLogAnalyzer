@@ -639,47 +639,11 @@ def _parse_members_full_all(html_content: str, org_symbol: str, redacted_counter
                 # Extraer nick
                 nick_match = re.search(r'<span class="nick">([^<]+)</span>', member_html)
                 nick = nick_match.group(1) if nick_match else username
-            
-            # DEBUG: Log para casos específicos problemáticos
-            if username and ('gutiway' in username.lower() or 'adristerion' in username.lower()):
-                message_bus.publish(
-                    content=f"[DEBUG] Usuario problemático: {username}",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "rsi_org_scraper", "action": "debug_member"}
-                )
-                message_bus.publish(
-                    content=f"[DEBUG] member_html length: {len(member_html)} chars",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "rsi_org_scraper", "action": "debug_member"}
-                )
-                # Mostrar el HTML completo para debugging
-                message_bus.publish(
-                    content=f"[DEBUG] HTML completo: {member_html}",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "rsi_org_scraper", "action": "debug_member"}
-                )
-                # Mostrar fragmento relevante del HTML
-                rank_context_start = max(0, member_html.find('class="rank"') - 50)
-                rank_context_end = min(len(member_html), member_html.find('class="rank"') + 100)
-                rank_context = member_html[rank_context_start:rank_context_end] if member_html.find('class="rank"') != -1 else "NO RANK FOUND"
-                message_bus.publish(
-                    content=f"[DEBUG] Contexto rank: {rank_context}",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "rsi_org_scraper", "action": "debug_member"}
-                )
-            
+                        
             # Extraer rank
             rank_match = re.search(r'<span class="rank">([^<]+)</span>', member_html)
             rank = rank_match.group(1) if rank_match else "Unknown"
-            
-            # DEBUG: Log del rank extraído para casos problemáticos  
-            if username and ('gutiway' in username.lower() or 'adristerion' in username.lower()):
-                message_bus.publish(
-                    content=f"[DEBUG] Rank extraído para {username}: '{rank}' (match: {rank_match is not None})",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": "rsi_org_scraper", "action": "debug_member"}
-                )
-            
+                        
             # Extraer avatar URL
             avatar_match = re.search(r'<img[^>]*src="([^"]*)"[^>]*class="avatar"', member_html)
             avatar_url = avatar_match.group(1) if avatar_match else ""
