@@ -7,10 +7,10 @@ from datetime import datetime
 import uuid
 from typing import Callable, Optional
 
-from ..core.message_bus import message_bus, MessageLevel
-from ..core.supabase_manager import supabase_manager
-from ..core.config_utils import get_config_manager
-from ..ui.ui_components import DarkThemeButton
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.core.supabase_manager import supabase_manager
+from helpers.core.config_utils import get_config_manager
+from helpers.ui.ui_components import DarkThemeButton
 
 class SupabaseOnboarding:
     """
@@ -592,7 +592,7 @@ def check_needs_onboarding(config_manager):
         return False
     
     # Connect to Supabase with the key
-    from ..core.supabase_manager import supabase_manager
+    from helpers.core.supabase_manager import supabase_manager
     if not supabase_manager.is_connected() or supabase_manager.supabase_key != supabase_key:
         if not supabase_manager.connect(config_manager):
             # Can't connect to Supabase at all, likely invalid key

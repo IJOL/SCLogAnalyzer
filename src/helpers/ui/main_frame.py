@@ -3,25 +3,25 @@ import wx
 import os
 import sys
 import webcolors
-from ..core import log_analyzer
+from helpers.core import log_analyzer
 import win32event
 import win32api
 import winerror
 from datetime import datetime
 
-from .ui_components import TabCreator, DynamicLabels
-from ..services.monitoring_service import MonitoringService
-from .data_display_manager import DataDisplayManager
-from .window_state_manager import WindowStateManager
-from .gui_module import ConfigDialog, ProcessDialog, TaskBarIcon, AboutDialog
-from ..core.message_bus import message_bus, MessageLevel
-from ..core.config_utils import get_application_path, get_config_manager, get_template_base_dir
-from ..core.supabase_manager import supabase_manager
-from ..widgets.recording_switch_widget import RecordingSwitchWidget
-from ..widgets.toggle_button_widget import ToggleButtonWidget
-from ..services import updater
+from helpers.ui.ui_components import TabCreator, DynamicLabels
+from helpers.services.monitoring_service import MonitoringService
+from helpers.ui.data_display_manager import DataDisplayManager
+from helpers.ui.window_state_manager import WindowStateManager
+from helpers.ui.gui_module import ConfigDialog, ProcessDialog, TaskBarIcon, AboutDialog
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.core.config_utils import get_application_path, get_config_manager, get_template_base_dir
+from helpers.core.supabase_manager import supabase_manager
+from helpers.widgets.recording_switch_widget import RecordingSwitchWidget
+from helpers.widgets.toggle_button_widget import ToggleButtonWidget
+from helpers.services import updater
 from version import get_version
-from .ui_components import DarkThemeButton
+from helpers.ui.ui_components import DarkThemeButton
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -36,7 +36,7 @@ TASKBAR_ICON_TOOLTIP = "SC Log Analyzer"
 MUTEX_NAME = "Global\\SCLogAnalyzer_SingleInstance_Mutex"
 
 # Use constants from the updater module
-from ..services.updater import UPDATER_EXECUTABLE, LEGACY_UPDATER
+from helpers.services.updater import UPDATER_EXECUTABLE, LEGACY_UPDATER
 
 
 class LogAnalyzerFrame(wx.Frame):
@@ -79,7 +79,7 @@ class LogAnalyzerFrame(wx.Frame):
         if self.config_manager.get('datasource') == 'supabase' and supabase_manager.is_connected():
             try:
                 # Importar el puente de Realtime
-                from ..core.realtime_bridge import RealtimeBridge
+                from helpers.core.realtime_bridge import RealtimeBridge
                 
                 # Obtener el cliente Supabase ya configurado
                 supabase_client = supabase_manager.supabase
@@ -127,8 +127,8 @@ class LogAnalyzerFrame(wx.Frame):
         message_bus.on("mode_change", self.on_mode_change)
         message_bus.on("username_change", self.on_username_change)
         
-        # Set up a custom log handler for GUI
-        log_analyzer.main.gui_log_handler = self.append_log_message
+        # The direct gui_log_handler is deprecated and removed.
+        # All logging is now handled via the MessageBus subscription.
     
        
         # Initialize configuration and settings
@@ -195,8 +195,8 @@ class LogAnalyzerFrame(wx.Frame):
         """Inicializar sistema de hotkeys con manejo de errores"""
         try:
             if self.config_manager.get('hotkey_system.enabled', True):
-                from ..services.hotkey_manager import get_hotkey_manager
-                from ..overlay.overlay_manager import OverlayManager
+                from helpers.services.hotkey_manager import get_hotkey_manager
+                from helpers.overlay.overlay_manager import OverlayManager
                 
                 # Obtener instancia singleton del HotkeyManager
                 self.hotkey_manager = get_hotkey_manager()
@@ -328,7 +328,7 @@ class LogAnalyzerFrame(wx.Frame):
             log_page_sizer.Add(self.debug_button_sizer, 0, wx.EXPAND | wx.ALL, 2)
         # Add the log text area with fixed-width font and rich text support
         # Crear splitter para dividir la página
-        from ..widgets import SharedLogsWidget, StalledWidget
+        from helpers.widgets import SharedLogsWidget, StalledWidget
 
         log_splitter = wx.SplitterWindow(self.log_page, style=wx.SP_3D | wx.SP_LIVE_UPDATE)
 
@@ -611,7 +611,7 @@ class LogAnalyzerFrame(wx.Frame):
     
     def send_keystrokes_to_sc(self):
         """Send predefined keystrokes to the Star Citizen window."""
-        from .gui_module import WindowsHelper
+        from helpers.ui.gui_module import WindowsHelper
         
         # Derive the ScreenShots folder from the log file path
         screenshots_folder = os.path.join(os.path.dirname(self.default_log_file_path), "ScreenShots")
@@ -707,7 +707,7 @@ class LogAnalyzerFrame(wx.Frame):
             return
         
         # Import here to avoid circular imports
-        from .gui_module import DataTransferDialog
+        from helpers.ui.gui_module import DataTransferDialog
         
         # Create and show the dialog
         dialog = DataTransferDialog(self)
@@ -735,7 +735,7 @@ class LogAnalyzerFrame(wx.Frame):
                 return
                 
             # Import here to avoid circular imports
-            from ..data.supabase_onboarding import SupabaseOnboarding
+            from helpers.data.supabase_onboarding import SupabaseOnboarding
             
             # Create onboarding instance with the parent window
             onboarding = SupabaseOnboarding(self)
@@ -844,7 +844,7 @@ class LogAnalyzerFrame(wx.Frame):
             
             # If changing to 'supabase', check if we need onboarding
             if new_datasource == 'supabase' and old_datasource != 'supabase':
-                from ..data.supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
+                from helpers.data.supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
                 
                 if check_needs_onboarding(self.config_manager):
                     # Get the parent window 
@@ -928,7 +928,7 @@ class LogAnalyzerFrame(wx.Frame):
                 )
                 
                 # Import at function call time to avoid circular imports
-                from ..core.data_provider import get_data_provider, SupabaseDataProvider
+                from helpers.core.data_provider import get_data_provider, SupabaseDataProvider
                 
                 # Get the data provider
                 data_provider = get_data_provider(self.config_manager)
@@ -955,7 +955,7 @@ class LogAnalyzerFrame(wx.Frame):
                 supabase_manager.connect(self.config_manager, force=True)
                 
                 # Import here to avoid circular imports
-                from ..data.supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
+                from helpers.data.supabase_onboarding import SupabaseOnboarding, check_needs_onboarding
                 
                 # Check if onboarding is needed
                 if check_needs_onboarding(self.config_manager):
@@ -1034,22 +1034,9 @@ class LogAnalyzerFrame(wx.Frame):
         # Destroy the window
         self.Destroy()
     
-    def append_log_message(self, message, regex_pattern=None):
-        """
-        Bridge method to maintain compatibility with older code.
-        Redirects to the new message handling system.
-        """
-        if isinstance(message, str):
-            # Publish the message to the bus
-            message_bus.publish(
-                content=message,
-                level=MessageLevel.INFO,
-                pattern_name=regex_pattern,
-                metadata={'from_legacy': True}
-            )
-        else:
-            # For the new Message objects from the message bus
-            wx.CallAfter(self._append_log_message_from_bus, message)
+    # The append_log_message method has been removed as it is a legacy
+    # component. All UI logging is now handled exclusively by the
+    # _append_log_message_from_bus method, which is subscribed to the MessageBus.
     
     def _append_log_message_from_bus(self, message):
         """
@@ -1260,6 +1247,7 @@ class LogAnalyzerFrame(wx.Frame):
         dlg.Destroy()
 
 def main():
+    from helpers.core.message_bus import MessageLevel
     """Main entry point for the application."""
     # Create the wx.App instance first, before any wx operations
     app = wx.App()
@@ -1277,7 +1265,7 @@ def main():
     
     if debug_mode:
         # If debug mode enabled, log startup information
-        print("Debug mode enabled")
+        message_bus.publish(content="Debug mode enabled", level=MessageLevel.DEBUG)
         # Configure message bus with debug as default minimum level
         message_bus.publish(
             content="Application started with DEBUG level enabled",

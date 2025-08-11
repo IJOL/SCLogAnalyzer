@@ -17,12 +17,13 @@ from helpers.ui.main_frame import LogAnalyzerFrame, main
 
 def global_exception_handler(exc_type, exc_value, exc_traceback):
     """Global exception handler to catch any unhandled exceptions"""
+    from helpers.core.message_bus import message_bus, MessageLevel
     error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-    print(f"\n=== GLOBAL EXCEPTION CAUGHT ===")
-    print(f"Exception Type: {exc_type.__name__}")
-    print(f"Exception Message: {str(exc_value)}")
-    print(f"Full Traceback:\n{error_msg}")
-    print(f"=== END GLOBAL EXCEPTION ===")
+    message_bus.publish(content="=== GLOBAL EXCEPTION CAUGHT ===", level=MessageLevel.CRITICAL)
+    message_bus.publish(content=f"Exception Type: {exc_type.__name__}", level=MessageLevel.CRITICAL)
+    message_bus.publish(content=f"Exception Message: {str(exc_value)}", level=MessageLevel.CRITICAL)
+    message_bus.publish(content=f"Full Traceback:\n{error_msg}", level=MessageLevel.CRITICAL)
+    message_bus.publish(content="=== END GLOBAL EXCEPTION ===", level=MessageLevel.CRITICAL)
     
     # Try to log through message bus if available
     try:
@@ -48,6 +49,7 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 if __name__ == "__main__":
     # Install global exception handler
     sys.excepthook = global_exception_handler
-    print("=== GLOBAL EXCEPTION HANDLER INSTALLED ===")
+    from helpers.core.message_bus import message_bus, MessageLevel
+    message_bus.publish(content="Global exception handler installed.", level=MessageLevel.INFO)
     
     main()

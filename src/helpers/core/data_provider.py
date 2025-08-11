@@ -5,8 +5,8 @@ import traceback
 import re
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Tuple, Union
-from .message_bus import message_bus, MessageLevel
-from .supabase_manager import supabase_manager
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.core.supabase_manager import supabase_manager
 
 class DataProvider(ABC):
     """
@@ -687,7 +687,7 @@ class SupabaseDataProvider(DataProvider):
         config_tabs = {}
         
         try:
-            from .config_utils import get_config_manager
+            from helpers.core.config_utils import get_config_manager
             config_manager = get_config_manager()
             config_tabs = config_manager.get('tabs', {})
         except Exception as e:

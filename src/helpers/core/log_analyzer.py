@@ -17,13 +17,13 @@ from PIL import Image, ImageEnhance  # Import ImageEnhance for contrast adjustme
 from pyzbar.pyzbar import decode  # For QR code detection
 from bs4 import BeautifulSoup  # For profile scraping
 # Using relative imports
-from .config_utils import get_application_path, get_config_manager
-from .supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
-from .message_bus import message_bus, MessageLevel  # Import at module level
-from .data_provider import get_data_provider  # Import data provider
-from .rate_limiter import MessageRateLimiter
-from ..scraping.async_profile import scrape_profile_async  # Import profile scraper helper
-from .. import ensure_all_field
+from helpers.core.config_utils import get_application_path, get_config_manager
+from helpers.core.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
+from helpers.core.message_bus import message_bus, MessageLevel  # Import at module level
+from helpers.core.data_provider import get_data_provider  # Import data provider
+from helpers.core.rate_limiter import MessageRateLimiter
+from helpers.scraping.async_profile import scrape_profile_async  # Import profile scraper helper
+from helpers import ensure_all_field
 
 # Configure logging with application path and executable name
 app_path = get_application_path()
@@ -1036,7 +1036,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.last_position = 0
         self.actor_state = {}
         # Emit events to notify subscribers about the reset
-        from .message_bus import message_bus
+        from helpers.core.message_bus import message_bus
         message_bus.emit("mode_change", None, self.current_mode)
         message_bus.emit("shard_version_update", self.current_shard, self.current_version, self.username, self.current_mode)
         message_bus.emit("username_change", self.username,  last_username)
@@ -1410,5 +1410,5 @@ if __name__ == "__main__":
     # Set debug mode global en message_bus
     message_bus.set_debug_mode(debug_mode)
     # Show version info on startup
-    print(f"SC Log Analyzer v{get_version()} starting...")
+    message_bus.publish(content=f"SC Log Analyzer v{get_version()} starting...", level=MessageLevel.INFO)
     main(process_all, use_discord, process_once, datasource)

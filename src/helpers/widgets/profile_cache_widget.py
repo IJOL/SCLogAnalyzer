@@ -6,10 +6,10 @@ import wx
 from datetime import datetime
 from typing import Dict, Any
 
-from ..data.profile_cache import ProfileCache
-from ..core.message_bus import message_bus, MessageLevel
-from .custom_listctrl import CustomListCtrl
-from ..ui.ui_components import DarkThemeButton
+from helpers.data.profile_cache import ProfileCache
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.widgets.custom_listctrl import CustomListCtrl
+from helpers.ui.ui_components import DarkThemeButton
 
 
 class ProfileCacheWidget(wx.Panel):
@@ -260,7 +260,7 @@ class ProfileCacheWidget(wx.Panel):
     
     def _extend_context_menu_with_vip(self, menu, player_name):
         """Añadir opciones VIP al menú contextual"""
-        from ..core.config_utils import ConfigManager
+        from helpers.core.config_utils import ConfigManager
         
         config_manager = ConfigManager.get_instance()
         is_vip = config_manager.is_vip_player(player_name)
@@ -276,7 +276,7 @@ class ProfileCacheWidget(wx.Panel):
 
     def _toggle_vip_player(self, player_name: str):
         """Toggle jugador en VIP list usando ConfigManager"""
-        from ..core.config_utils import ConfigManager
+        from helpers.core.config_utils import ConfigManager
         
         config_manager = ConfigManager.get_instance()
         was_vip = config_manager.is_vip_player(player_name)
@@ -330,7 +330,7 @@ class ProfileDetailsDialog(wx.Dialog):
         self.Bind(wx.EVT_KILL_FOCUS, self._on_kill_focus)
 
     def _setup_ui(self, player_name, profile_data):
-        from ..ui.ui_components import DarkThemeButton
+        from helpers.ui.ui_components import DarkThemeButton
         
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         # Bloque de texto igual que el tooltip

@@ -23,9 +23,9 @@ import time
 import threading
 from typing import Optional, Callable, Any, Dict, Tuple
 
-from ..core.config_utils import ConfigManager
-from ..core.message_bus import message_bus, MessageLevel
-from ..core.debug_utils import critical_path, trace
+from helpers.core.config_utils import ConfigManager
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.core.debug_utils import critical_path, trace
 
 
 class DynamicOverlay(wx.Frame):

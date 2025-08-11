@@ -12,8 +12,8 @@ ProfileCacheWidget para máxima consistencia con el codebase.
 import wx
 from typing import Optional, Dict, Any, Callable
 
-from ..overlay.overlay_manager import OverlayManager
-from ..core.message_bus import message_bus, MessageLevel
+from helpers.overlay.overlay_manager import OverlayManager
+from helpers.core.message_bus import message_bus, MessageLevel
 
 
 class OverlayMixin:
@@ -374,8 +374,8 @@ def validate_overlay_mixin() -> bool:
         
         # Test 1: Import dependencies
         print("Test 1: Importing dependencies...")
-        from ..overlay.overlay_manager import OverlayManager
-        from ..core.message_bus import message_bus, MessageLevel
+        from helpers.overlay.overlay_manager import OverlayManager
+        from helpers.core.message_bus import message_bus, MessageLevel
         print("✓ Dependencies imported successfully")
         
         # Test 2: Mixin class structure

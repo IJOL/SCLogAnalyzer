@@ -14,10 +14,10 @@ import traceback
 import hashlib
 import json
 
-from ..core.message_bus import message_bus, MessageLevel
-from ..core.config_utils import get_config_manager
-from ..core.data_provider import GoogleSheetsDataProvider, SupabaseDataProvider
-from ..core.supabase_manager import supabase_manager
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.core.config_utils import get_config_manager
+from helpers.core.data_provider import GoogleSheetsDataProvider, SupabaseDataProvider
+from helpers.core.supabase_manager import supabase_manager
 
 class DataTransfer:
     """
@@ -479,7 +479,7 @@ async def async_transfer_all(config_manager=None, batch_size=50):
 
 if __name__ == "__main__":
     # Run the transfer if this script is executed directly
-    from ..core.message_bus import setup_console_handler
+    from helpers.core.message_bus import setup_console_handler
     
     # Set up console output for message bus
     setup_console_handler()

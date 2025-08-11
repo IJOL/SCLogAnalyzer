@@ -4,7 +4,7 @@ import json
 import requests  # Added for fetch_dynamic_config
 import threading
 import re  # Added for URL validation
-from .message_bus import message_bus, MessageLevel  # Import the message bus
+from helpers.core.message_bus import message_bus, MessageLevel  # Import the message bus
 
 DEFAULT_CONFIG_TEMPLATE = "config.json.template"
 
@@ -109,7 +109,7 @@ def fetch_dynamic_config(config_manager=None):
     # If config_manager is provided, try to use the configured data provider
     if config_manager:
         try:
-            from .data_provider import get_data_provider
+            from helpers.core.data_provider import get_data_provider
             data_provider = get_data_provider(config_manager)
             if data_provider.is_connected():
                 # Fetch configuration from the connected data provider
@@ -447,7 +447,7 @@ class ConfigManager:
             
             # Connect to Supabase if it's the selected datasource
             if datasource == 'supabase':
-                from .supabase_manager import supabase_manager
+                from helpers.core.supabase_manager import supabase_manager
                 # Pass the config_manager instance to the connect method
                 if supabase_manager.connect(config_manager=self):
                     message_bus.publish(

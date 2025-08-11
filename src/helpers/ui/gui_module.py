@@ -13,10 +13,10 @@ import psutil  # Required for process management
 import wx.adv  # Import wx.adv for taskbar icon support
 
 from version import get_version  # Using absolute import for module in parent directory
-from ..core.config_utils import get_application_path, get_template_base_dir, get_template_path  # Direct import from same directory
-from ..core.message_bus import message_bus, MessageLevel  # Direct import from same directory
-from .window_state_manager import is_app_in_startup, add_app_to_startup, remove_app_from_startup # SCLogAnalyzer: Added for startup management
-from .ui_components import DarkThemeButton # Added for DarkThemeButton
+from helpers.core.config_utils import get_application_path, get_template_base_dir, get_template_path  # Direct import from same directory
+from helpers.core.message_bus import message_bus, MessageLevel  # Direct import from same directory
+from helpers.ui.window_state_manager import is_app_in_startup, add_app_to_startup, remove_app_from_startup # SCLogAnalyzer: Added for startup management
+from helpers.ui.ui_components import DarkThemeButton # Added for DarkThemeButton
 
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -524,7 +524,7 @@ class ConfigDialog(wx.Dialog):
     def add_hotkeys_tab(self, notebook, title):
         """Add hotkeys configuration tab to the notebook"""
         try:
-            from ..widgets import HotkeyConfigPanel
+            from helpers.widgets import HotkeyConfigPanel
             
             # Create hotkeys panel
             hotkeys_panel = HotkeyConfigPanel(notebook, self.config_manager)
@@ -978,8 +978,8 @@ class DataTransferDialog(wx.Dialog):
         
         # Start transfer in a separate thread
         import threading
-        from ..data.data_transfer import transfer_all_data_to_supabase, transfer_config_to_supabase
-        from ..core.message_bus import message_bus, MessageLevel
+        from helpers.data.data_transfer import transfer_all_data_to_supabase, transfer_config_to_supabase
+        from helpers.core.message_bus import message_bus, MessageLevel
         
         def run_transfer():
             try:

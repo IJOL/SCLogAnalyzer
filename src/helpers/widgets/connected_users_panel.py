@@ -4,16 +4,16 @@ from datetime import datetime
 import wx.lib.embeddedimage as embeddedimage
 import re
 
-from ..core.message_bus import message_bus, MessageLevel
-from ..core.config_utils import get_config_manager
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.core.config_utils import get_config_manager
 # Eliminar import incorrecto de get_async_client y usar el singleton supabase_manager
-from ..core.supabase_manager import supabase_manager
-from ..core.realtime_bridge import RealtimeBridge # Import RealtimeBridge class
-from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
-from .profile_cache_widget import ProfileCacheWidget
-from .freezer_widget import FreezerWidget
-from ..ui.ui_components import DarkThemeButton
-from .org_members_widget import OrgMembersWidget
+from helpers.core.supabase_manager import supabase_manager
+from helpers.core.realtime_bridge import RealtimeBridge # Import RealtimeBridge class
+from helpers.widgets.custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from helpers.widgets.profile_cache_widget import ProfileCacheWidget
+from helpers.widgets.freezer_widget import FreezerWidget
+from helpers.ui.ui_components import DarkThemeButton
+from helpers.widgets.org_members_widget import OrgMembersWidget
 
 # --- 1. Add checkbox images for filtering ---
 
@@ -145,7 +145,7 @@ class ConnectedUsersPanel(wx.Panel):
         left_sizer.Add(filter_sizer, 0, wx.ALL, 5)
 
         # Lista de logs compartidos usando SharedLogsWidget
-        from .shared_logs_widget import SharedLogsWidget
+        from helpers.widgets.shared_logs_widget import SharedLogsWidget
         self.shared_logs = SharedLogsWidget(left_panel, max_logs=500)
         left_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
         
@@ -347,28 +347,28 @@ class ConnectedUsersPanel(wx.Panel):
         wx.CallAfter(self._update_global_filters)
     
     def on_mode_filter_changed(self, event):
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         bridge = RealtimeBridge.get_instance()
         if bridge:
             bridge.update_mode_shard_filters(filter_by_current_mode=self.mode_filter_checkbox.GetValue())
         self._update_filter_labels()
         
     def on_include_unknown_mode_changed(self, event):
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         bridge = RealtimeBridge.get_instance()
         if bridge:
             bridge.update_mode_shard_filters(include_unknown_mode=self.include_unknown_mode_checkbox.GetValue())
         self._update_filter_labels()
         
     def on_shard_filter_changed(self, event):
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         bridge = RealtimeBridge.get_instance()
         if bridge:
             bridge.update_mode_shard_filters(filter_by_current_shard=self.shard_filter_checkbox.GetValue())
         self._update_filter_labels()
         
     def on_include_unknown_shard_changed(self, event):
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         bridge = RealtimeBridge.get_instance()
         if bridge:
             bridge.update_mode_shard_filters(include_unknown_shard=self.include_unknown_shard_checkbox.GetValue())
@@ -382,7 +382,7 @@ class ConnectedUsersPanel(wx.Panel):
     
     def _update_global_filters(self):
         """Actualiza los filtros globales en RealtimeBridge"""
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         bridge = RealtimeBridge.get_instance()
         if bridge:
             bridge.update_mode_shard_filters(
@@ -470,7 +470,7 @@ class ConnectedUsersPanel(wx.Panel):
         Muestra mensajes de éxito o error usando message_bus.publish.
         """
         try:
-            from ..core.realtime_bridge import _realtime_bridge_instance
+            from helpers.core.realtime_bridge import _realtime_bridge_instance
             if _realtime_bridge_instance:
                 # Llamar al método de reconexión
                 result = _realtime_bridge_instance.reconnect()
@@ -508,7 +508,7 @@ class ConnectedUsersPanel(wx.Panel):
     
     def on_stalled_filter_changed(self, event):
         """Handler para el checkbox de filtro 'stalled': actualiza el backend (RealtimeBridge)"""
-        from ..core.realtime_bridge import _realtime_bridge_instance
+        from helpers.core.realtime_bridge import _realtime_bridge_instance
         if _realtime_bridge_instance:
             _realtime_bridge_instance.filter_stalled_if_online = self.stalled_filter_checkbox.GetValue()
             message_bus.publish(
@@ -520,7 +520,7 @@ class ConnectedUsersPanel(wx.Panel):
     def _update_backend_user_filter(self):
         """Update backend with the list of checked users in the filter column."""
         selected = [u for u, checked in self.user_filter_states.items() if checked]
-        from ..core.realtime_bridge import _realtime_bridge_instance
+        from helpers.core.realtime_bridge import _realtime_bridge_instance
         if _realtime_bridge_instance:
             _realtime_bridge_instance.filter_broadcast_usernames = set(selected)
             message_bus.publish(

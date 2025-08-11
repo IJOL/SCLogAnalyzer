@@ -13,8 +13,8 @@ import wx
 import time
 from typing import Type, Dict, Any, Optional
 
-from ..overlay.overlay_base import DynamicOverlay
-from ..core.message_bus import message_bus, MessageLevel
+from helpers.overlay.overlay_base import DynamicOverlay
+from helpers.core.message_bus import message_bus, MessageLevel
 
 
 class OverlayManager:
@@ -275,7 +275,7 @@ class OverlayManager:
         """
         try:
             # Importar hotkey_utils aquí para evitar import circular
-            from ..services.hotkey_manager import get_hotkey_manager
+            from helpers.services.hotkey_manager import get_hotkey_manager
             
             hotkey_manager = get_hotkey_manager()
             
@@ -289,8 +289,8 @@ class OverlayManager:
             
             # Registrar handlers para widgets con OverlayMixin - thread safe
             # Lazy imports para evitar import circular
-            from ..widgets.stalled_widget import StalledWidget
-            from ..widgets.shared_logs_widget import SharedLogsWidget
+            from helpers.widgets.stalled_widget import StalledWidget
+            from helpers.widgets.shared_logs_widget import SharedLogsWidget
             
             import wx
             instance = self
@@ -310,8 +310,8 @@ class OverlayManager:
         """Toggle todos los overlays activos"""
         try:
             # Lazy imports para evitar import circular
-            from ..widgets.stalled_widget import StalledWidget
-            from ..widgets.shared_logs_widget import SharedLogsWidget
+            from helpers.widgets.stalled_widget import StalledWidget
+            from helpers.widgets.shared_logs_widget import SharedLogsWidget
             
             active_overlays = self.get_active_overlays()
             if not active_overlays:
@@ -433,7 +433,7 @@ def validate_overlay_system() -> bool:
         
         # Verificar que se puede importar DynamicOverlay
         print("Test 1: Importing DynamicOverlay...")
-        from ..overlay.overlay_base import DynamicOverlay
+        from helpers.overlay.overlay_base import DynamicOverlay
         print("✓ DynamicOverlay imported successfully")
         
         # Verificar que OverlayManager funciona

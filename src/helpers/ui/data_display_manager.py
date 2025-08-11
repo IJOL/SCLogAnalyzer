@@ -6,9 +6,9 @@ import json
 import time
 import traceback
 from typing import Dict, Any, List, Callable, Optional
-from ..core.message_bus import message_bus, MessageLevel
-from ..core.supabase_manager import supabase_manager
-from .ui_components import GridManager, safe_call_after, DarkThemeButton
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.core.supabase_manager import supabase_manager
+from helpers.ui.ui_components import GridManager, safe_call_after, DarkThemeButton
 
 class DataDisplayManager:
     """Manages data fetching and display in grids."""
@@ -65,7 +65,7 @@ class DataDisplayManager:
         """
         try:
             # Import data provider at function call time to avoid circular imports
-            from ..core.data_provider import get_data_provider
+            from helpers.core.data_provider import get_data_provider
             
             # Get the appropriate data provider based on configuration
             data_provider = get_data_provider(self.config_manager)
@@ -318,7 +318,7 @@ class DataDisplayManager:
     #     """
     #     try:
     #         # Import our data provider system
-    #         from ..core.data_provider import get_data_provider
+    #         from helpers.core.data_provider import get_data_provider
             
     #         # Get the configured data provider
     #         data_provider = get_data_provider(self.config_manager)
@@ -349,7 +349,7 @@ class DataDisplayManager:
         """Handle testing the currently active data provider."""
         try:
             # Import data provider at function call time to avoid circular imports
-            from ..core.data_provider import get_data_provider
+            from helpers.core.data_provider import get_data_provider
             
             # Get the appropriate data provider based on configuration
             data_provider = get_data_provider(self.config_manager)
@@ -711,7 +711,7 @@ class DataDisplayManager:
             )
             
             # Importar el panel de usuarios conectados
-            from ..widgets.connected_users_panel import ConnectedUsersPanel
+            from helpers.widgets.connected_users_panel import ConnectedUsersPanel
             
             # Crear el panel y añadirlo como pestaña al notebook
             notebook = self.parent.notebook
@@ -765,7 +765,7 @@ class DataDisplayManager:
                 # Check if we're using Supabase, and if so, ensure the views for dynamic tabs exist
                 datasource = self.config_manager.get("datasource", "googlesheets")
                 if datasource == "supabase":
-                    from ..core.data_provider import get_data_provider
+                    from helpers.core.data_provider import get_data_provider
                     
                     data_provider = get_data_provider(self.config_manager)
                     # Use our centralized method to ensure all dynamic views exist
