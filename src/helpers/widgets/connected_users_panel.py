@@ -14,6 +14,7 @@ from helpers.widgets.profile_cache_widget import ProfileCacheWidget
 from helpers.widgets.freezer_widget import FreezerWidget
 from helpers.ui.ui_components import DarkThemeButton
 from helpers.widgets.org_members_widget import OrgMembersWidget
+from helpers.widgets.shard_list_widget import ShardListWidget
 
 # --- 1. Add checkbox images for filtering ---
 
@@ -66,12 +67,20 @@ class ConnectedUsersPanel(wx.Panel):
         self.title.SetFont(title_font)
         left_sizer.Add(self.title, 0, wx.ALL, 5)
         
-        # Área de usuarios conectados
-        self.users_label = wx.StaticText(left_panel, label="Usuarios online:")
-        left_sizer.Add(self.users_label, 0, wx.ALL, 5)
+        # Área de usuarios conectados con shard list - División flexible
+        self.users_splitter = wx.SplitterWindow(left_panel, style=wx.SP_LIVE_UPDATE | wx.SP_3D)
+        self.users_splitter.SetMinimumPaneSize(200)  # Tamaño mínimo para ambos paneles
+        self.users_splitter.SetSashGravity(0.4)  # 40% para shard list, 60% para users list
         
-        # Restore users_list as UltimateListCtrlAdapter with checkbox images
-        self.users_list = UltimateListCtrlAdapter(left_panel, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
+        # ShardListWidget a la izquierda
+        self.shard_list_widget = ShardListWidget(self.users_splitter)
+        
+        # Lista de usuarios a la derecha
+        users_panel = wx.Panel(self.users_splitter)
+        users_panel_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.users_label = wx.StaticText(users_panel, label="Usuarios online:")
+        users_panel_sizer.Add(self.users_label, 0, wx.ALL, 5)
+        self.users_list = UltimateListCtrlAdapter(users_panel, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.users_list.InsertColumn(0, "Filtrar", width=60)
         self.users_list.InsertColumn(1, "Usuario", width=100)
         self.users_list.InsertColumn(2, "Shard", width=150)
@@ -80,7 +89,13 @@ class ConnectedUsersPanel(wx.Panel):
         self.users_list.InsertColumn(5, "Modo", width=100)
         self.users_list.InsertColumn(6, "Última actividad", width=150)
         self.users_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_user_filter_toggle)
-        left_sizer.Add(self.users_list, 1, wx.EXPAND | wx.ALL, 5)
+        users_panel_sizer.Add(self.users_list, 1, wx.EXPAND | wx.ALL, 5)
+        users_panel.SetSizer(users_panel_sizer)
+        
+        # Configurar splitter
+        self.users_splitter.SplitVertically(self.shard_list_widget, users_panel)
+        
+        left_sizer.Add(self.users_splitter, 1, wx.EXPAND | wx.ALL, 5)
         
         # Área de logs compartidos
         self.logs_label = wx.StaticText(left_panel, label="Logs compartidos:")
@@ -281,6 +296,14 @@ class ConnectedUsersPanel(wx.Panel):
         self.stalled_filter_checkbox.SetForegroundColour(dark_row_fg)
         
         # Los botones DarkThemeButton ya tienen colores configurados automáticamente
+        
+        # Aplicar tema dark a shard widget
+        if hasattr(self, 'shard_list_widget'):
+            for child in self.shard_list_widget.GetChildren():
+                if isinstance(child, wx.StaticText):
+                    child.SetForegroundColour(dark_row_fg)
+                elif isinstance(child, wx.CheckBox):
+                    child.SetForegroundColour(dark_row_fg)
 
     def _update_ui_users_list(self):
         """Actualiza la UI con la lista de usuarios conectados"""
