@@ -3,7 +3,7 @@ import wx
 import time
 import winreg
 from wx.lib import buttons
-from ..core.message_bus import message_bus, MessageLevel
+from helpers.core.message_bus import message_bus, MessageLevel
 
 class RecordingSwitchWidget(wx.Panel):
     """

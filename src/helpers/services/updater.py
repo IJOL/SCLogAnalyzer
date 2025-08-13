@@ -8,7 +8,7 @@ import requests
 import zipfile
 import subprocess
 import wx
-from ..core.message_bus import message_bus, MessageLevel
+from helpers.core.message_bus import message_bus, MessageLevel
 
 # Constants for the updater
 GITHUB_API_URL = "https://api.github.com/repos/IJOL/SCLogAnalyzer/releases"

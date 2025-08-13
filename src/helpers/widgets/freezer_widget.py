@@ -3,10 +3,10 @@ import wx
 import shutil
 import json
 import datetime
-from ..ui.gui_module import WindowsHelper
-from ..core.config_utils import get_application_path
-from .dark_listctrl import DarkListCtrl
-from ..ui.ui_components import DarkThemeButton
+from helpers.ui.gui_module import WindowsHelper
+from helpers.core.config_utils import get_application_path
+from helpers.widgets.dark_listctrl import DarkListCtrl
+from helpers.ui.ui_components import DarkThemeButton
 
 FREEZER_DIR = os.path.abspath(os.path.join(get_application_path(), 'SCLogAnalyzer.freezer'))
 INDEX_FILE = os.path.join(FREEZER_DIR, 'freezer_index.json')

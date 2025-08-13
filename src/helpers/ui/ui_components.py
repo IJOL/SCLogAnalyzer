@@ -6,8 +6,8 @@ import threading
 import time
 import os
 from typing import Dict, Any, Callable, Tuple, List, Optional, Union
-from ..core.message_bus import message_bus, MessageLevel
-from ..core.config_utils import get_application_path, get_config_manager, get_template_base_dir, get_template_path
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.core.config_utils import get_application_path, get_config_manager, get_template_base_dir, get_template_path
 import wx.lib.buttons as buttons
 class TabCreator:
     """Manages creation and configuration of tabs in the notebook."""

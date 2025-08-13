@@ -3,9 +3,9 @@ import wx
 from datetime import datetime
 import re
 
-from ..core.message_bus import message_bus, MessageLevel
-from .dark_listctrl import DarkListCtrl
-from ..overlay.overlay_mixin import OverlayMixin
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.widgets.dark_listctrl import DarkListCtrl
+from helpers.overlay.overlay_mixin import OverlayMixin
 
 class SharedLogsWidget(DarkListCtrl, OverlayMixin):
     """Widget auto-contenido para logs compartidos con sistema de primera instancia controladora"""

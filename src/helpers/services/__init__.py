@@ -2,7 +2,7 @@
 """
 Services module - Independent services for SCLogAnalyzer
 """
-from .hotkey_manager import HotkeyManager
-from .game_focus_detector import GameFocusDetector
-from .notification_manager import NotificationManager
-from .monitoring_service import MonitoringService
+from helpers.services.hotkey_manager import HotkeyManager
+from helpers.services.game_focus_detector import GameFocusDetector
+from helpers.services.notification_manager import NotificationManager
+from helpers.services.monitoring_service import MonitoringService

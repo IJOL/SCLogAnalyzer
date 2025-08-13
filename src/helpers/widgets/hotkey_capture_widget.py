@@ -307,7 +307,7 @@ class HotkeyConfigPanel(wx.Panel):
         # Sección de Overlays - más compacta
         # Crear widgets dinámicamente basado en hotkeys registrados
         try:
-            from ..services.hotkey_manager import get_hotkey_manager
+            from helpers.services.hotkey_manager import get_hotkey_manager
             hotkey_manager = get_hotkey_manager()
             hotkeys_by_category = hotkey_manager.get_hotkeys_by_category()
             
@@ -359,7 +359,7 @@ class HotkeyConfigPanel(wx.Panel):
     def _load_current_hotkeys(self):
         """Cargar hotkeys actuales dinámicamente desde HotkeyManager registrados"""
         try:
-            from ..services.hotkey_manager import get_hotkey_manager
+            from helpers.services.hotkey_manager import get_hotkey_manager
             hotkey_manager = get_hotkey_manager()
             
             # Obtener hotkeys registrados dinámicamente 

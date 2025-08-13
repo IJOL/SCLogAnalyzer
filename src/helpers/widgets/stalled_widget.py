@@ -6,11 +6,11 @@ Incluye tracking de fuentes, TTL automático, y actualización periódica.
 import wx
 import threading
 from datetime import datetime, timedelta
-from ..core.message_bus import message_bus, MessageLevel
-from .dark_listctrl import DarkListCtrl
-from ..ui.ui_components import DarkThemeButton
-from ..overlay.overlay_mixin import OverlayMixin
-from ..core.debug_utils import critical_path, trace
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.widgets.dark_listctrl import DarkListCtrl
+from helpers.ui.ui_components import DarkThemeButton
+from helpers.overlay.overlay_mixin import OverlayMixin
+from helpers.core.debug_utils import critical_path, trace
 
 
 class StalledWidget(wx.Panel, OverlayMixin):

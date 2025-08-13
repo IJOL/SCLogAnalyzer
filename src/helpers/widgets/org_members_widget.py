@@ -9,10 +9,10 @@ import wx
 import threading
 from datetime import datetime
 
-from ..core.message_bus import message_bus, MessageLevel
-from .dark_listctrl import DarkListCtrl
-from ..ui.ui_components import DarkThemeButton, MiniDarkThemeButton
-from ..scraping.rsi_org_scraper import get_org_members, get_org_info, get_org_members_count
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.widgets.dark_listctrl import DarkListCtrl
+from helpers.ui.ui_components import DarkThemeButton, MiniDarkThemeButton
+from helpers.scraping.rsi_org_scraper import get_org_members, get_org_info, get_org_members_count
 
 
 class OrgMembersWidget(wx.Panel):

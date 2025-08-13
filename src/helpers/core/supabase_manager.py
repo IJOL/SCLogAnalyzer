@@ -234,7 +234,7 @@ class SupabaseManager:
             )
             
             # Importación tardía para evitar dependencia circular
-            from .realtime_bridge import run_coroutine
+            from helpers.core.realtime_bridge import run_coroutine
             
             # Usar la función run_coroutine que aprovecha el singleton de RealtimeBridge
             # sin necesidad de crear nuevas instancias o bucles de eventos redundantes

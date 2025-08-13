@@ -9,9 +9,9 @@ import traceback  # Añadido para rastrear mejor los errores
 import asyncio  # Añadido para manejar coroutines
 
 # Import Supabase manager
-from .supabase_manager import supabase_manager
-from .message_bus import message_bus, MessageLevel
-from ..services.notification_manager import NotificationManager
+from helpers.core.supabase_manager import supabase_manager
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.services.notification_manager import NotificationManager
 
 # Variable global para almacenar el singleton de RealtimeBridge
 _realtime_bridge_instance = None

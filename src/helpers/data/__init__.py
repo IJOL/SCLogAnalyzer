@@ -2,6 +2,6 @@
 """
 Data module - Data management and caching (non-scraping)
 """
-from .profile_cache import ProfileCache
-from .data_transfer import DataTransfer
-from .supabase_onboarding import SupabaseOnboarding
+from helpers.data.profile_cache import ProfileCache
+from helpers.data.data_transfer import DataTransfer
+from helpers.data.supabase_onboarding import SupabaseOnboarding

@@ -13,8 +13,8 @@ import threading
 from typing import Dict, Callable, Optional, List
 from pynput import keyboard
 
-from ..core.message_bus import message_bus, MessageLevel
-from .game_focus_detector import GameFocusDetector
+from helpers.core.message_bus import message_bus, MessageLevel
+from helpers.services.game_focus_detector import GameFocusDetector
 
 
 class HotkeyManager:

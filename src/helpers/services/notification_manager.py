@@ -6,8 +6,8 @@ import threading
 import time
 import wx
 
-from ..core.config_utils import get_application_path, get_template_base_dir
-from ..core.rate_limiter import MessageRateLimiter
+from helpers.core.config_utils import get_application_path, get_template_base_dir
+from helpers.core.rate_limiter import MessageRateLimiter
 
 class NotificationManager:
     _instance = None
@@ -33,7 +33,7 @@ class NotificationManager:
             timeout=300, max_duplicates=1, global_limit_count=2, global_limit_window=30
         )
         # Suscribirse al evento de notificación
-        from ..core.message_bus import message_bus
+        from helpers.core.message_bus import message_bus
         message_bus.on("show_windows_notification", self._on_show_notification)
 
     class NotificationPopup(wx.Frame):

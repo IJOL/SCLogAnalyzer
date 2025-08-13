@@ -3,7 +3,7 @@ import wx
 import os
 import winreg
 import sys
-from ..core.message_bus import message_bus, MessageLevel
+from helpers.core.message_bus import message_bus, MessageLevel
 
 # Registry paths as constants
 REGISTRY_KEY_PATH = r"Software\SCLogAnalyzer\WindowInfo"

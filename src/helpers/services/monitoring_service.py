@@ -4,8 +4,8 @@ import os
 import wx
 import time
 from watchdog.observers.polling import PollingObserver as Observer
-from ..core import log_analyzer
-from ..core.message_bus import message_bus, MessageLevel
+from helpers.core import log_analyzer
+from helpers.core.message_bus import message_bus, MessageLevel
 
 class MonitoringService:
     """Manages log file monitoring."""

@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 
 # Import MessageBus for logging
-from ..core.message_bus import message_bus, MessageLevel
+from helpers.core.message_bus import message_bus, MessageLevel
 
 
 def _calculate_delay(attempt: int, base_delay=1.0, max_delay=60.0) -> float:
