@@ -7,7 +7,7 @@ import wx
 import threading
 from datetime import datetime, timedelta
 from ..core.message_bus import message_bus, MessageLevel
-from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from .dark_listctrl import DarkListCtrl
 from ..ui.ui_components import DarkThemeButton
 from ..overlay.overlay_mixin import OverlayMixin
 from ..core.debug_utils import critical_path, trace
@@ -63,8 +63,8 @@ class StalledWidget(wx.Panel, OverlayMixin):
         
         main_sizer.Add(header_sizer, 0, wx.EXPAND | wx.ALL, 2)
         
-        # Lista con tema dark automático via UltimateListCtrlAdapter
-        self.stalled_list = UltimateListCtrlAdapter(
+        # Lista con tema dark automático via DarkListCtrl
+        self.stalled_list = DarkListCtrl(
             self, 
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES
         )

@@ -4,10 +4,10 @@ from datetime import datetime
 import re
 
 from ..core.message_bus import message_bus, MessageLevel
-from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from .dark_listctrl import DarkListCtrl
 from ..overlay.overlay_mixin import OverlayMixin
 
-class SharedLogsWidget(UltimateListCtrlAdapter, OverlayMixin):
+class SharedLogsWidget(DarkListCtrl, OverlayMixin):
     """Widget auto-contenido para logs compartidos con sistema de primera instancia controladora"""
     
     # Variables de clase compartidas
