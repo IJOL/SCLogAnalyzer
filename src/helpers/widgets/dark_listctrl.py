@@ -247,10 +247,29 @@ class DarkListCtrl(wx.ListCtrl):
     
     # Override de métodos para preservar ordenación
     def DeleteAllItems(self):
-        """Override para limpiar estado de ordenación"""
+        """Override para limpiar estado de ordenación y auto-sizing"""
         result = super().DeleteAllItems()
         self._sort_column = -1
         self._sort_direction = 'asc'
+        self._trigger_auto_sizing()
+        return result
+
+    def InsertItem(self, *args, **kwargs):
+        """Override para auto-sizing tras insertar item"""
+        result = super().InsertItem(*args, **kwargs)
+        self._trigger_auto_sizing()
+        return result
+
+    def SetItem(self, *args, **kwargs):
+        """Override para auto-sizing tras modificar item"""
+        result = super().SetItem(*args, **kwargs)
+        self._trigger_auto_sizing()
+        return result
+
+    def DeleteItem(self, *args, **kwargs):
+        """Override para auto-sizing tras eliminar item"""
+        result = super().DeleteItem(*args, **kwargs)
+        self._trigger_auto_sizing()
         return result
 
     def calculate_column_width(self, col_index):
