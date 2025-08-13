@@ -88,22 +88,30 @@ class ShardListWidget(wx.Panel):
         # Validar que el shard no sea None, vacío o 'Unknown'
         if not shard or shard in ['Unknown', 'None']:
             return  # No agregar shards inválidos
-            
+
         parsed_shard = self._parse_shard(shard)
-        
-        # Verificar si ya existe esta combinación player+shard
-        for entry in self.shard_data:
-            if entry['player'] == player and entry['shard'] == parsed_shard:
-                # Ya existe, no hacer nada (mantener timestamp original)
+
+        # Solo agregar si el último registro es exactamente igual (usuario y shard)
+        if self.shard_data:
+            last_entry = self.shard_data[-1]
+            if last_entry['player'] == player and last_entry['shard'] == parsed_shard:
                 return
-        
-        # Agregar nueva entrada al histórico
-        self.shard_data.append({
-            'player': player,
-            'shard': parsed_shard,
-            'timestamp': datetime.now()
-        })
-        wx.CallAfter(self._update_display)
+
+        # Buscar la última entrada de este usuario
+        last_user_entry = None
+        for entry in reversed(self.shard_data):
+            if entry['player'] == player:
+                last_user_entry = entry
+                break
+
+        # Solo agregar si el shard es diferente al último registrado para este usuario
+        if last_user_entry is None or last_user_entry['shard'] != parsed_shard:
+            self.shard_data.append({
+                'player': player,
+                'shard': parsed_shard,
+                'timestamp': datetime.now()
+            })
+            wx.CallAfter(self._update_display)
         
     def _update_display(self):
         self.list_ctrl.DeleteAllItems()
