@@ -1,10 +1,10 @@
 """Version information for SC Log Analyzer"""
 
 MAJOR = 0
-MINOR = 14
-RELEASE = 3
-MATURITY = "grimhex"  # "alpha", "beta", or "final"
-PATCH = "b79a854"
+MINOR = 15
+RELEASE = 0
+MATURITY = "laminas"  # "alpha", "beta", or "final"
+PATCH = "53fca67"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,15 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.14.x series,
+    "53fca67: refactor: Enhance auto-sizing functionality in DarkListCtrl methods",
+    "bd7d0b3: refactor: Update import statements to use absolute paths for consistency across modules",
+    "83de46e: refactor: Replace CustomListCtrl with DarkListCtrl in SharedLogsWidget and StalledWidget for consistent theming",
+    "a5cf9af: refactor: Replace CustomListCtrl with DarkListCtrl across multiple widgets for consistent theming",
+    "4d4b497: refactor: Change shard_data structure to a list and prevent duplicate entries",
+    "c446c85: feat: Implement ShardListWidget for managing shard data and UI integration",
+    "ea22261: refactor: Remove debug logging for specific problematic users in member parsing",
+    "7691e6c: Refactor code structure for improved readability and maintainability",
+    "d9d4a8d: [chore] Increment version to v0.14.3-b79a854-grimhex",
     "b79a854: refactor: Update import paths to use absolute imports from helpers module",
     "d6646cc: feat: Enhance test mode detection in DynamicLabels and RecordingSwitchWidget",
     "94fd05f: feat: Add multi-environment configuration options for log paths and auto-detection",
