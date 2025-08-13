@@ -7,7 +7,7 @@ from helpers.widgets.custom_listctrl import CustomListCtrl as UltimateListCtrlAd
 class ShardListWidget(wx.Panel):
     def __init__(self, parent):
         super().__init__(parent)
-        self.shard_data = {}
+        self.shard_data = []  # Lista de entradas: [{'player': str, 'shard': str, 'timestamp': datetime}]
         self._setup_ui()
         self._subscribe_events()
     
@@ -90,26 +90,38 @@ class ShardListWidget(wx.Panel):
             return  # No agregar shards inválidos
             
         parsed_shard = self._parse_shard(shard)
-        self.shard_data[player] = {
+        
+        # Verificar si ya existe esta combinación player+shard
+        for entry in self.shard_data:
+            if entry['player'] == player and entry['shard'] == parsed_shard:
+                # Ya existe, no hacer nada (mantener timestamp original)
+                return
+        
+        # Agregar nueva entrada al histórico
+        self.shard_data.append({
+            'player': player,
             'shard': parsed_shard,
             'timestamp': datetime.now()
-        }
+        })
         wx.CallAfter(self._update_display)
         
     def _update_display(self):
         self.list_ctrl.DeleteAllItems()
-        for player, data in self.shard_data.items():
+        # Ordenar por timestamp más reciente primero
+        sorted_data = sorted(self.shard_data, key=lambda x: x['timestamp'], reverse=True)
+        
+        for entry in sorted_data:
             try:
                 # Validar que todos los datos sean válidos antes de mostrar
-                if not player or not data.get('shard') or not data.get('timestamp'):
+                if not entry.get('player') or not entry.get('shard') or not entry.get('timestamp'):
                     continue
                     
-                index = self.list_ctrl.InsertItem(self.list_ctrl.GetItemCount(), str(player))
-                self.list_ctrl.SetItem(index, 1, str(data['shard']))
-                self.list_ctrl.SetItem(index, 2, data['timestamp'].strftime('%H:%M:%S'))
+                index = self.list_ctrl.InsertItem(self.list_ctrl.GetItemCount(), str(entry['player']))
+                self.list_ctrl.SetItem(index, 1, str(entry['shard']))
+                self.list_ctrl.SetItem(index, 2, entry['timestamp'].strftime('%H:%M:%S'))
             except Exception as e:
                 # Log error pero no detener el resto de la visualización
                 message_bus.publish(
-                    content=f"Error updating display for {player}: {e}",
+                    content=f"Error updating display for {entry.get('player', 'unknown')}: {e}",
                     level=MessageLevel.DEBUG
                 )
