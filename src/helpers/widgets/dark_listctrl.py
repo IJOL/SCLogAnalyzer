@@ -16,14 +16,17 @@ class DarkListCtrl(wx.ListCtrl):
     - Auto-sizing inteligente de columnas
     """
     
-    def __init__(self, parent, id=wx.ID_ANY, pos=wx.DefaultPosition, 
-                 size=wx.DefaultSize, style=wx.LC_REPORT, 
+    def __init__(self, parent, id=wx.ID_ANY, pos=wx.DefaultPosition,
+                 size=wx.DefaultSize, style=wx.LC_REPORT,
                  validator=wx.DefaultValidator, name="DarkListCtrl", **kwargs):
         
         # Extraer parámetros específicos de auto-sizing de kwargs
         self.auto_sizing_enabled = kwargs.pop('auto_sizing', True)  # Por defecto: True
         self.max_width_percent = kwargs.pop('max_width_percent', 0.4)  # 40% máximo
         self.min_width = kwargs.pop('min_width', 50)  # Mínimo absoluto
+
+        # Flag para evitar acumulación de wx.CallAfter
+        self._autosize_pending = False
         
         # Crear el ListCtrl base con kwargs restantes (API intacta)
         super().__init__(parent, id, pos, size, style, validator, name)
@@ -326,8 +329,16 @@ class DarkListCtrl(wx.ListCtrl):
     
     def _trigger_auto_sizing(self):
         """Hook thread-safe para updates automáticos"""
-        if self.auto_sizing_enabled:
-            wx.CallAfter(self.auto_size_columns)
+        if self.auto_sizing_enabled and not self._autosize_pending:
+            self._autosize_pending = True
+            wx.CallAfter(self._safe_auto_size_columns)
+
+    def _safe_auto_size_columns(self):
+            """Llama a auto_size_columns y limpia el flag de pendiente"""
+            try:
+                self.auto_size_columns()
+            finally:
+                self._autosize_pending = False
 
 
 # Alias para compatibilidad (actualizado)
