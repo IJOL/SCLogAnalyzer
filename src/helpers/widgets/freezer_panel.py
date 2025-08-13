@@ -5,7 +5,7 @@ import json
 import datetime
 from ..ui.gui_module import WindowsHelper
 from ..core.config_utils import get_application_path
-from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from .dark_listctrl import DarkListCtrl
 from ..ui.ui_components import DarkThemeButton
 
 FREEZER_DIR = os.path.abspath(os.path.join(get_application_path(), 'SCLogAnalyzer.freezer'))
@@ -19,7 +19,7 @@ class FreezerPanel(wx.Panel):
 
     def _init_ui(self):
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.list_ctrl = UltimateListCtrlAdapter(self, style=wx.LC_REPORT|wx.BORDER_SUNKEN)
+        self.list_ctrl = DarkListCtrl(self, style=wx.LC_REPORT|wx.BORDER_SUNKEN)
         self.list_ctrl.InsertColumn(0, "Name", width=120)
         self.list_ctrl.InsertColumn(1, "Description", width=200)
         self.list_ctrl.InsertColumn(2, "Timestamp", width=120)

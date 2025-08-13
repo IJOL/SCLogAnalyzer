@@ -10,7 +10,7 @@ import threading
 from datetime import datetime
 
 from ..core.message_bus import message_bus, MessageLevel
-from .custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from .dark_listctrl import DarkListCtrl
 from ..ui.ui_components import DarkThemeButton, MiniDarkThemeButton
 from ..scraping.rsi_org_scraper import get_org_members, get_org_info, get_org_members_count
 
@@ -79,7 +79,7 @@ class OrgMembersWidget(wx.Panel):
         main_sizer.Add(search_sizer, 0, wx.EXPAND | wx.ALL, 1)
         
         # Lista de miembros con tema dark automático
-        self.members_list = UltimateListCtrlAdapter(
+        self.members_list = DarkListCtrl(
             self, 
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES
         )

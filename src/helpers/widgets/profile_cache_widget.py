@@ -8,7 +8,7 @@ from typing import Dict, Any
 
 from helpers.data.profile_cache import ProfileCache
 from helpers.core.message_bus import message_bus, MessageLevel
-from helpers.widgets.custom_listctrl import CustomListCtrl
+from helpers.widgets.dark_listctrl import DarkListCtrl
 from helpers.ui.ui_components import DarkThemeButton
 
 
@@ -45,7 +45,7 @@ class ProfileCacheWidget(wx.Panel):
         header_panel.SetSizer(header_sizer)
         
         # ListCtrl para mostrar perfiles con colores oscuros
-        self.cache_listctrl = CustomListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.cache_listctrl = DarkListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         self.cache_listctrl.InsertColumn(0, "Jugador", width=150)
         self.cache_listctrl.InsertColumn(1, "Organización", width=100)
         self.cache_listctrl.InsertColumn(2, "Acción", width=80)

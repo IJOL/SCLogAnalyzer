@@ -2,7 +2,7 @@ import wx
 from datetime import datetime
 from helpers.core.message_bus import message_bus, MessageLevel
 from helpers.ui.ui_components import MiniDarkThemeButton
-from helpers.widgets.custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from helpers.widgets.dark_listctrl import DarkListCtrl
 
 class ShardListWidget(wx.Panel):
     def __init__(self, parent):
@@ -28,7 +28,7 @@ class ShardListWidget(wx.Panel):
         
         sizer.Add(top_sizer, 0, wx.EXPAND | wx.ALL, 5)
         
-        self.list_ctrl = UltimateListCtrlAdapter(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.BORDER_SUNKEN)
+        self.list_ctrl = DarkListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.BORDER_SUNKEN)
         self.list_ctrl.InsertColumn(0, "Player", width=150)
         self.list_ctrl.InsertColumn(1, "Shard", width=100)
         self.list_ctrl.InsertColumn(2, "Time", width=120)

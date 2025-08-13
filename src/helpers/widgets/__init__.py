@@ -3,7 +3,7 @@
 Widgets module - All UI components and specialized widgets
 """
 from helpers.widgets.connected_users_panel import ConnectedUsersPanel
-from helpers.widgets.custom_listctrl import CustomListCtrl
+from helpers.widgets.dark_listctrl import DarkListCtrl
 from helpers.widgets.freezer_panel import FreezerPanel
 from helpers.widgets.freezer_widget import FreezerWidget
 from helpers.widgets.hotkey_capture_widget import HotkeyCapture, HotkeyConfigPanel

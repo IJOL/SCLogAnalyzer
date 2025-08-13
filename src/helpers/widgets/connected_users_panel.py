@@ -9,7 +9,7 @@ from helpers.core.config_utils import get_config_manager
 # Eliminar import incorrecto de get_async_client y usar el singleton supabase_manager
 from helpers.core.supabase_manager import supabase_manager
 from helpers.core.realtime_bridge import RealtimeBridge # Import RealtimeBridge class
-from helpers.widgets.custom_listctrl import CustomListCtrl as UltimateListCtrlAdapter
+from helpers.widgets.dark_listctrl import DarkListCtrl
 from helpers.widgets.profile_cache_widget import ProfileCacheWidget
 from helpers.widgets.freezer_widget import FreezerWidget
 from helpers.ui.ui_components import DarkThemeButton
@@ -80,7 +80,7 @@ class ConnectedUsersPanel(wx.Panel):
         users_panel_sizer = wx.BoxSizer(wx.VERTICAL)
         self.users_label = wx.StaticText(users_panel, label="Usuarios online:")
         users_panel_sizer.Add(self.users_label, 0, wx.ALL, 5)
-        self.users_list = UltimateListCtrlAdapter(users_panel, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
+        self.users_list = DarkListCtrl(users_panel, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.users_list.InsertColumn(0, "Filtrar", width=60)
         self.users_list.InsertColumn(1, "Usuario", width=100)
         self.users_list.InsertColumn(2, "Shard", width=150)

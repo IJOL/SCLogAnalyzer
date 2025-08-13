@@ -6,20 +6,26 @@ import ctypes
 import re
 from datetime import datetime
 
-class CustomListCtrl(wx.ListCtrl):
+class DarkListCtrl(wx.ListCtrl):
     """
     ListCtrl personalizado basado en wx.ListCtrl nativo con:
     - Tema visual deshabilitado
     - Colores oscuros por defecto
     - API compatible con wx.ListCtrl
     - Ordenación transparente de columnas
+    - Auto-sizing inteligente de columnas
     """
     
     def __init__(self, parent, id=wx.ID_ANY, pos=wx.DefaultPosition, 
                  size=wx.DefaultSize, style=wx.LC_REPORT, 
-                 validator=wx.DefaultValidator, name="CustomListCtrl"):
+                 validator=wx.DefaultValidator, name="DarkListCtrl", **kwargs):
         
-        # Crear el ListCtrl base
+        # Extraer parámetros específicos de auto-sizing de kwargs
+        self.auto_sizing_enabled = kwargs.pop('auto_sizing', True)  # Por defecto: True
+        self.max_width_percent = kwargs.pop('max_width_percent', 0.4)  # 40% máximo
+        self.min_width = kwargs.pop('min_width', 50)  # Mínimo absoluto
+        
+        # Crear el ListCtrl base con kwargs restantes (API intacta)
         super().__init__(parent, id, pos, size, style, validator, name)
         
         # Variables de ordenación
@@ -247,14 +253,71 @@ class CustomListCtrl(wx.ListCtrl):
         self._sort_direction = 'asc'
         return result
 
+    def calculate_column_width(self, col_index):
+        """Calcular ancho óptimo basado en contenido y header"""
+        try:
+            header_width = self.GetTextExtent(self.GetColumn(col_index).GetText())[0]
+            
+            max_content_width = 0
+            for row in range(self.GetItemCount()):
+                content = self.GetItemText(row, col_index)
+                content_width = self.GetTextExtent(content)[0]
+                max_content_width = max(max_content_width, content_width)
+            
+            # Ancho óptimo = max(header, contenido) + padding
+            return max(header_width, max_content_width) + 20
+        except Exception:
+            return self.min_width
+    
+    def auto_size_columns(self):
+        """Auto-sizing con límite basado en ancho total del componente"""
+        if not self.auto_sizing_enabled:
+            return
+            
+        try:
+            # Obtener ancho total disponible
+            total_width = self.GetSize()[0]
+            if total_width <= 0:
+                return  # No auto-sizing si el widget no está dimensionado
+                
+            max_column_width = int(total_width * self.max_width_percent)
+            
+            for col in range(self.GetColumnCount()):
+                # Calcular ancho óptimo
+                optimal_width = self.calculate_column_width(col)
+                
+                # Aplicar límites: mínimo y máximo
+                final_width = max(self.min_width, min(optimal_width, max_column_width))
+                self.SetColumnWidth(col, final_width)
+        except Exception:
+            # Si hay error en auto-sizing, no hacer nada (silent fail)
+            pass
+    
+    def enable_auto_sizing(self, enabled=True):
+        """Habilitar/deshabilitar auto-sizing"""
+        self.auto_sizing_enabled = enabled
+        if enabled:
+            self.auto_size_columns()
+    
+    def set_max_width_percent(self, percent):
+        """Configurar porcentaje máximo por columna"""
+        self.max_width_percent = percent
+        if self.auto_sizing_enabled:
+            self.auto_size_columns()
+    
+    def _trigger_auto_sizing(self):
+        """Hook thread-safe para updates automáticos"""
+        if self.auto_sizing_enabled:
+            wx.CallAfter(self.auto_size_columns)
 
-# Alias para compatibilidad
-ListCtrlAdapter = CustomListCtrl
+
+# Alias para compatibilidad (actualizado)
+ListCtrlAdapter = DarkListCtrl
 
 
 def create_custom_listctrl(parent, **kwargs):
     """
-    Factory function para crear CustomListCtrl con configuración estándar
+    Factory function para crear DarkListCtrl con configuración estándar
     """
     # Configuración por defecto
     default_kwargs = {
@@ -262,5 +325,5 @@ def create_custom_listctrl(parent, **kwargs):
     }
     default_kwargs.update(kwargs)
     
-    listctrl = CustomListCtrl(parent, **default_kwargs)
+    listctrl = DarkListCtrl(parent, **default_kwargs)
     return listctrl 
