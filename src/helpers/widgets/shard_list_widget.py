@@ -64,8 +64,8 @@ class ShardListWidget(wx.Panel):
             if username and shard and shard != 'Unknown':
                 self._add_shard_entry(username, shard)
                 
-    def _on_mode_change(self, new_mode, old_mode=None):
-        if self.auto_shard_checkbox.GetValue() and new_mode == "SC_Default":
+    def _on_mode_change(self, new_mode, old_mode=None, live=False):
+        if self.auto_shard_checkbox.GetValue() and new_mode == "SC_Default" and live:
             message_bus.emit('system_auto_shard')
             
     def _on_auto_shard_toggle(self, event):

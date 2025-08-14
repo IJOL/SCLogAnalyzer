@@ -855,7 +855,7 @@ class LogFileHandler(FileSystemEventHandler):
                     self.block_private_lobby_recording = False
                 
                 # Emit the event to notify subscribers about mode change
-                message_bus.emit("mode_change", new_mode, old_mode)
+                message_bus.emit("mode_change", new_mode, old_mode, live=send_message)
 
                 # Format the mode data for output
                 mode_data['status'] = 'entered'
@@ -895,7 +895,7 @@ class LogFileHandler(FileSystemEventHandler):
                     return False
                 
                 # Emit the event to notify subscribers about mode exit
-                message_bus.emit("mode_change", None, self.current_mode)
+                message_bus.emit("mode_change", None, self.current_mode, live=send_message)
 
                 # Format the mode data for output
                 mode_data['status'] = 'exited'
@@ -1037,7 +1037,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.actor_state = {}
         # Emit events to notify subscribers about the reset
         from helpers.core.message_bus import message_bus
-        message_bus.emit("mode_change", None, self.current_mode)
+        message_bus.emit("mode_change", None, self.current_mode, live=False)
         message_bus.emit("shard_version_update", self.current_shard, self.current_version, self.username, self.current_mode)
         message_bus.emit("username_change", self.username,  last_username)
         message_bus.emit("realtime_disconnect")
