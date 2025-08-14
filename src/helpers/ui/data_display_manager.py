@@ -793,6 +793,9 @@ class DataDisplayManager:
                     # Create all views in a single operation
                     if valid_tab_configs:
                         data_provider.ensure_dynamic_views(valid_tab_configs)
+                        # Force metadata cache invalidation to ensure new views are immediately recognized
+                        from helpers.core.supabase_manager import supabase_manager
+                        supabase_manager._invalidate_metadata_cache()
                 
                 # Add dynamic tabs to data_subtabs
                 for tab_name, query in config_tabs.items():

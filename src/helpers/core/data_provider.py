@@ -479,6 +479,8 @@ class SupabaseDataProvider(DataProvider):
                 level=MessageLevel.INFO,
                 metadata={"source": self.SOURCE}
             )
+            # Invalidate metadata cache to ensure the new view is recognized
+            message_bus.emit("schema_change")
             return True
         else:
             message_bus.publish(
