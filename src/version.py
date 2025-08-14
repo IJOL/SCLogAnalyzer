@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 16
-RELEASE = 1
+RELEASE = 2
 MATURITY = "laminas"  # "alpha", "beta", or "final"
-PATCH = "4dd7627"
+PATCH = "367cdfa"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,7 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.16.x series,
-    "4dd7627: refactor: Enhance auto-sizing mechanism in DarkListCtrl to prevent multiple calls",
-    "747ec20: refactor: Improve shard entry validation logic in ShardListWidget"
+    "367cdfa: refactor: Invalidate metadata cache in SupabaseDataProvider and DataDisplayManager to ensure new views are recognized",
+    "680b52a: refactor: Remove stdout redirection from MessageBus to resolve infinite loop in debug mode",
+    "224b831: refactor: Remove unused import of ThreadPoolExecutor in RealtimeBridge"
 ]
