@@ -718,8 +718,6 @@ class RealtimeBridge:
             metadata={"source": "realtime_bridge"}
         )
 
-    from concurrent.futures import ThreadPoolExecutor
-
     def _ping_missing_loop(self):
         while self._ping_missing_check_active:
             try:
