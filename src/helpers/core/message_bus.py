@@ -14,33 +14,6 @@ default_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s: %(m
 default_logger.addHandler(default_handler)
 default_logger.setLevel(logging.INFO)
 
-# Permite controlar la redirección de stdout a message_bus para scripts de test.
-# Si la variable de entorno SCLOG_DISABLE_STDOUT_REDIRECT está a '1', no se redirige stdout.
-DISABLE_STDOUT_REDIRECT = os.environ.get('SCLOG_DISABLE_STDOUT_REDIRECT', '0') == '1'
-_original_stdout = sys.stdout
-
-class RedirectText:
-    """Class to redirect stdout to the message bus."""
-    def __init__(self, stdout=None):
-        self.stdout = stdout  # Store the original stdout if needed
-
-    def write(self, string):
-        """Publish the string to the message bus."""
-        if string and string.strip():  # Skip empty strings
-            try:
-                # Use the module-level import of message_bus
-                message_bus.publish(
-                    content=string,
-                    level=MessageLevel.INFO,
-                    metadata={'from_stdout': True}
-                )
-            except Exception as e:
-                # Fallback to direct writing if message_bus isn't available
-                if self.stdout:
-                    self.stdout.write(string)
-
-    def flush(self):
-        pass
 
 
 class MessageLevel(Enum):
@@ -141,9 +114,7 @@ class MessageBus:
         self.max_history_size = 1000  # Maximum number of messages to keep in history
         self.filters = {}  # Filters for conditional message processing
         self.debug_mode = False  # Debug mode flag for peeking at messages
-        self.redirect_stdout = sys.stdout  # Store original stdout
-        if not DISABLE_STDOUT_REDIRECT:
-            sys.stdout = RedirectText()
+        # The redirection of sys.stdout has been removed based on ARCH-001.
 
     def set_debug_mode(self, enabled: bool) -> None:
         """
@@ -155,6 +126,8 @@ class MessageBus:
             enabled: True to enable debug mode, False to disable
         """
         self.debug_mode = enabled
+        # This now prints directly to the original stdout, as redirection is removed.
+        # This resolves the infinite loop issue in debug mode.
         print(f"Message bus debug mode {'enabled' if enabled else 'disabled'}")
     
     def is_debug_mode(self) -> bool:
@@ -214,9 +187,9 @@ class MessageBus:
                     level_str = level_indicators.get(message.level, "[INFO]")
                     pattern_str = f"[{message.pattern_name}]" if message.pattern_name else ""
                     (f"{level_str}{pattern_str} {message.get_formatted_message()}")
-                    self.redirect_stdout.write(
-                        f"{level_str} {message.get_formatted_message()}\n"
-                    )
+                    # This now prints directly to the original stdout, as redirection is removed.
+                    # This resolves the infinite loop issue in debug mode.
+                    print(f"{level_str} {message.get_formatted_message()}")
                 
                 # Send to all subscribers
                 for subscriber in self.subscribers:
@@ -575,12 +548,3 @@ def setup_console_handler(debug=False, replay_history=True):
     # Return the handler name so it can be unsubscribed later if needed
     return handler_name
 
-def enable_stdout_redirect():
-    """Redirige sys.stdout al message_bus (solo si no está desactivado globalmente)."""
-    if not DISABLE_STDOUT_REDIRECT:
-        sys.stdout = RedirectText()
-
-def disable_stdout_redirect():
-    """Restaura sys.stdout al valor original (directo a consola)."""
-    global _original_stdout
-    sys.stdout = _original_stdout
