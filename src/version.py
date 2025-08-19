@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 16
-RELEASE = 2
+RELEASE = 3
 MATURITY = "laminas"  # "alpha", "beta", or "final"
-PATCH = "367cdfa"
+PATCH = "afaaa19"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,7 +17,8 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.16.x series,
-    "367cdfa: refactor: Invalidate metadata cache in SupabaseDataProvider and DataDisplayManager to ensure new views are recognized",
-    "680b52a: refactor: Remove stdout redirection from MessageBus to resolve infinite loop in debug mode",
-    "224b831: refactor: Remove unused import of ThreadPoolExecutor in RealtimeBridge"
+    "afaaa19: feat: Implement generic query function for dynamic query execution in SupabaseDataProvider",
+    "e4c01e8: refactor: Add 'live' parameter to on_mode_change method for enhanced event handling",
+    "9d35322: refactor: Add 'live' parameter to mode_change events for improved event handling",
+    "61a714c: feature: Daily kills view"
 ]
