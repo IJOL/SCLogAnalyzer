@@ -373,6 +373,182 @@ class SupabaseDataProvider(DataProvider):
         # Single list of excluded fields for all tables
         self.excluded_fields = ['direction_x', 'direction_y', 'direction_z']
         
+        # Ensure generic query function exists on initialization
+        try:
+            self._ensure_generic_query_function_exists()
+        except Exception as e:
+            message_bus.publish(
+                content=f"Warning: Could not ensure generic query function exists: {e}",
+                level=MessageLevel.WARNING,
+                metadata={"source": self.SOURCE}
+            )
+    
+    def _ensure_generic_query_function_exists(self):
+        """
+        Ensure the execute_generic_query function exists by testing it, create if it fails.
+        """
+        if not supabase_manager.is_connected():
+            return False
+        
+        try:
+            # Try to execute the function with a simple test query
+            test_result = supabase_manager.supabase.rpc(
+                'execute_generic_query', 
+                {'query_text': 'SELECT 1 as test'}
+            ).execute()
+            
+            # If we get here without exception, function exists and works
+            return True
+            
+        except Exception as e:
+            # Function doesn't exist or has errors, create it
+            message_bus.publish(
+                content="Generic query function not found or failed, creating it...",
+                level=MessageLevel.INFO,
+                metadata={"source": self.SOURCE}
+            )
+            self._create_generic_query_function()
+            return True
+    
+    def _create_generic_query_function(self):
+        """
+        Create the execute_generic_query function in the database.
+        """
+        function_sql = """
+        CREATE OR REPLACE FUNCTION execute_generic_query(query_text TEXT)
+        RETURNS TABLE(result JSON)
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        AS $$
+        BEGIN
+            -- Execute query and return each row as JSON
+            RETURN QUERY EXECUTE format('SELECT row_to_json(t) FROM (%s) t', query_text);
+        EXCEPTION
+            WHEN OTHERS THEN
+                RETURN QUERY SELECT json_build_object(
+                    'error', 'Query execution failed',
+                    'message', SQLERRM,
+                    'sqlstate', SQLSTATE
+                )::JSON;
+        END;
+        $$;
+        """
+        
+        try:
+            success, result = supabase_manager._execute_sql(function_sql)
+            if success:
+                message_bus.publish(
+                    content="Successfully created execute_generic_query function",
+                    level=MessageLevel.INFO,
+                    metadata={"source": self.SOURCE}
+                )
+            else:
+                message_bus.publish(
+                    content=f"Failed to create generic query function: {result}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                raise Exception(f"Function creation failed: {result}")
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Failed to create generic query function: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            raise
+    
+    def _execute_dynamic_query(self, tab_name: str, query: str, username: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Execute a dynamic query using the generic query function."""
+        try:
+            # Ensure generic function exists
+            self._ensure_generic_query_function_exists()
+            
+            # Clean query to single line and wrap with subquery for username filtering if needed
+            # Only apply username filter to tabs with "user" in the name
+            clean_base_query = ' '.join(query.split())
+            
+            if username and 'user' in tab_name.lower():
+                wrapped_query = f"SELECT * FROM ({clean_base_query}) subq WHERE username = '{username}'"
+            else:
+                wrapped_query = clean_base_query
+            
+            # Call generic function directly via RPC
+            
+            try:
+                # Call the function directly via RPC
+                rpc_result = supabase_manager.supabase.rpc(
+                    'execute_generic_query', 
+                    {'query_text': wrapped_query}
+                ).execute()
+                
+                if hasattr(rpc_result, 'error') and rpc_result.error:
+                    success = False
+                    result = rpc_result.error
+                else:
+                    success = True
+                    result = rpc_result.data
+            except Exception as e:
+                success = False
+                result = str(e)
+            
+            # Check for error responses in results
+            if result and len(result) > 0:
+                if isinstance(result[0], dict) and 'result' in result[0]:
+                    result_data = result[0]['result']
+                    if isinstance(result_data, dict) and 'error' in result_data:
+                        message_bus.publish(
+                            content=f"Function returned error: {result_data}",
+                            level=MessageLevel.ERROR,
+                            metadata={"source": self.SOURCE}
+                        )
+            
+            if not success:
+                message_bus.publish(
+                    content=f"Failed to execute dynamic query for tab '{tab_name}': {result}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                return []
+            
+            # Parse JSON results 
+            return self._parse_json_recordset(result)
+            
+        except Exception as e:
+            message_bus.publish(
+                content=f"Failed to execute dynamic query for tab '{tab_name}': {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": self.SOURCE}
+            )
+            # Return empty result in expected format
+            return []
+    
+    def _parse_json_recordset(self, json_results):
+        """Parse JSON recordset from generic function into expected list of dicts format."""
+        if not json_results:
+            return []
+        
+        parsed_data = []
+        
+        for row in json_results:
+            json_data = row.get('result', {})
+            
+            # Check for error responses
+            if isinstance(json_data, dict) and 'error' in json_data:
+                error_msg = json_data.get('message', json_data['error'])
+                message_bus.publish(
+                    content=f"Database error in query: {error_msg}",
+                    level=MessageLevel.ERROR,
+                    metadata={"source": self.SOURCE}
+                )
+                return []
+            
+            # Add the JSON object directly to results
+            if isinstance(json_data, dict):
+                parsed_data.append(json_data)
+        
+        return parsed_data
+        
     def ensure_dynamic_views(self, tab_configs):
         """
         Ensure that all dynamic views exist in the database.
@@ -705,22 +881,13 @@ class SupabaseDataProvider(DataProvider):
             query = config_tabs[table_name]
             
             message_bus.publish(
-                content=f"Found dynamic tab '{table_name}', ensuring view exists",
+                content=f"Found dynamic tab '{table_name}', executing via generic function",
                 level=MessageLevel.DEBUG,
                 metadata={"source": self.SOURCE}
             )
             
-            # Create the view if it doesn't exist or update it
-            if self.create_or_ensure_view_exists(table_name, query):
-                message_bus.publish(
-                    content=f"Created view for tab '{table_name}'",
-                    level=MessageLevel.DEBUG,
-                    metadata={"source": self.SOURCE}
-                )
-                return []
-            
-            # Query the view directly
-            return self._execute_table_query(normalized_view_name, username=username)
+            # Execute dynamic query via generic function
+            return self._execute_dynamic_query(table_name, query, username)
             
         # Standard table query for regular tables
         # Sanitize the table name to match how it would be stored
