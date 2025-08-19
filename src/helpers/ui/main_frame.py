@@ -495,8 +495,8 @@ class LogAnalyzerFrame(wx.Frame):
                 content=f"Error updating shard/version/username/mode: {e}",
                 level=MessageLevel.ERROR
             )
-    
-    def on_mode_change(self, new_mode, old_mode):
+
+    def on_mode_change(self, new_mode, old_mode, live = False):
         """
         Handle mode change events.
 
