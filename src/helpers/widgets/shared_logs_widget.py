@@ -161,7 +161,7 @@ class SharedLogsWidget(DarkListCtrl, OverlayMixin):
 
     def _on_right_click(self, event):
         """Menú contexto dinámico completo con emoticonos"""
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         
         menu = wx.Menu()
         bridge_instance = RealtimeBridge.get_instance()
@@ -250,14 +250,14 @@ class SharedLogsWidget(DarkListCtrl, OverlayMixin):
     
     def _on_toggle_filter_state(self, content, add):
         """Maneja filtros de contenido a través de RealtimeBridge"""
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         bridge_instance = RealtimeBridge.get_instance()
         if bridge_instance:
             bridge_instance.update_content_exclusions(content_to_exclude=content, add=add)
 
     def _on_clear_all_content_filters(self, event):
         """Limpia todos los filtros de contenido"""
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         bridge_instance = RealtimeBridge.get_instance()
         if bridge_instance:
             bridge_instance.update_content_exclusions(clear_all=True)

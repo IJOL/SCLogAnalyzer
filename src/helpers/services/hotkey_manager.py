@@ -381,7 +381,7 @@ def get_hotkey_manager() -> HotkeyManager:
     with _hotkey_manager_lock:
         if _hotkey_manager_instance is None:
             # Obtener ConfigManager usando la función existente
-            from ..core.config_utils import get_config_manager
+            from helpers.core.config_utils import get_config_manager
             config_manager = get_config_manager()
             
             # Crear instancia única de HotkeyManager
@@ -389,7 +389,7 @@ def get_hotkey_manager() -> HotkeyManager:
             
             # Log de inicialización usando el sistema de logging del proyecto
             try:
-                from ..core.message_bus import message_bus, MessageLevel
+                from helpers.core.message_bus import message_bus, MessageLevel
                 message_bus.publish(
                     content="HotkeyManager singleton instance created",
                     level=MessageLevel.INFO

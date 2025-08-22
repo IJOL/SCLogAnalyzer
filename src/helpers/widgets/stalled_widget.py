@@ -548,7 +548,7 @@ Detalle por fuente:
     
     def _on_filter_player_stalled(self, player_name):
         """Filtra eventos stalled de un jugador específico"""
-        from ..core.realtime_bridge import RealtimeBridge
+        from helpers.core.realtime_bridge import RealtimeBridge
         bridge = RealtimeBridge.get_instance()
         if bridge and hasattr(bridge, 'update_content_exclusions'):
             # Filtrar contenido que contenga "player_name: Stalled"

@@ -358,7 +358,7 @@ class OrgMembersWidget(wx.Panel):
     
     def _extend_context_menu_with_vip(self, menu, member_name):
         """Añadir opciones VIP al menú contextual"""
-        from ..core.config_utils import ConfigManager
+        from helpers.core.config_utils import ConfigManager
         
         config_manager = ConfigManager.get_instance()
         is_vip = config_manager.is_vip_player(member_name)
@@ -374,7 +374,7 @@ class OrgMembersWidget(wx.Panel):
 
     def _toggle_vip_player(self, member_name: str):
         """Toggle jugador en VIP list usando ConfigManager"""
-        from ..core.config_utils import ConfigManager
+        from helpers.core.config_utils import ConfigManager
         
         config_manager = ConfigManager.get_instance()
         was_vip = config_manager.is_vip_player(member_name)

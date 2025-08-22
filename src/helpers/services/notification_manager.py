@@ -96,8 +96,8 @@ class NotificationManager:
             self.Destroy()
 
     def _on_show_notification(self, content):
-        from ..core.message_bus import message_bus
-        from ..core.message_bus import MessageLevel
+        from helpers.core.message_bus import message_bus
+        from helpers.core.message_bus import MessageLevel
         import traceback
         # Log entrada (DEBUG)
         message_bus.publish(
