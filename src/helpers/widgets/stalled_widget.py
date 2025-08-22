@@ -370,10 +370,10 @@ class StalledWidget(wx.Panel, OverlayMixin):
         current_time = datetime.now()
         
         with self.data_lock:
-            # Ordenar por conteo descendente
+            # Ordenar por timestamp descendente (más recientes arriba)
             sorted_players = sorted(
                 self.stalled_data.items(),
-                key=lambda x: x[1]['count'],
+                key=lambda x: x[1]['last_timestamp'],
                 reverse=True
             )
             
