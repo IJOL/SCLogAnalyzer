@@ -687,8 +687,6 @@ class SupabaseDataProvider(DataProvider):
             return self._execute_table_query("resumen_mes_anterior_view")
             
         # Check if this is a dynamic tab from config (not a standard table)
-        # We need to look for the query in the config
-        normalized_view_name = self._normalize_view_name(table_name)
         config_tabs = {}
         
         try:
