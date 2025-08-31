@@ -212,3 +212,6 @@ node_modules/
 
 overlay_hybrid_efficient.py
 poc_hotkey_system.py
+.claude/
+planning_docs/
+rsi_browser_session/
