@@ -933,14 +933,7 @@ class LogAnalyzerFrame(wx.Frame):
                 # Get the data provider
                 data_provider = get_data_provider(self.config_manager)
                 
-                # If it's a Supabase provider and the tabs changed, ensure views exist
-                if isinstance(data_provider, SupabaseDataProvider) and new_tabs:
-                    if hasattr(data_provider, 'ensure_dynamic_views'):
-                        message_bus.publish(
-                            content="Updating dynamic tab views in Supabase...",
-                            level=MessageLevel.INFO
-                        )
-                        data_provider.ensure_dynamic_views(new_tabs)
+                # Dynamic tabs are now handled via execute_generic_query - no view creation needed
             
             # NOTE: We don't need to handle datasource_changed_to_supabase here
             # because our ConfigDialog.save_config already emits the "datasource_changed" event

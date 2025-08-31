@@ -790,12 +790,7 @@ class DataDisplayManager:
                         else:
                             valid_tab_configs[tab_name] = query
                     
-                    # Create all views in a single operation
-                    if valid_tab_configs:
-                        data_provider.ensure_dynamic_views(valid_tab_configs)
-                        # Force metadata cache invalidation to ensure new views are immediately recognized
-                        from helpers.core.supabase_manager import supabase_manager
-                        supabase_manager._invalidate_metadata_cache()
+                    # Dynamic tabs are now handled via execute_generic_query - no view creation needed
                 
                 # Add dynamic tabs to data_subtabs
                 for tab_name, query in config_tabs.items():
@@ -807,15 +802,7 @@ class DataDisplayManager:
                     if tab_name in all_existing_titles:
                         continue
                     
-                    # For Supabase, check if the view actually exists before adding the tab
-                    if datasource == "supabase":
-                        # Check if this view actually exists in the database
-                        if not data_provider.view_exists(tab_name):
-                            message_bus.publish(
-                                content=f"Skipping tab '{tab_name}' as the corresponding view does not exist in the database",
-                                level=MessageLevel.INFO
-                            )
-                            continue
+                    # Dynamic tabs use execute_generic_query - no view existence check needed
                     
                     # Add to data subtabs
                     data_subtabs.append({
