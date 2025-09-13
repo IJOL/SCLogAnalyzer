@@ -613,8 +613,8 @@ class LogAnalyzerFrame(wx.Frame):
         """Send predefined keystrokes to the Star Citizen window."""
         from helpers.ui.gui_module import WindowsHelper
         
-        # Derive the ScreenShots folder from the log file path
-        screenshots_folder = os.path.join(os.path.dirname(self.default_log_file_path), "ScreenShots")
+        # Derive the ScreenShots folder from the current log file path
+        screenshots_folder = os.path.join(os.path.dirname(self.config_manager.get('log_file_path')), "ScreenShots")
         ck = self.console_key if self.console_key != '' else WindowsHelper.CONSOLE_KEY
         WindowsHelper.send_keystrokes_to_window(
             "Star Citizen",
