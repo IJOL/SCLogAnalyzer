@@ -572,6 +572,41 @@ class LogFileHandler(FileSystemEventHandler):
                             pixels[x, y] = 0 if pixels[x, y] < threshold else 255
                     return temp_img
 
+                def _calculate_optimal_threshold(img):
+                    """
+                    Analiza el histograma para calcular UN SOLO threshold óptimo.
+                    No prueba múltiples - calcula directamente el mejor basado en los datos.
+                    """
+                    # Obtener histograma completo de la imagen (PIL nativo)
+                    histogram = img.histogram()
+
+                    # Calcular estadísticas básicas de la distribución
+                    total_pixels = sum(histogram)
+                    if total_pixels == 0:
+                        return 180  # Fallback si imagen vacía
+
+                    # Para QR codes, buscamos separar dos regiones:
+                    # - Región oscura (QR code negro/gris)
+                    # - Región clara (fondo blanco/gris claro)
+
+                    # Calcular percentil 50% (mediana) de la distribución
+                    cumulative = 0
+                    median_grey = None
+
+                    for grey_value in range(256):
+                        cumulative += histogram[grey_value]
+                        percentile = (cumulative / total_pixels) * 100
+
+                        if percentile >= 50 and median_grey is None:
+                            median_grey = grey_value
+                            break
+
+                    # El threshold óptimo para QR debe estar ligeramente por encima de la mediana
+                    # Esto separa la mitad más oscura (QR) de la mitad más clara (fondo)
+                    optimal_threshold = median_grey if median_grey else 180
+
+                    return optimal_threshold
+
                 # Binarización mejorada: threshold configurable o búsqueda descendente
                 qr_threshold = self.config_manager.get('qr_threshold', None)
                 qr_codes = None
@@ -584,16 +619,32 @@ class LogFileHandler(FileSystemEventHandler):
                     top_right = bin_img
                     threshold_used = threshold
                 else:
-                    # Prueba y error: empezar en 220 y bajar de 4 en 4 hasta 140
-                    for threshold in range(220, 180, -4):
-                        bin_img = _binarize_image(top_right, threshold)
-                        qr_codes = decode(bin_img)
-                        if qr_codes:
-                            top_right = bin_img
-                            threshold_used = threshold
-                            break
-                    if threshold_used is None:
-                        threshold_used = "none (all failed)"
+                    # NUEVO: Calcular threshold óptimo directamente
+                    optimal_threshold = _calculate_optimal_threshold(top_right)
+
+                    output_message(None, f"QR histograma: threshold óptimo calculado: {optimal_threshold}")
+
+                    # Probar threshold óptimo calculado
+                    bin_img = _binarize_image(top_right, optimal_threshold)
+                    qr_codes = decode(bin_img)
+
+                    if qr_codes:
+                        top_right = bin_img
+                        threshold_used = optimal_threshold
+                        output_message(None, f"QR detectado con threshold óptimo: {optimal_threshold}")
+                    else:
+                        # Fallback: si threshold óptimo falla, usar rango ampliado
+                        output_message(None, f"QR threshold óptimo {optimal_threshold} falló, usando rango ampliado")
+                        for threshold in range(220, 100, -4):
+                            bin_img = _binarize_image(top_right, threshold)
+                            qr_codes = decode(bin_img)
+                            if qr_codes:
+                                top_right = bin_img
+                                threshold_used = threshold
+                                output_message(None, f"QR detectado con threshold ampliado: {threshold}")
+                                break
+                        if threshold_used is None:
+                            threshold_used = "none (all failed)"
 
                 output_message(None, f"QR binarization threshold used: {threshold_used}")
 
