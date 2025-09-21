@@ -72,5 +72,13 @@
         "enabled": true,
         "game_focus_required": true,
         "target_windows": ["Star Citizen", "Stanton"]
+    },
+    "tournament": {
+        "enabled": true,
+        "current_active_tournament": null,
+        "auto_tag_events": true,
+        "corpse_detection_enabled": true,
+        "default_teams": ["Team Alpha", "Team Beta", "Team Gamma"],
+        "max_participants_per_tournament": 50
     }
 }

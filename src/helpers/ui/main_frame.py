@@ -22,6 +22,7 @@ from helpers.widgets.toggle_button_widget import ToggleButtonWidget
 from helpers.services import updater
 from version import get_version
 from helpers.ui.ui_components import DarkThemeButton
+from helpers.widgets.tournament_widget import TournamentWidget
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -274,7 +275,21 @@ class LogAnalyzerFrame(wx.Frame):
         self.notebook = wx.Notebook(panel)
         self.log_page = wx.Panel(self.notebook)
         self.notebook.AddPage(self.log_page, "Main Log")
-        
+
+        # Tournament tab
+        try:
+            self.tournament_widget = TournamentWidget(self.notebook)
+            self.notebook.AddPage(self.tournament_widget, "Tournaments")
+            message_bus.publish(
+                content="Tournament tab created successfully",
+                level=MessageLevel.INFO
+            )
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error creating tournament tab: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+
         # Bind the notebook page change event
         self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_notebook_page_changed)
 

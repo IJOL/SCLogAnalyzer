@@ -1989,6 +1989,119 @@ class SupabaseDataProvider(DataProvider):
         
         return all_hashes
 
+    def store_tournament(self, tournament_data: Dict[str, Any]) -> bool:
+        """Store tournament in database"""
+        try:
+            response = supabase_manager.supabase.table("tournaments").insert(tournament_data).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error storing tournament: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
+    def get_tournament(self, tournament_id: str) -> Optional[Dict[str, Any]]:
+        """Get tournament by ID"""
+        try:
+            response = supabase_manager.supabase.table("tournaments").select("*").eq("id", tournament_id).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error getting tournament: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return None
+
+    def update_tournament(self, tournament_id: str, tournament_data: Dict[str, Any]) -> bool:
+        """Update tournament in database"""
+        try:
+            response = supabase_manager.supabase.table("tournaments").update(tournament_data).eq("id", tournament_id).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error updating tournament: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
+    def store_tournament_corpse(self, corpse_data: Dict[str, Any]) -> bool:
+        """Store tournament corpse with deduplication"""
+        try:
+            response = supabase_manager.supabase.table("tournament_corpses").insert(corpse_data).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            if "duplicate key" in str(e).lower():
+                # Expected for duplicates - not an error
+                return True
+            message_bus.publish(
+                content=f"Error storing tournament corpse: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
+    def corpse_exists(self, tournament_id: str, corpse_hash: str) -> bool:
+        """Check if corpse already exists"""
+        try:
+            response = supabase_manager.supabase.table("tournament_corpses").select("id").eq("tournament_id", tournament_id).eq("corpse_hash", corpse_hash).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error checking corpse existence: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
+    def get_tournament_corpse(self, corpse_id: str) -> Optional[Dict[str, Any]]:
+        """Get tournament corpse by ID"""
+        try:
+            response = supabase_manager.supabase.table("tournament_corpses").select("*").eq("id", corpse_id).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error getting tournament corpse: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return None
+
+    def update_tournament_corpse(self, corpse_id: str, corpse_data: Dict[str, Any]) -> bool:
+        """Update tournament corpse in database"""
+        try:
+            response = supabase_manager.supabase.table("tournament_corpses").update(corpse_data).eq("id", corpse_id).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error updating tournament corpse: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
+    def tag_combat_event_with_tournament(self, table_name: str, event_id: str, tournament_id: str) -> bool:
+        """Tag existing combat event with tournament ID"""
+        try:
+            response = supabase_manager.supabase.table(table_name).update({"tournament_id": tournament_id}).eq("id", event_id).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error tagging combat event: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
+    def execute_sql(self, sql: str) -> bool:
+        """Execute raw SQL for schema operations"""
+        try:
+            # Note: This requires RPC function in Supabase for SQL execution
+            # Alternative: Use supabase CLI or direct psycopg2 connection
+            response = supabase_manager.supabase.rpc("execute_sql", {"sql_query": sql}).execute()
+            return True
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error executing SQL: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
 def get_data_provider(config_manager) -> DataProvider:
     """
     Factory function to get the appropriate data provider based on configuration.

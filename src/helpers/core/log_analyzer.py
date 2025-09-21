@@ -21,6 +21,7 @@ from helpers.core.config_utils import get_application_path, get_config_manager
 from helpers.core.supabase_manager import supabase_manager  # Import Supabase manager for cloud storage
 from helpers.core.message_bus import message_bus, MessageLevel  # Import at module level
 from helpers.core.data_provider import get_data_provider  # Import data provider
+from helpers.tournament.tournament_manager import TournamentManager
 from helpers.core.rate_limiter import MessageRateLimiter
 from helpers.scraping.async_profile import scrape_profile_async  # Import profile scraper helper
 from helpers import ensure_all_field
@@ -119,6 +120,8 @@ class LogFileHandler(FileSystemEventHandler):
         self.stop_event = threading.Event()
         self.screenshots_folder = os.path.join(os.path.dirname(self.log_file_path), "ScreenShots")
         self.current_mode = None
+
+        self._tournament_manager = None  # Lazy initialization
         self.version = get_version()
         
         # Initialize the data provider
@@ -185,7 +188,52 @@ class LogFileHandler(FileSystemEventHandler):
         except Exception as e:
             # If that fails or if the property doesn't exist, raise AttributeError
             raise AttributeError(f"Neither LogFileHandler nor ConfigManager has an attribute named '{name}'") from e
-    
+
+    def _get_tournament_manager(self):
+        """Lazy initialization of tournament manager"""
+        if self._tournament_manager is None:
+            self._tournament_manager = TournamentManager()
+        return self._tournament_manager
+
+    def _should_tag_with_tournament(self, event_data):
+        """Check if event should be tagged with tournament"""
+        try:
+            if not self.config_manager.get("tournament.auto_tag_events", True):
+                return False
+
+            tournament_manager = self._get_tournament_manager()
+            active_tournament = tournament_manager.get_active_tournament()
+
+            if not active_tournament:
+                return False
+
+            # Check if event sender is tournament participant
+            username = event_data.get("username") or event_data.get("sender")
+            if not username:
+                return False
+
+            return tournament_manager.is_tournament_participant(username)
+
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error checking tournament tagging: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
+    def _get_active_tournament_id(self, event_data):
+        """Get active tournament ID for event tagging"""
+        try:
+            tournament_manager = self._get_tournament_manager()
+            active_tournament = tournament_manager.get_active_tournament()
+            return active_tournament["id"] if active_tournament else None
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error getting active tournament ID: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return None
+
     def _on_actor_profile(self, player_name, org, enlisted, metadata=None):
         """Handler for actor_profile events from message bus"""
         # Para perfiles normales, verificar caché antes de Discord
@@ -518,6 +566,16 @@ class LogFileHandler(FileSystemEventHandler):
         # --- BLOQUEO DE GRABACIÓN POR LOBBY PRIVADO EN MODOS EA_* ---
         if getattr(self, 'block_private_lobby_recording', False):
             return False
+
+        # Tournament event tagging
+        if self._should_tag_with_tournament(data_with_state):
+            tournament_id = self._get_active_tournament_id(data_with_state)
+            if tournament_id:
+                data_with_state["tournament_id"] = tournament_id
+                message_bus.publish(
+                    content=f"Tagged event with tournament {tournament_id}",
+                    level=MessageLevel.DEBUG
+                )
 
         self.data_queue.put((data_with_state, event_type))
         return True
