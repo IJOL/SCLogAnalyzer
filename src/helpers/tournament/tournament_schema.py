@@ -49,13 +49,6 @@ class TournamentSchemaManager:
     ALTER TABLE ea_fpsgungame ADD COLUMN IF NOT EXISTS tournament_id UUID NULL;
     ALTER TABLE ea_tonkroyale_teambattle ADD COLUMN IF NOT EXISTS tournament_id UUID NULL;
 
-    -- Add foreign key constraints
-    ALTER TABLE sc_default ADD CONSTRAINT IF NOT EXISTS fk_sc_default_tournament
-        FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE SET NULL;
-    ALTER TABLE ea_squadronbattle ADD CONSTRAINT IF NOT EXISTS fk_ea_squadronbattle_tournament
-        FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE SET NULL;
-    ALTER TABLE ea_freeflight ADD CONSTRAINT IF NOT EXISTS fk_ea_freeflight_tournament
-        FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE SET NULL;
     """
 
     @classmethod

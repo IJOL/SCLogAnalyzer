@@ -2091,10 +2091,8 @@ class SupabaseDataProvider(DataProvider):
     def execute_sql(self, sql: str) -> bool:
         """Execute raw SQL for schema operations"""
         try:
-            # Note: This requires RPC function in Supabase for SQL execution
-            # Alternative: Use supabase CLI or direct psycopg2 connection
-            response = supabase_manager.supabase.rpc("execute_sql", {"sql_query": sql}).execute()
-            return True
+            success, result = supabase_manager._execute_sql(sql)
+            return success
         except Exception as e:
             message_bus.publish(
                 content=f"Error executing SQL: {str(e)}",

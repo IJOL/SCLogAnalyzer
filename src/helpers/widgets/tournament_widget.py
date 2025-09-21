@@ -5,9 +5,12 @@ from helpers.core.message_bus import message_bus, MessageLevel
 from helpers.core.config_utils import get_config_manager
 from helpers.tournament.tournament_manager import TournamentManager
 from helpers.tournament.corpse_detector import CorpseDetector
+from helpers.ui.ui_components import DarkThemeButton, MiniDarkThemeButton
+from helpers.widgets.dark_listctrl import DarkListCtrl
+from helpers.ui.tournament_creation_dialog import TournamentCreationDialog
 
 class TournamentWidget(wx.Panel):
-    """Main tournament management widget with dual-list interface"""
+    """Widget de seguimiento de torneos activos"""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -25,112 +28,146 @@ class TournamentWidget(wx.Panel):
 
     def _create_ui(self):
         """Create tournament management interface"""
+        # Apply dark theme background
+        self.SetBackgroundColour(wx.Colour(80, 80, 80))
+
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Tournament creation section
-        tournament_section = self._create_tournament_section()
-        main_sizer.Add(tournament_section, 0, wx.EXPAND | wx.ALL, 5)
+        # Tournament list section (top)
+        tournament_list_section = self._create_tournament_list_section()
+        main_sizer.Add(tournament_list_section, 1, wx.EXPAND | wx.ALL, 2)
 
-        # Dual-list interface section
-        lists_section = self._create_dual_list_section()
-        main_sizer.Add(lists_section, 1, wx.EXPAND | wx.ALL, 5)
-
-        # Tournament status and controls
-        status_section = self._create_status_section()
-        main_sizer.Add(status_section, 0, wx.EXPAND | wx.ALL, 5)
+        # Participants and statistics section (bottom)
+        participants_section = self._create_participants_section()
+        main_sizer.Add(participants_section, 1, wx.EXPAND | wx.ALL, 2)
 
         self.SetSizer(main_sizer)
 
-    def _create_tournament_section(self) -> wx.StaticBoxSizer:
-        """Create tournament creation and management section"""
-        box = wx.StaticBox(self, label="Tournament Management")
-        sizer = wx.StaticBoxSizer(box, wx.HORIZONTAL)
+    def _create_tournament_list_section(self) -> wx.StaticBoxSizer:
+        """Create tournament list section"""
+        box = wx.StaticBox(self, label="Torneos")
+        box.SetBackgroundColour(wx.Colour(80, 80, 80))
+        box.SetForegroundColour(wx.Colour(255, 255, 255))
+        sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
 
-        # Tournament name input
-        self.tournament_name_ctrl = wx.TextCtrl(self, size=(200, -1))
-        sizer.Add(wx.StaticText(self, label="Name:"), 0, wx.CENTER | wx.ALL, 5)
-        sizer.Add(self.tournament_name_ctrl, 0, wx.CENTER | wx.ALL, 5)
+        # Tournament list
+        self.tournaments_list = DarkListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.tournaments_list.AppendColumn("Nombre", width=150)
+        self.tournaments_list.AppendColumn("Estado", width=80)
+        self.tournaments_list.AppendColumn("Participantes", width=80)
+        self.tournaments_list.AppendColumn("Creado", width=100)
+        self.tournaments_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_tournament_selected)
+        sizer.Add(self.tournaments_list, 1, wx.EXPAND | wx.ALL, 2)
 
-        # Create tournament button
-        self.create_btn = wx.Button(self, label="Create Tournament")
-        self.create_btn.Bind(wx.EVT_BUTTON, self._on_create_tournament)
-        sizer.Add(self.create_btn, 0, wx.CENTER | wx.ALL, 5)
+        # Buttons
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Create tournament button (only in debug mode)
+        if message_bus.is_debug_mode():
+            self.create_btn = DarkThemeButton(self, label="Crear Torneo")
+            self.create_btn.Bind(wx.EVT_BUTTON, self._on_create_tournament)
+            button_sizer.Add(self.create_btn, 0, wx.ALL, 2)
+
+        # Edit tournament button
+        self.edit_btn = DarkThemeButton(self, label="Editar")
+        self.edit_btn.Bind(wx.EVT_BUTTON, self._on_edit_tournament)
+        self.edit_btn.Enable(False)
+        button_sizer.Add(self.edit_btn, 0, wx.ALL, 2)
 
         # Activate tournament button
-        self.activate_btn = wx.Button(self, label="Activate")
+        self.activate_btn = DarkThemeButton(self, label="Activar")
         self.activate_btn.Bind(wx.EVT_BUTTON, self._on_activate_tournament)
         self.activate_btn.Enable(False)
-        sizer.Add(self.activate_btn, 0, wx.CENTER | wx.ALL, 5)
+        button_sizer.Add(self.activate_btn, 0, wx.ALL, 2)
+
+        sizer.Add(button_sizer, 0, wx.CENTER | wx.ALL, 2)
 
         return sizer
 
-    def _create_dual_list_section(self) -> wx.StaticBoxSizer:
-        """Create dual-list interface for team building"""
-        box = wx.StaticBox(self, label="Team Building")
+    def _create_participants_section(self) -> wx.StaticBoxSizer:
+        """Create participants and statistics section"""
+        box = wx.StaticBox(self, label="Participantes y Estadísticas")
+        box.SetBackgroundColour(wx.Colour(80, 80, 80))
+        box.SetForegroundColour(wx.Colour(255, 255, 255))
         sizer = wx.StaticBoxSizer(box, wx.HORIZONTAL)
 
-        # Connected users list
-        connected_box = wx.StaticBox(self, label="Connected Users")
-        connected_sizer = wx.StaticBoxSizer(connected_box, wx.VERTICAL)
+        # Participants list
+        participants_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        self.connected_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self.connected_list.AppendColumn("Username", width=150)
-        self.connected_list.AppendColumn("Status", width=100)
-        connected_sizer.Add(self.connected_list, 1, wx.EXPAND | wx.ALL, 5)
+        participants_label = wx.StaticText(self, label="Participantes:")
+        participants_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        participants_sizer.Add(participants_label, 0, wx.ALL, 2)
 
-        # Move buttons
-        buttons_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.move_to_team_btn = wx.Button(self, label="Add to Team >>")
-        self.move_to_team_btn.Bind(wx.EVT_BUTTON, self._on_move_to_team)
-        self.move_to_connected_btn = wx.Button(self, label="<< Remove from Team")
-        self.move_to_connected_btn.Bind(wx.EVT_BUTTON, self._on_move_to_connected)
+        self.participants_list = DarkListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.participants_list.AppendColumn("Usuario", width=100)
+        self.participants_list.AppendColumn("Equipo", width=80)
+        self.participants_list.AppendColumn("Puntos", width=60)
+        participants_sizer.Add(self.participants_list, 1, wx.EXPAND | wx.ALL, 2)
 
-        buttons_sizer.Add(self.move_to_team_btn, 0, wx.CENTER | wx.ALL, 5)
-        buttons_sizer.Add(self.move_to_connected_btn, 0, wx.CENTER | wx.ALL, 5)
+        # Statistics panel
+        stats_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Team selection
-        self.team_choice = wx.Choice(self, choices=["Team Alpha", "Team Beta", "Team Gamma"])
-        self.team_choice.SetSelection(0)
-        buttons_sizer.Add(wx.StaticText(self, label="Team:"), 0, wx.CENTER | wx.ALL, 2)
-        buttons_sizer.Add(self.team_choice, 0, wx.CENTER | wx.ALL, 2)
+        stats_label = wx.StaticText(self, label="Estadísticas:")
+        stats_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        stats_sizer.Add(stats_label, 0, wx.ALL, 2)
 
-        # Tournament participants list
-        tournament_box = wx.StaticBox(self, label="Tournament Teams")
-        tournament_sizer = wx.StaticBoxSizer(tournament_box, wx.VERTICAL)
+        # Tournament status
+        self.status_text = wx.StaticText(self, label="Sin torneo seleccionado")
+        self.status_text.SetForegroundColour(wx.Colour(255, 255, 255))
+        stats_sizer.Add(self.status_text, 0, wx.ALL, 2)
 
-        self.tournament_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self.tournament_list.AppendColumn("Username", width=150)
-        self.tournament_list.AppendColumn("Team", width=100)
-        self.tournament_list.AppendColumn("Score", width=80)
-        tournament_sizer.Add(self.tournament_list, 1, wx.EXPAND | wx.ALL, 5)
-
-        # Assemble dual-list layout
-        sizer.Add(connected_sizer, 1, wx.EXPAND | wx.ALL, 5)
-        sizer.Add(buttons_sizer, 0, wx.CENTER | wx.ALL, 10)
-        sizer.Add(tournament_sizer, 1, wx.EXPAND | wx.ALL, 5)
-
-        return sizer
-
-    def _create_status_section(self) -> wx.StaticBoxSizer:
-        """Create tournament status and statistics section"""
-        box = wx.StaticBox(self, label="Tournament Status")
-        sizer = wx.StaticBoxSizer(box, wx.HORIZONTAL)
-
-        # Status display
-        self.status_text = wx.StaticText(self, label="No active tournament")
-        sizer.Add(self.status_text, 1, wx.CENTER | wx.ALL, 5)
-
-        # Corpse statistics
-        self.corpse_count_text = wx.StaticText(self, label="Corpses: 0")
-        sizer.Add(self.corpse_count_text, 0, wx.CENTER | wx.ALL, 5)
+        # Corpse count
+        self.corpse_count_text = wx.StaticText(self, label="Bajas: 0")
+        self.corpse_count_text.SetForegroundColour(wx.Colour(255, 255, 255))
+        stats_sizer.Add(self.corpse_count_text, 0, wx.ALL, 2)
 
         # Complete tournament button
-        self.complete_btn = wx.Button(self, label="Complete Tournament")
+        self.complete_btn = DarkThemeButton(self, label="Finalizar Torneo")
         self.complete_btn.Bind(wx.EVT_BUTTON, self._on_complete_tournament)
         self.complete_btn.Enable(False)
-        sizer.Add(self.complete_btn, 0, wx.CENTER | wx.ALL, 5)
+        stats_sizer.Add(self.complete_btn, 0, wx.ALL, 2)
+
+        # Add to main sizer
+        sizer.Add(participants_sizer, 1, wx.EXPAND | wx.ALL, 2)
+        sizer.Add(stats_sizer, 0, wx.EXPAND | wx.ALL, 2)
 
         return sizer
+
+    def _on_tournament_selected(self, event):
+        """Handle tournament selection from list"""
+        selected = self.tournaments_list.GetFirstSelected()
+        if selected != -1:
+            # Enable buttons when tournament is selected
+            self.edit_btn.Enable(True)
+            tournament_name = self.tournaments_list.GetItemText(selected, 0)
+            tournament_status = self.tournaments_list.GetItemText(selected, 1)
+
+            # Enable activate button only if tournament is created
+            self.activate_btn.Enable(tournament_status == "creado")
+            self.complete_btn.Enable(tournament_status == "activo")
+
+            # Update displays
+            self._update_selected_tournament_display(tournament_name)
+        else:
+            self.edit_btn.Enable(False)
+            self.activate_btn.Enable(False)
+            self.complete_btn.Enable(False)
+
+    def _on_edit_tournament(self, event):
+        """Handle tournament editing via modal dialog"""
+        selected = self.tournaments_list.GetFirstSelected()
+        if selected == -1:
+            return
+
+        tournament_name = self.tournaments_list.GetItemText(selected, 0)
+        # TODO: Load tournament data and pass to dialog for editing
+        dialog = TournamentCreationDialog(self)
+
+        if dialog.ShowModal() == wx.ID_OK:
+            # Tournament was edited successfully
+            self._refresh_tournaments_list()
+
+        dialog.Destroy()
 
     def _initialize_event_handlers(self):
         """Set up MessageBus event handlers"""
@@ -141,48 +178,84 @@ class TournamentWidget(wx.Panel):
         message_bus.on("connected_users_updated", self._on_connected_users_updated)
 
     def _load_initial_data(self):
-        """Load initial tournament and user data"""
+        """Load initial tournament data"""
         try:
             # Load active tournament
             active_tournament = self._tournament_manager.get_active_tournament()
             if active_tournament:
                 self._current_tournament = active_tournament
-                self._update_tournament_display()
 
-            # Load connected users (from existing system)
-            self._refresh_connected_users()
+            # Refresh displays
+            self._refresh_tournaments_list()
 
         except Exception as e:
             message_bus.publish(f"Error loading initial tournament data: {str(e)}", MessageLevel.ERROR)
 
     def _on_create_tournament(self, event):
-        """Handle tournament creation"""
-        tournament_name = self.tournament_name_ctrl.GetValue().strip()
-        if not tournament_name:
-            wx.MessageBox("Please enter a tournament name", "Error", wx.OK | wx.ICON_ERROR)
+        """Handle tournament creation via modal dialog"""
+        dialog = TournamentCreationDialog(self)
+
+        if dialog.ShowModal() == wx.ID_OK:
+            # Tournament was created successfully in dialog
+            # Refresh display to show new tournament
+            self._refresh_tournaments_list()
+
+        dialog.Destroy()
+
+    def _refresh_tournaments_list(self):
+        """Refresh the tournaments list from database"""
+        self.tournaments_list.DeleteAllItems()
+
+        # TODO: Load tournaments from database
+        # For now, show placeholder if there's an active tournament
+        if self._current_tournament:
+            tournament = self._current_tournament
+            status_translations = {
+                "created": "creado",
+                "active": "activo",
+                "completed": "completado",
+                "cancelled": "cancelado"
+            }
+            status_spanish = status_translations.get(tournament.get("status", ""), "desconocido")
+
+            index = self.tournaments_list.InsertItem(0, tournament.get("name", ""))
+            self.tournaments_list.SetItem(index, 1, status_spanish)
+            self.tournaments_list.SetItem(index, 2, str(len(tournament.get("participants", []))))
+            self.tournaments_list.SetItem(index, 3, tournament.get("created_at", "")[:10] if tournament.get("created_at") else "")
+
+    def _update_selected_tournament_display(self, tournament_name):
+        """Update participants list and stats for selected tournament"""
+        if not self._current_tournament or self._current_tournament.get("name") != tournament_name:
             return
 
-        try:
-            tournament_data = {
-                "name": tournament_name,
-                "participants": [],
-                "teams": {},
-                "created_by": self._config_manager.get("username", "unknown")
-            }
+        tournament = self._current_tournament
 
-            result = self._tournament_manager.create_tournament(tournament_data)
+        # Update status text
+        status_translations = {
+            "created": "creado",
+            "active": "activo",
+            "completed": "completado",
+            "cancelled": "cancelado"
+        }
+        status_spanish = status_translations.get(tournament.get("status", ""), "desconocido")
+        self.status_text.SetLabel(f"Torneo: {tournament_name} ({status_spanish})")
 
-            if result["success"]:
-                self._current_tournament = result["tournament"]
-                self._update_tournament_display()
-                self.tournament_name_ctrl.Clear()
-                message_bus.publish(f"Tournament '{tournament_name}' created successfully", MessageLevel.INFO)
-            else:
-                wx.MessageBox(f"Failed to create tournament: {result.get('error', 'Unknown error')}",
-                            "Error", wx.OK | wx.ICON_ERROR)
+        # Update participants list
+        self.participants_list.DeleteAllItems()
+        participants = tournament.get("participants", [])
+        teams = tournament.get("teams", {})
 
-        except Exception as e:
-            wx.MessageBox(f"Error creating tournament: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
+        for i, username in enumerate(participants):
+            # Find user's team
+            user_team = "Sin equipo"
+            for team_name, team_members in teams.items():
+                if username in team_members:
+                    user_team = team_name
+                    break
+
+            index = self.participants_list.InsertItem(i, username)
+            self.participants_list.SetItem(index, 1, user_team)
+            self.participants_list.SetItem(index, 2, "0")  # Score placeholder
 
     def _on_activate_tournament(self, event):
         """Handle tournament activation"""
@@ -195,139 +268,50 @@ class TournamentWidget(wx.Panel):
             if result["success"]:
                 self._current_tournament = result["tournament"]
                 self._update_tournament_display()
-                message_bus.publish("Tournament activated for combat event tagging", MessageLevel.INFO)
+                message_bus.publish("Torneo activado para etiquetado de eventos de combate", MessageLevel.INFO)
             else:
-                wx.MessageBox(f"Failed to activate tournament: {result.get('error', 'Unknown error')}",
+                wx.MessageBox(f"Error al activar torneo: {result.get('error', 'Error desconocido')}",
                             "Error", wx.OK | wx.ICON_ERROR)
 
         except Exception as e:
-            wx.MessageBox(f"Error activating tournament: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(f"Error al activar torneo: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
 
-    def _on_move_to_team(self, event):
-        """Move selected user from connected list to tournament team"""
-        selected = self.connected_list.GetFirstSelected()
-        if selected == -1:
-            wx.MessageBox("Please select a user to add to the tournament", "Info", wx.OK | wx.ICON_INFORMATION)
-            return
-
-        if not self._current_tournament:
-            wx.MessageBox("Please create a tournament first", "Error", wx.OK | wx.ICON_ERROR)
-            return
-
-        username = self.connected_list.GetItemText(selected, 0)
-        team_name = self.team_choice.GetStringSelection()
-
-        try:
-            participant_data = {
-                "username": username,
-                "team": team_name
-            }
-
-            result = self._tournament_manager.add_participant(self._current_tournament["id"], participant_data)
-
-            if result["success"]:
-                self._current_tournament = result["tournament"]
-                self._update_tournament_display()
-                self._refresh_connected_users()
-            else:
-                wx.MessageBox(f"Failed to add participant: {result.get('error', 'Unknown error')}",
-                            "Error", wx.OK | wx.ICON_ERROR)
-
-        except Exception as e:
-            wx.MessageBox(f"Error adding participant: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
-
-    def _on_move_to_connected(self, event):
-        """Move selected user from tournament team back to connected list"""
-        selected = self.tournament_list.GetFirstSelected()
-        if selected == -1:
-            wx.MessageBox("Please select a participant to remove from the tournament", "Info", wx.OK | wx.ICON_INFORMATION)
-            return
-
-        username = self.tournament_list.GetItemText(selected, 0)
-
-        # Implementation for removing participant would go here
-        wx.MessageBox(f"Remove {username} from tournament (not implemented yet)", "Info", wx.OK | wx.ICON_INFORMATION)
 
     def _on_complete_tournament(self, event):
         """Handle tournament completion"""
         if not self._current_tournament:
             return
 
-        result = wx.MessageBox("Are you sure you want to complete this tournament?",
-                             "Confirm", wx.YES_NO | wx.ICON_QUESTION)
+        result = wx.MessageBox("¿Está seguro que desea finalizar este torneo?",
+                             "Confirmar", wx.YES_NO | wx.ICON_QUESTION)
 
         if result == wx.YES:
             # Implementation for completing tournament would go here
-            message_bus.publish("Tournament completion not implemented yet", MessageLevel.INFO)
+            message_bus.publish("Finalización de torneo aún no implementada", MessageLevel.INFO)
 
-    def _update_tournament_display(self):
-        """Update UI with current tournament data"""
-        if not self._current_tournament:
-            self.status_text.SetLabel("No active tournament")
-            self.activate_btn.Enable(False)
-            self.complete_btn.Enable(False)
-            self.tournament_list.DeleteAllItems()
-            return
-
-        tournament = self._current_tournament
-        status = tournament.get("status", "unknown")
-        name = tournament.get("name", "Unknown")
-
-        self.status_text.SetLabel(f"Tournament: {name} ({status})")
-
-        # Enable/disable buttons based on status
-        self.activate_btn.Enable(status == "created")
-        self.complete_btn.Enable(status == "active")
-
-        # Update tournament participants list
-        self.tournament_list.DeleteAllItems()
-        participants = tournament.get("participants", [])
-        teams = tournament.get("teams", {})
-
-        for i, username in enumerate(participants):
-            # Find user's team
-            user_team = "Unknown"
-            for team_name, team_members in teams.items():
-                if username in team_members:
-                    user_team = team_name
-                    break
-
-            index = self.tournament_list.InsertItem(i, username)
-            self.tournament_list.SetItem(index, 1, user_team)
-            self.tournament_list.SetItem(index, 2, "0")  # Score placeholder
-
-    def _refresh_connected_users(self):
-        """Refresh connected users list excluding tournament participants"""
-        self.connected_list.DeleteAllItems()
-
-        tournament_participants = []
-        if self._current_tournament:
-            tournament_participants = self._current_tournament.get("participants", [])
-
-        for i, username in enumerate(self._connected_users):
-            if username not in tournament_participants:
-                index = self.connected_list.InsertItem(i, username)
-                self.connected_list.SetItem(index, 1, "Available")
 
     def _on_tournament_created(self, event_data):
         """Handle tournament created event"""
-        wx.CallAfter(self._update_tournament_display)
+        wx.CallAfter(self._refresh_tournaments_list)
 
     def _on_tournament_activated(self, event_data):
         """Handle tournament activated event"""
-        wx.CallAfter(self._update_tournament_display)
+        wx.CallAfter(self._refresh_tournaments_list)
 
     def _on_participant_added(self, event_data):
         """Handle participant added event"""
-        wx.CallAfter(self._update_tournament_display)
-        wx.CallAfter(self._refresh_connected_users)
+        # Refresh the selected tournament display
+        selected = self.tournaments_list.GetFirstSelected()
+        if selected != -1:
+            tournament_name = self.tournaments_list.GetItemText(selected, 0)
+            wx.CallAfter(lambda: self._update_selected_tournament_display(tournament_name))
 
     def _on_corpse_detected(self, event_data):
         """Handle tournament corpse detected event"""
         corpse_count = 0  # Would get actual count from database
-        wx.CallAfter(lambda: self.corpse_count_text.SetLabel(f"Corpses: {corpse_count}"))
+        wx.CallAfter(lambda: self.corpse_count_text.SetLabel(f"Bajas: {corpse_count}"))
 
     def _on_connected_users_updated(self, event_data):
         """Handle connected users list update"""
-        self._connected_users = event_data.get("users", [])
-        wx.CallAfter(self._refresh_connected_users)
+        # This event is no longer needed in simplified widget
+        pass
