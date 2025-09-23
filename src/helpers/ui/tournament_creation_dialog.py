@@ -97,8 +97,36 @@ class TournamentCreationDialog(wx.Dialog):
         left_sizer.Add(desc_label, 0, wx.ALL, 2)
         left_sizer.Add(self.desc_ctrl, 1, wx.EXPAND | wx.ALL, 2)
 
+        # Teams list (simple text field with pipe-separated names)
+        teams_label = wx.StaticText(self, label="Equipos (separados por |):")
+        teams_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        self.teams_ctrl = wx.TextCtrl(self, size=(200, -1))
+        self.teams_ctrl.SetValue("Equipo Alfa|Equipo Beta|Equipo Gamma")
+        self.teams_ctrl.Bind(wx.EVT_TEXT, self._on_teams_text_changed)
+        left_sizer.Add(teams_label, 0, wx.ALL, 2)
+        left_sizer.Add(self.teams_ctrl, 0, wx.EXPAND | wx.ALL, 2)
+
         # Right column
         right_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Tournament type - use table names directly as modes
+        type_label = wx.StaticText(self, label="Modo de Batalla:")
+        type_label.SetForegroundColour(wx.Colour(255, 255, 255))
+
+        # Available combat tables as tournament modes
+        combat_tables = [
+            "sc_default",
+            "ea_squadronbattle",
+            "ea_freeflight",
+            "ea_fpskillconfirmed",
+            "ea_fpsgungame",
+            "ea_tonkroyale_teambattle"
+        ]
+
+        self.type_choice = wx.Choice(self, choices=combat_tables)
+        self.type_choice.SetSelection(0)  # Default to "sc_default"
+        right_sizer.Add(type_label, 0, wx.ALL, 2)
+        right_sizer.Add(self.type_choice, 0, wx.EXPAND | wx.ALL, 2)
 
         # Max participants
         max_label = wx.StaticText(self, label="Máximo Participantes:")
@@ -142,48 +170,13 @@ class TournamentCreationDialog(wx.Dialog):
         buttons_sizer.Add(self.move_to_tournament_btn, 0, wx.CENTER | wx.ALL, 2)
         buttons_sizer.Add(self.move_to_connected_btn, 0, wx.CENTER | wx.ALL, 2)
 
-        # Team management section
-        team_management_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        # Team selection
+        # Team selection (simple dropdown from teams text field)
         team_label = wx.StaticText(self, label="Asignar a equipo:")
         team_label.SetForegroundColour(wx.Colour(255, 255, 255))
         self.team_choice = wx.Choice(self)
 
-        # Team list management
-        teams_label = wx.StaticText(self, label="Equipos:")
-        teams_label.SetForegroundColour(wx.Colour(255, 255, 255))
-
-        # Teams list
-        self.teams_list = DarkListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL, size=(-1, 80))
-        self.teams_list.AppendColumn("Nombre del Equipo", width=120)
-
-        # Team management buttons
-        team_buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        self.add_team_btn = DarkThemeButton(self, label="+", size=(30, 25))
-        self.add_team_btn.Bind(wx.EVT_BUTTON, self._on_add_team)
-
-        self.edit_team_btn = DarkThemeButton(self, label="✎", size=(30, 25))
-        self.edit_team_btn.Bind(wx.EVT_BUTTON, self._on_edit_team)
-
-        self.delete_team_btn = DarkThemeButton(self, label="✗", size=(30, 25))
-        self.delete_team_btn.Bind(wx.EVT_BUTTON, self._on_delete_team)
-
-        team_buttons_sizer.Add(self.add_team_btn, 0, wx.ALL, 1)
-        team_buttons_sizer.Add(self.edit_team_btn, 0, wx.ALL, 1)
-        team_buttons_sizer.Add(self.delete_team_btn, 0, wx.ALL, 1)
-
-        # Initialize default teams
-        self._teams = ["Equipo Alfa", "Equipo Beta", "Equipo Gamma"]
-
-        team_management_sizer.Add(team_label, 0, wx.ALL, 2)
-        team_management_sizer.Add(self.team_choice, 0, wx.EXPAND | wx.ALL, 2)
-        team_management_sizer.Add(teams_label, 0, wx.ALL, 2)
-        team_management_sizer.Add(self.teams_list, 0, wx.EXPAND | wx.ALL, 2)
-        team_management_sizer.Add(team_buttons_sizer, 0, wx.CENTER | wx.ALL, 2)
-
-        buttons_sizer.Add(team_management_sizer, 0, wx.EXPAND | wx.ALL, 2)
+        buttons_sizer.Add(team_label, 0, wx.ALL, 2)
+        buttons_sizer.Add(self.team_choice, 0, wx.EXPAND | wx.ALL, 2)
 
         # Tournament participants list
         tournament_box = wx.StaticBox(self, label="Participantes del Torneo")
@@ -205,8 +198,8 @@ class TournamentCreationDialog(wx.Dialog):
 
     def _load_initial_data(self):
         """Load initial data for the dialog"""
-        # Load default teams into UI
-        self._refresh_teams_list()
+        # Load teams from text field into choice control
+        self._refresh_teams_choice()
 
         # If editing existing tournament, load its data
         if self._tournament_data:
@@ -215,10 +208,28 @@ class TournamentCreationDialog(wx.Dialog):
         # Trigger presence sync to get current users via event
         self._trigger_users_update()
 
+    def _refresh_teams_choice(self):
+        """Refresh team choice control from teams text field"""
+        # Get teams from text field
+        teams_text = self.teams_ctrl.GetValue().strip()
+        teams = [team.strip() for team in teams_text.split('|') if team.strip()]
+
+        # Update choice control
+        self.team_choice.Clear()
+        for team in teams:
+            self.team_choice.Append(team)
+
+        # Select first team by default
+        if teams:
+            self.team_choice.SetSelection(0)
+
+    def _on_teams_text_changed(self, event):
+        """Handle teams text field changes to update choice control"""
+        self._refresh_teams_choice()
+
     def _on_users_online_updated(self, users_online):
         """Handle users online updates from message bus"""
         try:
-            message_bus.publish(f"Raw users_online data: {users_online}", MessageLevel.DEBUG)
 
             # Extract usernames from users_online data
             self._connected_users = []
@@ -226,9 +237,6 @@ class TournamentCreationDialog(wx.Dialog):
                 username = user.get('username', '')
                 if username and username.strip():
                     self._connected_users.append(username)
-                    message_bus.publish(f"Added user: {username}", MessageLevel.DEBUG)
-
-            message_bus.publish(f"Final connected users list: {self._connected_users}", MessageLevel.DEBUG)
 
             # Refresh the connected users list on UI thread
             wx.CallAfter(self._refresh_connected_users_list)
@@ -247,15 +255,37 @@ class TournamentCreationDialog(wx.Dialog):
         self.desc_ctrl.SetValue(config.get("description", ""))
         self.max_ctrl.SetValue(config.get("max_participants", 16))
 
+        # Set tournament type (table name)
+        tournament_type = config.get("tournament_type", "sc_default")
+        try:
+            type_index = self.type_choice.FindString(tournament_type)
+            if type_index != wx.NOT_FOUND:
+                self.type_choice.SetSelection(type_index)
+        except:
+            self.type_choice.SetSelection(0)  # Default to first option
+
         # Load participants and teams
         participants = self._tournament_data.get("participants", [])
         teams = self._tournament_data.get("teams", {})
 
+        # Load custom teams from tournament data into text field
+        if teams:
+            teams_text = "|".join(teams.keys())
+            self.teams_ctrl.SetValue(teams_text)
+
+        # Refresh teams choice control
+        self._refresh_teams_choice()
+
         # Convert to dict format {username: team}
         self._tournament_participants = {}
+
+        # Get teams from text field
+        teams_text = self.teams_ctrl.GetValue().strip()
+        teams_list = [team.strip() for team in teams_text.split('|') if team.strip()]
+
         for username in participants:
             # Find which team this user belongs to
-            user_team = "Equipo Alfa"  # Default
+            user_team = teams_list[0] if teams_list else "Equipo Alfa"  # Default to first team
             for team_name, team_members in teams.items():
                 if username in team_members:
                     user_team = team_name
@@ -267,20 +297,27 @@ class TournamentCreationDialog(wx.Dialog):
 
     def _refresh_connected_users_list(self):
         """Refresh the connected users list excluding tournament participants"""
-        message_bus.publish(f"Refreshing connected users list. Total users: {len(self._connected_users)}", MessageLevel.DEBUG)
-        message_bus.publish(f"Tournament participants: {list(self._tournament_participants.keys())}", MessageLevel.DEBUG)
+        # Check if dialog is still valid
+        try:
+            if not self.connected_list:
+                return
+        except RuntimeError:
+            # Dialog has been destroyed, ignore
+            return
 
-        self.connected_list.DeleteAllItems()
 
-        display_count = 0
-        for i, username in enumerate(self._connected_users):
-            if username not in self._tournament_participants:
-                index = self.connected_list.InsertItem(display_count, username)
-                self.connected_list.SetItem(index, 1, "Disponible")
-                display_count += 1
-                message_bus.publish(f"Added to UI: {username}", MessageLevel.DEBUG)
+        try:
+            self.connected_list.DeleteAllItems()
 
-        message_bus.publish(f"Total users displayed in list: {display_count}", MessageLevel.DEBUG)
+            display_count = 0
+            for i, username in enumerate(self._connected_users):
+                if username not in self._tournament_participants:
+                    index = self.connected_list.InsertItem(display_count, username)
+                    self.connected_list.SetItem(index, 1, "Disponible")
+                    display_count += 1
+        except RuntimeError:
+            # Dialog has been destroyed, ignore
+            pass
 
     def _trigger_users_update(self):
         """Trigger presence sync to get current users via event"""
@@ -289,95 +326,7 @@ class TournamentCreationDialog(wx.Dialog):
         if bridge and 'general' in bridge.channels:
             bridge._handle_presence_sync(bridge.channels['general'])
 
-    def _refresh_teams_list(self):
-        """Refresh teams list and choice control"""
-        # Update teams list
-        self.teams_list.DeleteAllItems()
-        for i, team_name in enumerate(self._teams):
-            index = self.teams_list.InsertItem(i, team_name)
 
-        # Update team choice dropdown
-        self.team_choice.Clear()
-        for team_name in self._teams:
-            self.team_choice.Append(team_name)
-        if self._teams:
-            self.team_choice.SetSelection(0)
-
-    def _on_add_team(self, event):
-        """Add new team"""
-        dialog = wx.TextEntryDialog(self, "Nombre del nuevo equipo:", "Agregar Equipo")
-        if dialog.ShowModal() == wx.ID_OK:
-            team_name = dialog.GetValue().strip()
-            if team_name and team_name not in self._teams:
-                self._teams.append(team_name)
-                self._refresh_teams_list()
-            elif team_name in self._teams:
-                wx.MessageBox("Ya existe un equipo con ese nombre", "Error", wx.OK | wx.ICON_ERROR)
-        dialog.Destroy()
-
-    def _on_edit_team(self, event):
-        """Edit selected team"""
-        selected = self.teams_list.GetFirstSelected()
-        if selected == -1:
-            wx.MessageBox("Seleccione un equipo para editar", "Información", wx.OK | wx.ICON_INFORMATION)
-            return
-
-        old_name = self._teams[selected]
-        dialog = wx.TextEntryDialog(self, "Nuevo nombre del equipo:", "Editar Equipo", old_name)
-        if dialog.ShowModal() == wx.ID_OK:
-            new_name = dialog.GetValue().strip()
-            if new_name and new_name not in self._teams:
-                # Update team name in teams list
-                self._teams[selected] = new_name
-
-                # Update existing participant assignments
-                for username, team in self._tournament_participants.items():
-                    if team == old_name:
-                        self._tournament_participants[username] = new_name
-
-                self._refresh_teams_list()
-                self._refresh_tournament_participants_list()
-            elif new_name in self._teams:
-                wx.MessageBox("Ya existe un equipo con ese nombre", "Error", wx.OK | wx.ICON_ERROR)
-        dialog.Destroy()
-
-    def _on_delete_team(self, event):
-        """Delete selected team"""
-        selected = self.teams_list.GetFirstSelected()
-        if selected == -1:
-            wx.MessageBox("Seleccione un equipo para eliminar", "Información", wx.OK | wx.ICON_INFORMATION)
-            return
-
-        team_name = self._teams[selected]
-
-        # Check if any participants are assigned to this team
-        assigned_users = [user for user, team in self._tournament_participants.items() if team == team_name]
-        if assigned_users:
-            result = wx.MessageBox(f"El equipo '{team_name}' tiene {len(assigned_users)} participantes asignados.\n¿Desea eliminar el equipo y mover los participantes al primer equipo disponible?",
-                                 "Confirmar eliminación", wx.YES_NO | wx.ICON_QUESTION)
-            if result == wx.YES:
-                # Move participants to first available team
-                if len(self._teams) > 1:
-                    new_team = self._teams[0] if selected != 0 else self._teams[1]
-                    for user in assigned_users:
-                        self._tournament_participants[user] = new_team
-                else:
-                    # If this is the last team, remove participants from tournament
-                    for user in assigned_users:
-                        del self._tournament_participants[user]
-            else:
-                return
-
-        # Don't allow deleting if it's the last team and there are participants
-        if len(self._teams) == 1 and self._tournament_participants:
-            wx.MessageBox("No se puede eliminar el último equipo cuando hay participantes asignados",
-                         "Error", wx.OK | wx.ICON_ERROR)
-            return
-
-        # Remove team
-        del self._teams[selected]
-        self._refresh_teams_list()
-        self._refresh_tournament_participants_list()
 
     def _refresh_tournament_participants_list(self):
         """Refresh the tournament participants list"""
@@ -446,6 +395,11 @@ class TournamentCreationDialog(wx.Dialog):
             return
 
         try:
+            # Get selected tournament type (table name)
+            tournament_type = self.type_choice.GetStringSelection()
+            if not tournament_type:
+                tournament_type = "sc_default"  # Default fallback
+
             # Build teams structure from participant assignments
             teams = {}
             participants_list = []
@@ -463,7 +417,8 @@ class TournamentCreationDialog(wx.Dialog):
                 "created_by": self._config_manager.get("username", "unknown"),
                 "config": {
                     "description": description,
-                    "max_participants": max_participants
+                    "max_participants": max_participants,
+                    "tournament_type": tournament_type
                 }
             }
 
@@ -490,6 +445,11 @@ class TournamentCreationDialog(wx.Dialog):
 
     def get_tournament_data(self) -> Dict[str, Any]:
         """Get tournament data from form"""
+        # Get selected tournament type (table name)
+        tournament_type = self.type_choice.GetStringSelection()
+        if not tournament_type:
+            tournament_type = "sc_default"  # Default fallback
+
         # Build teams structure from participant assignments
         teams = {}
         participants_list = []
@@ -506,6 +466,7 @@ class TournamentCreationDialog(wx.Dialog):
             "teams": teams,
             "config": {
                 "description": self.desc_ctrl.GetValue().strip(),
-                "max_participants": self.max_ctrl.GetValue()
+                "max_participants": self.max_ctrl.GetValue(),
+                "tournament_type": tournament_type
             }
         }

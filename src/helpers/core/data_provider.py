@@ -2013,6 +2013,30 @@ class SupabaseDataProvider(DataProvider):
             )
             return None
 
+    def get_all_tournaments(self) -> List[Dict[str, Any]]:
+        """Get all tournaments ordered by creation date"""
+        try:
+            response = supabase_manager.supabase.table("tournaments").select("*").order("created_at", desc=True).execute()
+            return response.data or []
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error getting all tournaments: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return []
+
+    def delete_tournament(self, tournament_id: str) -> bool:
+        """Delete a tournament from the database"""
+        try:
+            response = supabase_manager.supabase.table("tournaments").delete().eq("id", tournament_id).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error deleting tournament: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
     def update_tournament(self, tournament_id: str, tournament_data: Dict[str, Any]) -> bool:
         """Update tournament in database"""
         try:
@@ -2087,6 +2111,61 @@ class SupabaseDataProvider(DataProvider):
                 level=MessageLevel.ERROR
             )
             return False
+
+    def get_player_combat_history(self, table_name: str, username: str, tournament_id: str) -> List[Dict[str, Any]]:
+        """Get combat history for a specific player from a combat table"""
+        try:
+            query = supabase_manager.supabase.table(table_name).select("*")
+
+            # Filter by username (the reporter) AND tournament_id
+            query = query.eq("username", username).eq("tournament_id", tournament_id)
+
+            # Order by timestamp descending (most recent first)
+            query = query.order("timestamp", desc=True)
+
+            # Limit to last 100 events to avoid overwhelming the UI
+            query = query.limit(100)
+
+            response = query.execute()
+
+            # Process the results to standardize the format
+            combat_events = []
+            for event in response.data or []:
+                action = event.get("action", "")
+                killer = event.get("killer", "")
+                victim = event.get("victim", "")
+
+                # Determine event type based on action
+                if action == "kill" or killer == username:
+                    event_type = "kill"
+                    target = victim
+                elif action == "death" or victim == username:
+                    event_type = "death"
+                    target = killer
+                else:
+                    event_type = "event"
+                    target = killer if killer != username else victim
+
+                combat_events.append({
+                    "timestamp": event.get("timestamp"),
+                    "event_type": event_type,
+                    "target": target,
+                    "victim": victim,
+                    "killer": killer,
+                    "location": event.get("zone", ""),
+                    "weapon": event.get("weapon", ""),
+                    "action": action,
+                    "raw_event": event
+                })
+
+            return combat_events
+
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error getting player combat history: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return []
 
     def execute_sql(self, sql: str) -> bool:
         """Execute raw SQL for schema operations"""

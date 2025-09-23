@@ -148,6 +148,14 @@ class TournamentManager:
                 return self._active_tournament.to_dict()
             return None
 
+    def get_all_tournaments(self) -> List[Dict[str, Any]]:
+        """Get all tournaments from database"""
+        try:
+            return self._data_provider.get_all_tournaments()
+        except Exception as e:
+            message_bus.publish(f"Error loading all tournaments: {str(e)}", MessageLevel.ERROR)
+            return []
+
     def is_tournament_participant(self, username: str) -> bool:
         """Check if user is participant in active tournament"""
         with self._lock:
