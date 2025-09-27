@@ -734,53 +734,6 @@ def install_requirements(dry_run=False):
         return False
 
 
-def apply_ultimatelistctrl_patch(dry_run=False):
-    """
-    Apply custom UltimateListCtrl patch for selection colors support
-    Downloads and replaces the file from our custom fork
-    """
-    import urllib.request
-    import urllib.error
-    
-    custom_file_url = "https://raw.githubusercontent.com/IJOL/Phoenix/custom-selection-renderer/wx/lib/agw/ultimatelistctrl.py"
-    target_path = VENV_DIR / "Lib" / "site-packages" / "wx" / "lib" / "agw" / "ultimatelistctrl.py"
-    backup_path = target_path.with_suffix(".py.original")
-    
-    if dry_run:
-        print(f"[DRY-RUN] Apply UltimateListCtrl patch")
-        print(f"[DRY-RUN] Download: {custom_file_url}")
-        print(f"[DRY-RUN] Backup: {target_path} -> {backup_path}")
-        print(f"[DRY-RUN] Replace: {target_path}")
-        return True
-    
-    try:
-        if not target_path.exists():
-            print(f"Warning: Target file not found: {target_path}")
-            return False
-        
-        # Create backup of original file
-        print(f"Creating backup: {backup_path}")
-        shutil.copy2(target_path, backup_path)
-        
-        # Download and replace with our custom version
-        print(f"Downloading custom UltimateListCtrl from fork...")
-        print(f"URL: {custom_file_url}")
-        
-        with urllib.request.urlopen(custom_file_url) as response:
-            content = response.read()
-        
-        with open(target_path, 'wb') as f:
-            f.write(content)
-        
-        print("Applied custom UltimateListCtrl with selection colors support")
-        return True
-        
-    except urllib.error.URLError as e:
-        print(f"Error downloading patch: {e}")
-        return False
-    except Exception as e:
-        print(f"Error applying patch: {e}")
-        return False
 
 
 def build_pyinstaller_command(target_file, name, windowed=True):
@@ -1114,9 +1067,6 @@ def main():
             if not install_requirements(dry_run=args.dry_run):
                 print("Warning: Failed to install requirements")
             
-            # Apply UltimateListCtrl patch for enhanced selection colors
-            if not apply_ultimatelistctrl_patch(dry_run=args.dry_run):
-                print("Warning: Failed to apply UltimateListCtrl patch")
         
         # Build executables
         if not build_executables(windowed=not args.console, dry_run=args.dry_run):
@@ -1138,9 +1088,6 @@ def main():
             if not install_requirements(dry_run=args.dry_run):
                 print("Warning: Failed to install requirements")
             
-            # Apply UltimateListCtrl patch for enhanced selection colors
-            if not apply_ultimatelistctrl_patch(dry_run=args.dry_run):
-                print("Warning: Failed to apply UltimateListCtrl patch")
         
         # Build with Nuitka
         if not build_nuitka_executable(windowed=not args.console, dry_run=args.dry_run):
