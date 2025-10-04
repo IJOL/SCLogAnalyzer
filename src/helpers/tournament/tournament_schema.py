@@ -19,8 +19,34 @@ class TournamentSchemaManager:
         status TEXT NOT NULL DEFAULT 'created',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
         created_by TEXT NOT NULL,
+        activated_by TEXT,
+        activated_from TIMESTAMP WITH TIME ZONE,
+        activated_to TIMESTAMP WITH TIME ZONE,
         config JSONB DEFAULT '{}'::jsonb
     );
+
+    -- Enable RLS on tournaments
+    ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
+
+    -- RLS Policy: Allow all users to read all tournaments
+    CREATE POLICY tournaments_select_policy ON tournaments
+        FOR SELECT
+        USING (true);
+
+    -- RLS Policy: Allow authenticated users to insert tournaments
+    CREATE POLICY tournaments_insert_policy ON tournaments
+        FOR INSERT
+        WITH CHECK (true);
+
+    -- RLS Policy: Allow users to update tournaments
+    CREATE POLICY tournaments_update_policy ON tournaments
+        FOR UPDATE
+        USING (true);
+
+    -- RLS Policy: Allow users to delete tournaments
+    CREATE POLICY tournaments_delete_policy ON tournaments
+        FOR DELETE
+        USING (true);
 
     -- Tournament corpse tracking with deduplication
     CREATE TABLE IF NOT EXISTS tournament_corpses (
@@ -34,6 +60,29 @@ class TournamentSchemaManager:
         location_data JSONB DEFAULT '{}'::jsonb,
         UNIQUE(tournament_id, corpse_hash)
     );
+
+    -- Enable RLS on tournament_corpses
+    ALTER TABLE tournament_corpses ENABLE ROW LEVEL SECURITY;
+
+    -- RLS Policy: Allow all users to read corpses
+    CREATE POLICY tournament_corpses_select_policy ON tournament_corpses
+        FOR SELECT
+        USING (true);
+
+    -- RLS Policy: Allow authenticated users to insert corpses
+    CREATE POLICY tournament_corpses_insert_policy ON tournament_corpses
+        FOR INSERT
+        WITH CHECK (true);
+
+    -- RLS Policy: Allow all to update corpses
+    CREATE POLICY tournament_corpses_update_policy ON tournament_corpses
+        FOR UPDATE
+        USING (true);
+
+    -- RLS Policy: Allow all to delete corpses
+    CREATE POLICY tournament_corpses_delete_policy ON tournament_corpses
+        FOR DELETE
+        USING (true);
 
     -- Index for performance
     CREATE INDEX IF NOT EXISTS idx_tournament_corpses_tournament_id ON tournament_corpses(tournament_id);
