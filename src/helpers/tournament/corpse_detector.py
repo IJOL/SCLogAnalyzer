@@ -18,7 +18,7 @@ class CorpseDetector:
 
     def _initialize_event_handlers(self):
         """Set up MessageBus event handlers"""
-        message_bus.on("corpse_detected", self._on_corpse_detected)
+        message_bus.on("remote_realtime_event", self._on_remote_realtime_event)
         message_bus.on("tournament_activated", self._on_tournament_activated)
 
     def _get_tournament_manager(self) -> TournamentManager:
@@ -27,17 +27,27 @@ class CorpseDetector:
             self._tournament_manager = TournamentManager()
         return self._tournament_manager
 
-    def _on_corpse_detected(self, event_data):
-        """Handle corpse detection events from existing system"""
+    def _on_remote_realtime_event(self, username, log_data):
+        """Handle remote realtime events and filter for corpse events"""
         try:
             if not self._config_manager.get("tournament.corpse_detection_enabled", True):
                 return
 
-            participant_name = event_data.get("participant_name")
-            detected_by = event_data.get("detected_by")
-            location_data = event_data.get("location_data", {})
+            # Filter for corpse-type logs
+            log_type = log_data.get("type")
+            if log_type != "corpse":
+                return
 
-            if not participant_name or not detected_by:
+            # Extract corpse information from log_data
+            participant_name = log_data.get("player")  # Based on config.json regex: (?P<player>.*?)
+            detected_by = username  # The user who detected/reported the corpse
+            location_data = {
+                "timestamp": log_data.get("timestamp"),
+                "team": log_data.get("team"),
+                "client_type": log_data.get("client_type")
+            }
+
+            if not participant_name:
                 return
 
             tournament_manager = self._get_tournament_manager()
