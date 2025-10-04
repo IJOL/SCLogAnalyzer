@@ -23,6 +23,7 @@ from helpers.services import updater
 from version import get_version
 from helpers.ui.ui_components import DarkThemeButton
 from helpers.widgets.tournament_widget import TournamentWidget
+from helpers.widgets.chat_widget import ChatWidget
 
 # Define constants for repeated strings and values
 CONFIG_FILE_NAME = "config.json"
@@ -287,6 +288,20 @@ class LogAnalyzerFrame(wx.Frame):
         except Exception as e:
             message_bus.publish(
                 content=f"Error creating tournament tab: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+
+        # Chat tab
+        try:
+            self.chat_widget = ChatWidget(self.notebook)
+            self.notebook.AddPage(self.chat_widget, "Chat")
+            message_bus.publish(
+                content="Chat tab created successfully",
+                level=MessageLevel.INFO
+            )
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error creating chat tab: {str(e)}",
                 level=MessageLevel.ERROR
             )
 
