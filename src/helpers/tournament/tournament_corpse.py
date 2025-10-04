@@ -72,11 +72,11 @@ class TournamentCorpse:
                 "confirmed_by": organizer_username
             })
 
-            message_bus.publish(f"Corpse of {self.participant_name} confirmed by organizer", MessageLevel.INFO)
+            message_bus.publish(content=f"Corpse of {self.participant_name} confirmed by organizer", level=MessageLevel.INFO)
             return True
 
         except Exception as e:
-            message_bus.publish(f"Error confirming corpse: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error confirming corpse: {str(e)}", level=MessageLevel.ERROR)
             return False
 
     def to_dict(self) -> Dict[str, Any]:

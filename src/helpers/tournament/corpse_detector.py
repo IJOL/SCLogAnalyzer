@@ -59,14 +59,14 @@ class CorpseDetector:
             )
 
         except Exception as e:
-            message_bus.publish(f"Error processing corpse detection: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error processing corpse detection: {str(e)}", level=MessageLevel.ERROR)
 
     def _on_tournament_activated(self, event_data):
         """Handle tournament activation"""
         tournament_id = event_data.get("tournament_id")
         participants = event_data.get("participants", [])
 
-        message_bus.publish(f"Corpse detection active for {len(participants)} tournament participants", MessageLevel.INFO)
+        message_bus.publish(content=f"Corpse detection active for {len(participants)} tournament participants", level=MessageLevel.INFO)
 
     def process_tournament_corpse(self, tournament_id: str, participant_name: str,
                                 detected_by: str, location_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -80,7 +80,7 @@ class CorpseDetector:
 
                 # Check for duplicates
                 if self.is_duplicate(tournament_id, corpse_hash):
-                    message_bus.publish(f"Duplicate corpse detected for {participant_name} - skipping", MessageLevel.DEBUG)
+                    message_bus.publish(content=f"Duplicate corpse detected for {participant_name} - skipping", level=MessageLevel.DEBUG)
                     return {"success": True, "duplicate": True}
 
                 # Create corpse record
@@ -109,12 +109,12 @@ class CorpseDetector:
                     "corpse_hash": corpse_hash
                 })
 
-                message_bus.publish(f"Tournament corpse detected: {participant_name} by {detected_by}", MessageLevel.INFO)
+                message_bus.publish(content=f"Tournament corpse detected: {participant_name} by {detected_by}", level=MessageLevel.INFO)
 
                 return {"success": True, "corpse_id": corpse.id, "duplicate": False}
 
             except Exception as e:
-                message_bus.publish(f"Error processing tournament corpse: {str(e)}", MessageLevel.ERROR)
+                message_bus.publish(content=f"Error processing tournament corpse: {str(e)}", level=MessageLevel.ERROR)
                 return {"success": False, "error": str(e)}
 
     def generate_corpse_hash(self, corpse_data: Dict[str, Any]) -> str:
@@ -131,7 +131,7 @@ class CorpseDetector:
         try:
             return self._data_provider.corpse_exists(tournament_id, corpse_hash)
         except Exception as e:
-            message_bus.publish(f"Error checking corpse duplicate: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error checking corpse duplicate: {str(e)}", level=MessageLevel.ERROR)
             return False
 
     def store_corpse(self, corpse_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -140,7 +140,7 @@ class CorpseDetector:
             success = self._data_provider.store_tournament_corpse(corpse_data)
             return {"success": success}
         except Exception as e:
-            message_bus.publish(f"Error storing corpse: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error storing corpse: {str(e)}", level=MessageLevel.ERROR)
             return {"success": False, "error": str(e)}
 
     def confirm_corpse(self, corpse_id: str, organizer_username: str) -> Dict[str, Any]:
@@ -160,5 +160,5 @@ class CorpseDetector:
             return {"success": False, "error": "Failed to confirm corpse"}
 
         except Exception as e:
-            message_bus.publish(f"Error confirming corpse: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error confirming corpse: {str(e)}", level=MessageLevel.ERROR)
             return {"success": False, "error": str(e)}

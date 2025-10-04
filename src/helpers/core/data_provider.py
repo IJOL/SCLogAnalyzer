@@ -2100,6 +2100,30 @@ class SupabaseDataProvider(DataProvider):
             )
             return False
 
+    def get_tournament_corpses(self, tournament_id: str) -> List[Dict[str, Any]]:
+        """Get all corpses for a tournament"""
+        try:
+            response = supabase_manager.supabase.table("tournament_corpses").select("*").eq("tournament_id", tournament_id).order("detected_at", desc=True).execute()
+            return response.data or []
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error getting tournament corpses: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return []
+
+    def delete_tournament_corpse(self, corpse_id: str) -> bool:
+        """Delete tournament corpse from database"""
+        try:
+            response = supabase_manager.supabase.table("tournament_corpses").delete().eq("id", corpse_id).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error deleting tournament corpse: {str(e)}",
+                level=MessageLevel.ERROR
+            )
+            return False
+
     def tag_combat_event_with_tournament(self, table_name: str, event_id: str, tournament_id: str) -> bool:
         """Tag existing combat event with tournament ID"""
         try:

@@ -242,7 +242,7 @@ class TournamentCreationDialog(wx.Dialog):
             wx.CallAfter(self._refresh_connected_users_list)
 
         except Exception as e:
-            message_bus.publish(f"Error updating connected users: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error updating connected users: {str(e)}", level=MessageLevel.ERROR)
 
     def _load_tournament_data(self):
         """Load existing tournament data for editing"""
@@ -425,13 +425,13 @@ class TournamentCreationDialog(wx.Dialog):
             if self._tournament_data:
                 # Update existing tournament
                 # TODO: Implement tournament update in manager
-                message_bus.publish(f"Torneo '{tournament_name}' actualizado exitosamente", MessageLevel.INFO)
+                message_bus.publish(content=f"Torneo '{tournament_name}' actualizado exitosamente", level=MessageLevel.INFO)
             else:
                 # Create new tournament
                 result = self._tournament_manager.create_tournament(tournament_data)
 
                 if result["success"]:
-                    message_bus.publish(f"Torneo '{tournament_name}' creado exitosamente", MessageLevel.INFO)
+                    message_bus.publish(content=f"Torneo '{tournament_name}' creado exitosamente", level=MessageLevel.INFO)
                 else:
                     wx.MessageBox(f"Error al crear torneo: {result.get('error', 'Error desconocido')}",
                                  "Error", wx.OK | wx.ICON_ERROR)

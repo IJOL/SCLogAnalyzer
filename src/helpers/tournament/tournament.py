@@ -67,7 +67,7 @@ class Tournament:
             return True
 
         except Exception as e:
-            message_bus.publish(f"Error adding participant: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error adding participant: {str(e)}", level=MessageLevel.ERROR)
             return False
 
     def remove_participant(self, username: str) -> bool:
@@ -86,11 +86,11 @@ class Tournament:
             # Clean up empty teams
             self.teams = {name: members for name, members in self.teams.items() if members}
 
-            message_bus.publish(f"Removed {username} from tournament", MessageLevel.INFO)
+            message_bus.publish(content=f"Removed {username} from tournament", level=MessageLevel.INFO)
             return True
 
         except Exception as e:
-            message_bus.publish(f"Error removing participant: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error removing participant: {str(e)}", level=MessageLevel.ERROR)
             return False
 
     def is_participant(self, username: str) -> bool:
@@ -119,7 +119,7 @@ class Tournament:
             return True
 
         except ValueError as e:
-            message_bus.publish(f"Invalid tournament status: {new_status}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Invalid tournament status: {new_status}", level=MessageLevel.ERROR)
             return False
 
     def to_dict(self) -> Dict[str, Any]:
