@@ -24,6 +24,9 @@ class Tournament:
         self.status = TournamentStatus(tournament_data.get("status", "created"))
         self.created_at = tournament_data.get("created_at", datetime.now().isoformat())
         self.created_by = tournament_data["created_by"]
+        self.activated_by = tournament_data.get("activated_by")
+        self.activated_from = tournament_data.get("activated_from")
+        self.activated_to = tournament_data.get("activated_to")
         self.config = tournament_data.get("config", {})
 
         self._validate()
@@ -132,6 +135,9 @@ class Tournament:
             "status": self.status.value,
             "created_at": self.created_at,
             "created_by": self.created_by,
+            "activated_by": self.activated_by,
+            "activated_from": self.activated_from,
+            "activated_to": self.activated_to,
             "config": self.config
         }
 

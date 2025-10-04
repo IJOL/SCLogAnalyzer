@@ -73,7 +73,7 @@ class TournamentManager:
                 message_bus.publish(content=f"Error creating tournament: {str(e)}", level=MessageLevel.ERROR)
                 return {"success": False, "error": str(e)}
 
-    def activate_tournament(self, tournament_id: str) -> Dict[str, Any]:
+    def activate_tournament(self, tournament_id: str, activated_by: str = None) -> Dict[str, Any]:
         """Activate tournament for event tagging"""
         with self._lock:
             try:
@@ -83,6 +83,11 @@ class TournamentManager:
 
                 tournament = Tournament.from_dict(tournament_data)
                 tournament.update_status("active")
+
+                # Set activation metadata
+                if activated_by:
+                    tournament.activated_by = activated_by
+                    tournament.activated_from = datetime.now().isoformat()
 
                 # Update database
                 tournament_dict = tournament.to_dict()

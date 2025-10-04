@@ -15,7 +15,7 @@ class TournamentWidget(wx.Panel):
     def __init__(self, parent):
         super().__init__(parent)
         self._tournament_manager = TournamentManager()
-        self._corpse_detector = CorpseDetector()
+        self._corpse_detector: Optional[CorpseDetector] = None  # Only created when tournament is activated by organizer
         self._config_manager = get_config_manager(in_gui=True)
         self._lock = threading.RLock()
 
@@ -969,6 +969,12 @@ class TournamentWidget(wx.Panel):
 
             if result["success"]:
                 self._current_tournament = result["tournament"]
+
+                # Start corpse detection ONLY for the organizer who activates the tournament
+                if self._corpse_detector is None:
+                    self._corpse_detector = CorpseDetector()
+                    message_bus.publish(content="Detector de corpses activado para este torneo", level=MessageLevel.INFO)
+
                 self._refresh_tournaments_list()
                 self._update_active_tournament_panel(None)
                 message_bus.publish(content="Torneo activado para etiquetado de eventos de combate", level=MessageLevel.INFO)
@@ -1022,8 +1028,26 @@ class TournamentWidget(wx.Panel):
                              "Confirmar", wx.YES_NO | wx.ICON_QUESTION)
 
         if result == wx.YES:
-            # Implementation for completing tournament would go here
-            message_bus.publish(content="Finalización de torneo aún no implementada", level=MessageLevel.INFO)
+            try:
+                # Complete tournament
+                tournament_result = self._tournament_manager.complete_tournament(self._current_tournament["id"])
+
+                if tournament_result["success"]:
+                    # Stop corpse detection when tournament is completed
+                    if self._corpse_detector is not None:
+                        self._corpse_detector = None
+                        message_bus.publish(content="Detector de corpses desactivado", level=MessageLevel.INFO)
+
+                    self._current_tournament = None
+                    self._refresh_tournaments_list()
+                    self._update_active_tournament_panel(None)
+                    message_bus.publish(content="Torneo finalizado correctamente", level=MessageLevel.INFO)
+                else:
+                    wx.MessageBox(f"Error al finalizar torneo: {tournament_result.get('error', 'Error desconocido')}",
+                                "Error", wx.OK | wx.ICON_ERROR)
+
+            except Exception as e:
+                wx.MessageBox(f"Error al finalizar torneo: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
 
 
     def _on_tournament_created(self, event_data):
