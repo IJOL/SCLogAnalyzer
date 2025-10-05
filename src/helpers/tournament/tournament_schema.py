@@ -1,7 +1,9 @@
 import threading
+import time
 from typing import Optional
 from helpers.core.message_bus import message_bus, MessageLevel
 from helpers.core.config_utils import get_config_manager
+from helpers.core.supabase_manager import supabase_manager
 
 class TournamentSchemaManager:
     """Manages tournament database schema with lazy initialization"""
@@ -104,6 +106,11 @@ class TournamentSchemaManager:
     def initialize_schema(cls, data_provider) -> bool:
         """Initialize tournament schema if not already done"""
         with cls._schema_lock:
+            # Check if tables already exist
+            if supabase_manager._table_exists("tournaments") and supabase_manager._table_exists("tournament_corpses"):
+                cls._schema_initialized = True
+                return True
+
             if cls._schema_initialized:
                 return True
 
@@ -118,6 +125,26 @@ class TournamentSchemaManager:
                 if not success:
                     message_bus.publish(
                         content="Failed to create tournament tables",
+                        level=MessageLevel.ERROR
+                    )
+                    return False
+
+                # Wait and verify tables were created (Supabase async)
+                max_retries = 20
+                retry_delay = 0.5  # 500ms (total max 10 seconds)
+                tables_created = False
+
+                for retry in range(max_retries):
+                    if supabase_manager._table_exists("tournaments") and supabase_manager._table_exists("tournament_corpses"):
+                        tables_created = True
+                        break
+
+                    if retry < max_retries - 1:  # Don't sleep on last retry
+                        time.sleep(retry_delay)
+
+                if not tables_created:
+                    message_bus.publish(
+                        content="Timeout waiting for tournament tables to be created",
                         level=MessageLevel.ERROR
                     )
                     return False

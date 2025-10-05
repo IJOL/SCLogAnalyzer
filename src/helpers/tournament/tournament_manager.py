@@ -308,10 +308,13 @@ class TournamentManager:
                 # Update tournament with completion data
                 tournament.update_status("completed")
 
+                # Set completion timestamp
+                tournament.activated_to = datetime.now().isoformat()
+
                 # Store completion statistics in config
                 config = tournament.config.copy()
                 config["completion_statistics"] = final_statistics
-                config["completed_at"] = tournament_data.get("created_at", "")  # Will be updated by database
+                config["completed_at"] = tournament.activated_to
                 tournament.config = config
 
                 # Update database
