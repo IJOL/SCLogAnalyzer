@@ -5,6 +5,7 @@ from helpers.core.message_bus import message_bus, MessageLevel
 from helpers.core.config_utils import get_config_manager
 from helpers.tournament.tournament_manager import TournamentManager
 from helpers.tournament.corpse_detector import CorpseDetector
+from helpers.tournament.tournament import Tournament
 from helpers.ui.ui_components import DarkThemeButton, MiniDarkThemeButton
 from helpers.widgets.dark_listctrl import DarkListCtrl
 from helpers.ui.tournament_creation_dialog import TournamentCreationDialog
@@ -563,10 +564,11 @@ class TournamentWidget(wx.Panel):
             if active_tournament:
                 tournament_name = active_tournament.get("name", "Desconocido")
                 tournament_status = active_tournament.get("status", "unknown")
-                participants = active_tournament.get("participants", [])
                 teams = active_tournament.get("teams", {})
                 config = active_tournament.get("config", {})
                 description = config.get("description", "")
+
+                participants = Tournament.get_participants_from_teams(teams)
 
                 # Left: basic info
                 self.active_tournament_name.SetLabel(f"🏆 {tournament_name}")
@@ -678,7 +680,9 @@ class TournamentWidget(wx.Panel):
 
                 index = self.tournaments_list.InsertItem(i, tournament.get("name", ""))
                 self.tournaments_list.SetItem(index, 1, status)
-                self.tournaments_list.SetItem(index, 2, str(len(tournament.get("participants", []))))
+                teams = tournament.get("teams", {})
+                participants_count = len(Tournament.get_participants_from_teams(teams))
+                self.tournaments_list.SetItem(index, 2, str(participants_count))
 
                 # Format created_at date
                 created_at = tournament.get("created_at", "")
@@ -729,12 +733,8 @@ class TournamentWidget(wx.Panel):
             teams = tournament.get("teams", {})
 
             if not teams:
-                # No teams defined, show all participants
-                participants = tournament.get("participants", [])
-                for i, username in enumerate(participants):
-                    index = self.participants_list.InsertItem(i, username)
-                    self.participants_list.SetItem(index, 1, "Sin equipo")
-                    self.participants_list.SetItem(index, 2, "0")
+                # No teams defined - this should not happen with new schema
+                pass
             else:
                 # Group by teams with visual separation
                 row_index = 0
@@ -754,7 +754,7 @@ class TournamentWidget(wx.Panel):
                             row_index += 1
 
             # Update statistics
-            total_participants = len(tournament.get("participants", []))
+            total_participants = len(Tournament.get_participants_from_teams(teams))
             total_teams = len([team for team, members in teams.items() if members]) if teams else 0
 
             # TODO: Get real corpse count from database
@@ -1157,20 +1157,16 @@ class TournamentWidget(wx.Panel):
                     notification_text = f"🏁 Torneo '{tournament_name}' completado por {username}! Tu equipo: {user_team} | Compañeros: {teammates_str}"
                     message_bus.publish(content=notification_text, level=MessageLevel.INFO)
 
-                    # Desktop notification
-                    message_bus.emit("show_windows_notification", {
-                        "title": "🏁 Torneo Completado",
-                        "message": f"Torneo: {tournament_name}\nEquipo: {user_team}\nCompañeros: {teammates_str}\nCompletado por: {username}"
-                    })
+                    # Desktop notification - formatted message
+                    notification_message = f"🏁 TORNEO COMPLETADO\n\n📋 {tournament_name}\n\n🎯 Equipo: {user_team}\n👥 Compañeros: {teammates_str}\n\n⏹️ Por: {username}"
+                    message_bus.emit("show_windows_notification", notification_message)
                 else:
                     notification_text = f"🏁 Torneo '{tournament_name}' completado por {username}"
                     message_bus.publish(content=notification_text, level=MessageLevel.INFO)
 
-                    # Desktop notification
-                    message_bus.emit("show_windows_notification", {
-                        "title": "🏁 Torneo Completado",
-                        "message": f"Torneo: {tournament_name}\nCompletado por: {username}"
-                    })
+                    # Desktop notification - formatted message
+                    notification_message = f"🏁 TORNEO COMPLETADO\n\n📋 {tournament_name}\n\n⚠️ No participas en este torneo\n\n⏹️ Por: {username}"
+                    message_bus.emit("show_windows_notification", notification_message)
 
         except Exception as e:
             message_bus.publish(content=f"Error handling remote tournament event: {str(e)}", level=MessageLevel.ERROR)
@@ -1330,9 +1326,11 @@ class TournamentWidget(wx.Panel):
             # Load combat events for current tournament
             tournament_type = self._current_tournament.get("config", {}).get("tournament_type", "sc_default")
             combat_history = []
-            
+
             # Get combat history for all participants
-            for participant in self._current_tournament.get("participants", []):
+            teams = self._current_tournament.get("teams", {})
+            participants = Tournament.get_participants_from_teams(teams)
+            for participant in participants:
                 participant_history = self._get_player_combat_history(participant)
                 for event in participant_history:
                     event["source_player"] = participant

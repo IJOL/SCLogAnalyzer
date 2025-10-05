@@ -99,7 +99,7 @@ class TournamentManager:
 
                 message_bus.emit("tournament_activated", {
                     "tournament_id": tournament_id,
-                    "participants": tournament.participants
+                    "teams": tournament.teams
                 })
 
                 # Notify other users via RealtimeBridge using the correct pattern

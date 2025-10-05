@@ -16,7 +16,6 @@ class TournamentSchemaManager:
     CREATE TABLE IF NOT EXISTS tournaments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name TEXT NOT NULL UNIQUE,
-        participants JSONB NOT NULL DEFAULT '[]'::jsonb,
         teams JSONB NOT NULL DEFAULT '{}'::jsonb,
         status TEXT NOT NULL DEFAULT 'created',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),

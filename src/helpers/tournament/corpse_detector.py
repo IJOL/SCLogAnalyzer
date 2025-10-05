@@ -3,6 +3,7 @@ from typing import Dict, Any, Optional
 from helpers.core.message_bus import message_bus, MessageLevel
 from helpers.core.data_provider import get_data_provider
 from helpers.core.config_utils import get_config_manager
+from helpers.tournament.tournament import Tournament
 from helpers.tournament.tournament_corpse import TournamentCorpse
 from helpers.tournament.tournament_manager import TournamentManager
 
@@ -74,7 +75,9 @@ class CorpseDetector:
     def _on_tournament_activated(self, event_data):
         """Handle tournament activation"""
         tournament_id = event_data.get("tournament_id")
-        participants = event_data.get("participants", [])
+        teams = event_data.get("teams", {})
+
+        participants = Tournament.get_participants_from_teams(teams)
 
         message_bus.publish(content=f"Corpse detection active for {len(participants)} tournament participants", level=MessageLevel.INFO)
 

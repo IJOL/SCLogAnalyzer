@@ -19,7 +19,6 @@ class Tournament:
         """Initialize tournament from data dictionary"""
         self.id = tournament_data.get("id", str(uuid.uuid4()))
         self.name = tournament_data["name"]
-        self.participants = tournament_data.get("participants", [])
         self.teams = tournament_data.get("teams", {})
         self.status = TournamentStatus(tournament_data.get("status", "created"))
         self.created_at = tournament_data.get("created_at", datetime.now().isoformat())
@@ -31,6 +30,19 @@ class Tournament:
 
         self._validate()
 
+    @property
+    def participants(self) -> List[str]:
+        """Calculate participants list from teams"""
+        return self.get_participants_from_teams(self.teams)
+
+    @staticmethod
+    def get_participants_from_teams(teams: Dict[str, List[str]]) -> List[str]:
+        """Calculate participants list from teams dictionary"""
+        all_participants = []
+        for team_members in teams.values():
+            all_participants.extend(team_members)
+        return all_participants
+
     def _validate(self):
         """Validate tournament data"""
         if not self.name or not self.name.strip():
@@ -38,9 +50,6 @@ class Tournament:
 
         if not self.created_by or not self.created_by.strip():
             raise ValueError("Tournament creator cannot be empty")
-
-        if not isinstance(self.participants, list):
-            raise ValueError("Participants must be a list")
 
         if not isinstance(self.teams, dict):
             raise ValueError("Teams must be a dictionary")
@@ -54,8 +63,6 @@ class Tournament:
                     level=MessageLevel.WARNING
                 )
                 return False
-
-            self.participants.append(username)
 
             if team_name not in self.teams:
                 self.teams[team_name] = []
@@ -78,8 +85,6 @@ class Tournament:
         try:
             if username not in self.participants:
                 return False
-
-            self.participants.remove(username)
 
             # Remove from all teams
             for team_name, team_members in self.teams.items():
@@ -130,7 +135,6 @@ class Tournament:
         return {
             "id": self.id,
             "name": self.name,
-            "participants": self.participants,
             "teams": self.teams,
             "status": self.status.value,
             "created_at": self.created_at,
