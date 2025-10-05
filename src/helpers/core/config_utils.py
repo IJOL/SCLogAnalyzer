@@ -128,6 +128,38 @@ class ConfigManager:
     """
     A class to manage configuration settings with support for nested keys and dynamic updates.
     """
+
+    # Configuration keys that should NOT be saved to config.json (runtime-only or hidden)
+    KEYS_NO_SAVE = [
+        'use_discord',        # Runtime flag - depends on discord_webhook_url validity
+        'use_googlesheet',    # Runtime flag - depends on datasource selection
+        'process_once',       # Runtime flag - command line argument
+        'process_all',        # Runtime flag - command line argument
+        'tournament_admins'   # Hidden config - never saved to file
+    ]
+
+    # Configuration keys to filter when returning all config via get_all()
+    KEYS_FILTER_GET_ALL = [
+        'use_discord',        # Runtime flag
+        'use_googlesheet',    # Runtime flag
+        'process_once',       # Runtime flag
+        'process_all',        # Runtime flag
+        'version'             # Auto-generated, not user config
+    ]
+
+    # Configuration keys that should NOT be editable in ConfigDialog GUI
+    # (either have special controls or are complex nested objects)
+    KEYS_NO_EDIT_GUI = {
+        # Special controls in General Config tab
+        "use_googlesheet", "use_supabase", "datasource", "important_players",
+        "auto_environment_detection", "live_log_path", "ptu_log_path", "log_file_path",
+        "discord_webhook_url", "google_sheets_webhook", "supabase_key",
+        "username",           # Generated from game log, not user-editable
+        "tournament_admins",  # Hidden config
+        # Complex nested objects with their own tabs
+        "regex_patterns", "messages", "discord", "colors", "tabs", "hotkey_system"
+    }
+
     def __init__(self, config_path=None, in_gui=False):
         """Initialize the ConfigManager with a configuration file path."""
         self.config_path = config_path or os.path.join(get_application_path(), "config.json")
@@ -264,8 +296,7 @@ class ConfigManager:
     def save_config(self):
         """Save the current configuration to file, handling lock contention by deferring to a background thread if needed."""
         # Use a short timeout to try to acquire the lock
-        config_items_to_filter = ['use_discord', 'use_googlesheet',
-                                  'process_once', 'process_all', 'tournament_admins']
+        config_items_to_filter = self.KEYS_NO_SAVE
         acquired = self._lock.acquire(timeout=0.1)
         if acquired:
             try:
@@ -474,9 +505,7 @@ class ConfigManager:
     def get_all(self):
         """Get a copy of the entire configuration dictionary."""
         with self._lock:
-            filtered_config = self.filter(['use_discord', 'use_googlesheet', 
-                                           'process_once', 'process_all',
-                                           'version'])
+            filtered_config = self.filter(self.KEYS_FILTER_GET_ALL)
             return filtered_config
     
     def update(self, new_config):

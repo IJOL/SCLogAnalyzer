@@ -13,7 +13,7 @@ import psutil  # Required for process management
 import wx.adv  # Import wx.adv for taskbar icon support
 
 from version import get_version  # Using absolute import for module in parent directory
-from helpers.core.config_utils import get_application_path, get_template_base_dir, get_template_path  # Direct import from same directory
+from helpers.core.config_utils import get_application_path, get_template_base_dir, get_template_path, ConfigManager  # Direct import from same directory
 from helpers.core.message_bus import message_bus, MessageLevel  # Direct import from same directory
 from helpers.ui.window_state_manager import is_app_in_startup, add_app_to_startup, remove_app_from_startup # SCLogAnalyzer: Added for startup management
 from helpers.ui.ui_components import DarkThemeButton # Added for DarkThemeButton
@@ -365,15 +365,7 @@ class ConfigDialog(wx.Dialog):
         sizer.Add(separator, 0, wx.EXPAND | wx.ALL, 5)
         
         # Keys handled in General Config - skip these
-        special_keys_handled = {
-            "use_googlesheet", "use_supabase", "datasource", "important_players",
-            "auto_environment_detection", "live_log_path", "ptu_log_path", "log_file_path",
-            "discord_webhook_url", "google_sheets_webhook", "supabase_key",  # Now handled in General Config
-            "username",  # Skip username
-            "tournament_admins",  # Hidden config - tournament admin users
-            # Skip complex nested objects that have their own tabs
-            "regex_patterns", "messages", "discord", "colors", "tabs", "hotkey_system"
-        }
+        special_keys_handled = ConfigManager.KEYS_NO_EDIT_GUI
         
         # Process remaining configuration keys automatically
         for key, value in config_data.items():
