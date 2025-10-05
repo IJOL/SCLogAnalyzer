@@ -26,6 +26,7 @@ class TournamentWidget(wx.Panel):
         self._create_ui()
         self._initialize_event_handlers()
         self._load_initial_data()
+        self._update_admin_controls_visibility()
 
     def _create_ui(self):
         """Create tournament management interface"""
@@ -158,6 +159,7 @@ class TournamentWidget(wx.Panel):
         debug_sizer.Add(self.complete_btn, 0, wx.ALL, 2)
 
         self.debug_panel.SetSizer(debug_sizer)
+        # Show panel for debug mode or tournament admins (will update on username change)
         self.debug_panel.Show(message_bus.is_debug_mode())
         button_sizer.Add(self.debug_panel, 0, wx.ALL, 2)
 
@@ -1177,9 +1179,29 @@ class TournamentWidget(wx.Panel):
         except Exception as e:
             message_bus.publish(content=f"Error handling remote tournament event: {str(e)}", level=MessageLevel.ERROR)
 
+    def _is_tournament_admin(self):
+        """Check if current user has tournament admin privileges"""
+        if message_bus.is_debug_mode():
+            return True
+
+        tournament_admins = self._config_manager.get('tournament_admins', [])
+        return self._current_username in tournament_admins
+
+    def _update_admin_controls_visibility(self):
+        """Update visibility of admin controls based on user privileges"""
+        is_admin = self._is_tournament_admin()
+
+        self.debug_panel.Show(is_admin)
+        self.delete_corpse_btn.Show(is_admin)
+        self.delete_event_btn.Show(is_admin)
+
+        self.Layout()
+
     def _on_username_change(self, username, old_username):
         """Handle username change events"""
         self._current_username = username
+        # Update admin controls visibility
+        wx.CallAfter(self._update_admin_controls_visibility)
         # Update panel to show user's team now that we have the username
         if self._current_tournament:
             wx.CallAfter(self._update_active_tournament_panel, None)
