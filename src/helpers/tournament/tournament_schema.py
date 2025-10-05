@@ -27,28 +27,8 @@ class TournamentSchemaManager:
         config JSONB DEFAULT '{}'::jsonb
     );
 
-    -- Enable RLS on tournaments
+    -- Enable RLS on tournaments (policies are permissive by default)
     ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
-
-    -- RLS Policy: Allow all users to read all tournaments
-    CREATE POLICY tournaments_select_policy ON tournaments
-        FOR SELECT
-        USING (true);
-
-    -- RLS Policy: Allow authenticated users to insert tournaments
-    CREATE POLICY tournaments_insert_policy ON tournaments
-        FOR INSERT
-        WITH CHECK (true);
-
-    -- RLS Policy: Allow users to update tournaments
-    CREATE POLICY tournaments_update_policy ON tournaments
-        FOR UPDATE
-        USING (true);
-
-    -- RLS Policy: Allow users to delete tournaments
-    CREATE POLICY tournaments_delete_policy ON tournaments
-        FOR DELETE
-        USING (true);
 
     -- Tournament corpse tracking with deduplication
     CREATE TABLE IF NOT EXISTS tournament_corpses (
@@ -63,28 +43,8 @@ class TournamentSchemaManager:
         UNIQUE(tournament_id, corpse_hash)
     );
 
-    -- Enable RLS on tournament_corpses
+    -- Enable RLS on tournament_corpses (policies are permissive by default)
     ALTER TABLE tournament_corpses ENABLE ROW LEVEL SECURITY;
-
-    -- RLS Policy: Allow all users to read corpses
-    CREATE POLICY tournament_corpses_select_policy ON tournament_corpses
-        FOR SELECT
-        USING (true);
-
-    -- RLS Policy: Allow authenticated users to insert corpses
-    CREATE POLICY tournament_corpses_insert_policy ON tournament_corpses
-        FOR INSERT
-        WITH CHECK (true);
-
-    -- RLS Policy: Allow all to update corpses
-    CREATE POLICY tournament_corpses_update_policy ON tournament_corpses
-        FOR UPDATE
-        USING (true);
-
-    -- RLS Policy: Allow all to delete corpses
-    CREATE POLICY tournament_corpses_delete_policy ON tournament_corpses
-        FOR DELETE
-        USING (true);
 
     -- Index for performance
     CREATE INDEX IF NOT EXISTS idx_tournament_corpses_tournament_id ON tournament_corpses(tournament_id);
