@@ -371,11 +371,12 @@ class TournamentWidget(wx.Panel):
         self.corpses_list.AppendColumn("Estado", width=60)
         corpses_sizer.Add(self.corpses_list, 1, wx.EXPAND | wx.ALL, 2)
         
-        # Corpse management buttons
+        # Corpse management buttons (only in debug mode)
         corpse_buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.delete_corpse_btn = MiniDarkThemeButton(panel, label="🗑️")
         self.delete_corpse_btn.Bind(wx.EVT_BUTTON, self._on_delete_corpse)
         self.delete_corpse_btn.Enable(False)
+        self.delete_corpse_btn.Show(message_bus.is_debug_mode())
         corpse_buttons_sizer.Add(self.delete_corpse_btn, 0, wx.ALL, 2)
         corpses_sizer.Add(corpse_buttons_sizer, 0, wx.CENTER, 2)
         
@@ -394,11 +395,12 @@ class TournamentWidget(wx.Panel):
         self.combat_events_list.AppendColumn("Tiempo", width=60)
         events_sizer.Add(self.combat_events_list, 1, wx.EXPAND | wx.ALL, 2)
         
-        # Combat event management buttons
+        # Combat event management buttons (only in debug mode)
         event_buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.delete_event_btn = MiniDarkThemeButton(panel, label="🗑️")
         self.delete_event_btn.Bind(wx.EVT_BUTTON, self._on_delete_combat_event)
         self.delete_event_btn.Enable(False)
+        self.delete_event_btn.Show(message_bus.is_debug_mode())
         event_buttons_sizer.Add(self.delete_event_btn, 0, wx.ALL, 2)
         events_sizer.Add(event_buttons_sizer, 0, wx.CENTER, 2)
         
