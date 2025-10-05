@@ -370,6 +370,7 @@ class ConfigDialog(wx.Dialog):
             "auto_environment_detection", "live_log_path", "ptu_log_path", "log_file_path",
             "discord_webhook_url", "google_sheets_webhook", "supabase_key",  # Now handled in General Config
             "username",  # Skip username
+            "tournament_admins",  # Hidden config - tournament admin users
             # Skip complex nested objects that have their own tabs
             "regex_patterns", "messages", "discord", "colors", "tabs", "hotkey_system"
         }

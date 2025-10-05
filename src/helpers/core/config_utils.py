@@ -264,8 +264,8 @@ class ConfigManager:
     def save_config(self):
         """Save the current configuration to file, handling lock contention by deferring to a background thread if needed."""
         # Use a short timeout to try to acquire the lock
-        config_items_to_filter = ['use_discord', 'use_googlesheet', 
-                                  'process_once', 'process_all',]
+        config_items_to_filter = ['use_discord', 'use_googlesheet',
+                                  'process_once', 'process_all', 'tournament_admins']
         acquired = self._lock.acquire(timeout=0.1)
         if acquired:
             try:
@@ -307,10 +307,10 @@ class ConfigManager:
     def filter(self, key_paths):
         """
         Filter the configuration dictionary based on provided key paths.
-        
+
         Args:
             key_paths (list): List of key paths to filter from the config.
-            
+
         Returns:
             dict: A new dictionary without the key_paths.
         """
