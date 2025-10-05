@@ -965,7 +965,10 @@ class TournamentWidget(wx.Panel):
             return
 
         try:
-            result = self._tournament_manager.activate_tournament(self._current_tournament["id"])
+            result = self._tournament_manager.activate_tournament(
+                self._current_tournament["id"],
+                activated_by=self._current_username
+            )
 
             if result["success"]:
                 self._current_tournament = result["tournament"]
