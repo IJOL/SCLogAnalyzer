@@ -551,7 +551,7 @@ class TournamentWidget(wx.Panel):
         self.participants_list.DeleteAllItems()
         self._clear_player_details()
 
-    def _update_active_tournament_panel(self, event_data):
+    def _update_active_tournament_panel(self):
         """Update the active tournament panel at the top"""
         try:
             message_bus.publish(content="_update_active_tournament_panel called", level=MessageLevel.DEBUG)
@@ -643,7 +643,7 @@ class TournamentWidget(wx.Panel):
             if active_tournament:
                 self._current_tournament = active_tournament
                 # Update active tournament panel - use CallAfter to ensure UI is ready
-                wx.CallAfter(self._update_active_tournament_panel, None)
+                wx.CallAfter(self._update_active_tournament_panel)
             else:
                 message_bus.publish(content="No active tournament found in database", level=MessageLevel.DEBUG)
 
@@ -983,7 +983,7 @@ class TournamentWidget(wx.Panel):
                     message_bus.publish(content="Detector de corpses activado para este torneo", level=MessageLevel.INFO)
 
                 self._refresh_tournaments_list()
-                self._update_active_tournament_panel(None)
+                self._update_active_tournament_panel()
                 message_bus.publish(content="Torneo activado para etiquetado de eventos de combate", level=MessageLevel.INFO)
             else:
                 wx.MessageBox(f"Error al activar torneo: {result.get('error', 'Error desconocido')}",
@@ -1001,7 +1001,7 @@ class TournamentWidget(wx.Panel):
             if result["success"]:
                 self._current_tournament = result["tournament"]
                 self._refresh_tournaments_list()  # Refresh tournament list to show new status
-                self._update_tournament_display()
+                self._update_active_tournament_panel()
                 message_bus.publish(content="Torneo pausado", level=MessageLevel.INFO)
             else:
                 wx.MessageBox(f"Error al pausar torneo: {result.get('error', 'Error desconocido')}",
@@ -1018,7 +1018,7 @@ class TournamentWidget(wx.Panel):
             if result["success"]:
                 self._current_tournament = result["tournament"]
                 self._refresh_tournaments_list()  # Refresh tournament list to show new status
-                self._update_tournament_display()
+                self._update_active_tournament_panel()
                 message_bus.publish(content="Torneo reanudado", level=MessageLevel.INFO)
             else:
                 wx.MessageBox(f"Error al reanudar torneo: {result.get('error', 'Error desconocido')}",
@@ -1047,7 +1047,7 @@ class TournamentWidget(wx.Panel):
 
                     self._current_tournament = None
                     self._refresh_tournaments_list()
-                    self._update_active_tournament_panel(None)
+                    self._update_active_tournament_panel()
                     message_bus.publish(content="Torneo finalizado correctamente", level=MessageLevel.INFO)
                 else:
                     wx.MessageBox(f"Error al finalizar torneo: {tournament_result.get('error', 'Error desconocido')}",
@@ -1064,7 +1064,7 @@ class TournamentWidget(wx.Panel):
     def _on_tournament_activated(self, event_data):
         """Handle tournament activated event"""
         wx.CallAfter(self._refresh_tournaments_list)
-        wx.CallAfter(self._update_active_tournament_panel, event_data)
+        wx.CallAfter(self._update_active_tournament_panel)
 
     def _on_participant_added(self, event_data):
         """Handle participant added event"""
@@ -1113,24 +1113,20 @@ class TournamentWidget(wx.Panel):
 
                 # Show relevant notification
                 if user_team:
-                    teammates_str = ", ".join(teammates) if teammates else "ningún compañero"
+                    teammates_str = ", ".join(teammates) if teammates else "sin compañeros"
                     notification_text = f"¡Torneo '{tournament_name}' activado por {username}! Tu equipo: {user_team} | Compañeros: {teammates_str}"
                     message_bus.publish(content=notification_text, level=MessageLevel.INFO)
 
-                    # Desktop notification
-                    message_bus.emit("show_windows_notification", {
-                        "title": "🏆 Torneo Activado",
-                        "message": f"Torneo: {tournament_name}\nEquipo: {user_team}\nCompañeros: {teammates_str}\nActivado por: {username}"
-                    })
+                    # Desktop notification - formatted message
+                    notification_message = f"🏆 TORNEO ACTIVADO\n\n📋 {tournament_name}\n\n🎯 Equipo: {user_team}\n👥 Compañeros: {teammates_str}\n\n▶️ Por: {username}"
+                    message_bus.emit("show_windows_notification", notification_message)
                 else:
                     notification_text = f"Torneo '{tournament_name}' activado por {username} (no participas)"
                     message_bus.publish(content=notification_text, level=MessageLevel.INFO)
 
-                    # Desktop notification
-                    message_bus.emit("show_windows_notification", {
-                        "title": "🏆 Torneo Activado",
-                        "message": f"Torneo: {tournament_name}\nActivado por: {username}\n(No participas en este torneo)"
-                    })
+                    # Desktop notification - formatted message
+                    notification_message = f"🏆 TORNEO ACTIVADO\n\n📋 {tournament_name}\n\n⚠️ No participas en este torneo\n\n▶️ Por: {username}"
+                    message_bus.emit("show_windows_notification", notification_message)
 
             elif event_type == 'tournament_completed':
                 tournament_id = event_data.get('tournament_id')
@@ -1204,7 +1200,7 @@ class TournamentWidget(wx.Panel):
         wx.CallAfter(self._update_admin_controls_visibility)
         # Update panel to show user's team now that we have the username
         if self._current_tournament:
-            wx.CallAfter(self._update_active_tournament_panel, None)
+            wx.CallAfter(self._update_active_tournament_panel)
 
     # Data Management Event Handlers
     
@@ -1295,12 +1291,12 @@ class TournamentWidget(wx.Panel):
         """Handle tournament statistics recalculation"""
         if not self._current_tournament:
             return
-            
+
         try:
             result = self._tournament_manager.recalculate_tournament_statistics(self._current_tournament["id"])
             if result["success"]:
                 self._refresh_tournament_data()
-                self._update_tournament_display()
+                self._update_active_tournament_panel()
                 wx.MessageBox("Estadísticas recalculadas correctamente", "Éxito", wx.OK | wx.ICON_INFORMATION)
             else:
                 wx.MessageBox(f"Error al recalcular estadísticas: {result.get('error', 'Error desconocido')}",
