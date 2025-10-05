@@ -22,7 +22,7 @@ from helpers.widgets.toggle_button_widget import ToggleButtonWidget
 from helpers.services import updater
 from version import get_version
 from helpers.ui.ui_components import DarkThemeButton
-from helpers.widgets.tournament_widget import TournamentWidget
+from helpers.tournament.tournament_widget import TournamentWidget
 from helpers.widgets.chat_widget import ChatWidget
 
 # Define constants for repeated strings and values
