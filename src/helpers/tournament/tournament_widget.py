@@ -267,66 +267,37 @@ class TournamentWidget(wx.Panel):
         self.participants_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_participant_selected)
         participants_sizer.Add(self.participants_list, 1, wx.EXPAND | wx.ALL, 2)
 
-        # Player details panel (right)
+        # Player details panel (right) - simplified to show only summary
         player_details_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Tournament status at top
         self.status_text = wx.StaticText(panel, label="Sin torneo seleccionado")
         self.status_text.SetForegroundColour(wx.Colour(255, 255, 255))
-        player_details_sizer.Add(self.status_text, 0, wx.ALL, 2)
+        self.status_text.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        player_details_sizer.Add(self.status_text, 0, wx.ALL, 5)
 
         self.corpse_count_text = wx.StaticText(panel, label="Bajas: 0")
-        self.corpse_count_text.SetForegroundColour(wx.Colour(255, 255, 255))
-        player_details_sizer.Add(self.corpse_count_text, 0, wx.ALL, 2)
+        self.corpse_count_text.SetForegroundColour(wx.Colour(200, 200, 200))
+        player_details_sizer.Add(self.corpse_count_text, 0, wx.ALL, 5)
 
-        # Player details section
-        player_details_label = wx.StaticText(panel, label="Detalles del Jugador:")
-        player_details_label.SetForegroundColour(wx.Colour(255, 255, 255))
-        player_details_sizer.Add(player_details_label, 0, wx.ALL, 2)
+        # Add separator
+        separator = wx.StaticLine(panel)
+        player_details_sizer.Add(separator, 0, wx.EXPAND | wx.ALL, 5)
 
-        # Selected player name
-        self.selected_player_text = wx.StaticText(panel, label="Selecciona un jugador para ver detalles")
+        # Selected player summary
+        self.selected_player_text = wx.StaticText(panel, label="Selecciona un jugador para ver resumen")
         self.selected_player_text.SetForegroundColour(wx.Colour(255, 255, 255))
-        player_details_sizer.Add(self.selected_player_text, 0, wx.ALL, 2)
-
-        # Horizontal layout for player events and corpses
-        player_data_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        # Left side: Player events
-        events_sizer = wx.BoxSizer(wx.VERTICAL)
-        events_label = wx.StaticText(panel, label="Eventos de Combate:")
-        events_label.SetForegroundColour(wx.Colour(255, 255, 255))
-        events_sizer.Add(events_label, 0, wx.ALL, 2)
-
-        self.player_history_list = DarkListCtrl(panel, style=wx.LC_REPORT)
-        self.player_history_list.AppendColumn("Fecha", width=80)
-        self.player_history_list.AppendColumn("Evento", width=60)
-        self.player_history_list.AppendColumn("Objetivo", width=100)
-        self.player_history_list.AppendColumn("Lugar", width=80)
-        events_sizer.Add(self.player_history_list, 1, wx.EXPAND | wx.ALL, 2)
-
-        player_data_sizer.Add(events_sizer, 1, wx.EXPAND | wx.ALL, 2)
-
-        # Right side: Player corpses/deaths
-        corpses_sizer = wx.BoxSizer(wx.VERTICAL)
-        corpses_label = wx.StaticText(panel, label="Bajas Detectadas:")
-        corpses_label.SetForegroundColour(wx.Colour(255, 255, 255))
-        corpses_sizer.Add(corpses_label, 0, wx.ALL, 2)
-
-        self.player_corpses_list = DarkListCtrl(panel, style=wx.LC_REPORT)
-        self.player_corpses_list.AppendColumn("Fecha", width=80)
-        self.player_corpses_list.AppendColumn("Ubicación", width=100)
-        self.player_corpses_list.AppendColumn("Estado", width=80)
-        corpses_sizer.Add(self.player_corpses_list, 1, wx.EXPAND | wx.ALL, 2)
-
-        player_data_sizer.Add(corpses_sizer, 1, wx.EXPAND | wx.ALL, 2)
-
-        player_details_sizer.Add(player_data_sizer, 1, wx.EXPAND | wx.ALL, 2)
+        self.selected_player_text.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        player_details_sizer.Add(self.selected_player_text, 0, wx.ALL, 5)
 
         # Player stats summary
         self.player_stats_text = wx.StaticText(panel, label="")
-        self.player_stats_text.SetForegroundColour(wx.Colour(255, 255, 255))
-        player_details_sizer.Add(self.player_stats_text, 0, wx.ALL, 2)
+        self.player_stats_text.SetForegroundColour(wx.Colour(200, 200, 200))
+        self.player_stats_text.SetFont(wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        player_details_sizer.Add(self.player_stats_text, 0, wx.ALL, 5)
+
+        # Add spacer to push content to top
+        player_details_sizer.AddStretchSpacer(1)
 
         # Add to main sizer
         sizer.Add(participants_sizer, 1, wx.EXPAND | wx.ALL, 2)
@@ -829,19 +800,12 @@ class TournamentWidget(wx.Panel):
                 self._clear_player_details()
                 return
 
-            # Clear and populate history list
-            self.player_history_list.DeleteAllItems()
-
-            # Collect combat history for all team members
-            all_team_history = []
+            # Calculate team statistics
             total_kills = 0
             total_deaths = 0
 
             for member in team_members:
                 member_history = self._get_player_combat_history(member)
-                for event in member_history:
-                    event["player"] = member  # Add player name to event
-                    all_team_history.append(event)
 
                 # Count stats for this member
                 member_kills = len([e for e in member_history if e.get("event_type") == "kill"])
@@ -849,37 +813,10 @@ class TournamentWidget(wx.Panel):
                 total_kills += member_kills
                 total_deaths += member_deaths
 
-            # Sort all events by timestamp
-            all_team_history.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-
-            # Populate history list with team events
-            for event in all_team_history:
-                timestamp = event.get("timestamp", "")
-                if timestamp:
-                    # Format timestamp to readable format
-                    try:
-                        from datetime import datetime
-                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                        formatted_time = dt.strftime("%H:%M:%S")
-                    except:
-                        formatted_time = timestamp[:8] if len(timestamp) > 8 else timestamp
-                else:
-                    formatted_time = "N/A"
-
-                event_type = event.get("event_type", "evento")
-                target = event.get("target", "")
-                player = event.get("player", "")
-                weapon = event.get("weapon", "")
-
-                index = self.player_history_list.InsertItem(self.player_history_list.GetItemCount(), formatted_time)
-                self.player_history_list.SetItem(index, 1, player)
-                self.player_history_list.SetItem(index, 2, event_type)
-                self.player_history_list.SetItem(index, 3, target)
-                self.player_history_list.SetItem(index, 4, weapon)
-
             # Update team statistics
             member_count = len(team_members)
             self.player_stats_text.SetLabel(f"Miembros: {member_count} | Bajas: {total_kills} | Muertes: {total_deaths}")
+            self._refresh_tournament_data(filter_team=team_name)
 
         except Exception as e:
             message_bus.publish(content=f"Error loading team details: {str(e)}", level=MessageLevel.ERROR)
@@ -888,36 +825,22 @@ class TournamentWidget(wx.Panel):
     def _clear_player_details(self):
         """Clear player details panel"""
         self.selected_player_text.SetLabel("Selecciona un jugador o equipo para ver detalles")
-        self.player_history_list.DeleteAllItems()
         self.player_stats_text.SetLabel("")
+        self._refresh_tournament_data()
 
     def _load_player_details(self, username):
         """Load and display player details and history"""
         try:
             self.selected_player_text.SetLabel(f"Jugador: {username}")
 
-            # Clear previous data
-            self.player_history_list.DeleteAllItems()
-
             # Get player combat history from database
             player_history = self._get_player_combat_history(username)
-
-            # Populate history list
-            for i, event in enumerate(player_history):
-                event_date = event.get("timestamp", "")[:10] if event.get("timestamp") else ""
-                event_type = "Muerte" if event.get("event_type") == "death" else "Baja"
-                target = event.get("target", event.get("victim", ""))
-                location = event.get("location", "")[:15] if event.get("location") else ""
-
-                index = self.player_history_list.InsertItem(i, event_date)
-                self.player_history_list.SetItem(index, 1, event_type)
-                self.player_history_list.SetItem(index, 2, target)
-                self.player_history_list.SetItem(index, 3, location)
 
             # Calculate and display stats
             deaths = len([e for e in player_history if e.get("event_type") == "death"])
             kills = len([e for e in player_history if e.get("event_type") == "kill"])
             self.player_stats_text.SetLabel(f"Bajas: {kills} | Muertes: {deaths}")
+            self._refresh_tournament_data(filter_username=username)
 
         except Exception as e:
             message_bus.publish(content=f"Error loading player details: {str(e)}", level=MessageLevel.ERROR)
@@ -1300,29 +1223,42 @@ class TournamentWidget(wx.Panel):
         except Exception as e:
             wx.MessageBox(f"Error al recalcular estadísticas: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
     
-    def _refresh_tournament_data(self):
+    def _refresh_tournament_data(self, filter_username=None, filter_team=None):
         """Refresh tournament data lists"""
         if not self._current_tournament:
             self.corpses_list.DeleteAllItems()
             self.combat_events_list.DeleteAllItems()
             self.recalculate_btn.Enable(False)
             return
-            
+
         try:
+            # Get team members if filtering by team
+            team_members = None
+            if filter_team:
+                team_members = self._current_tournament.get("teams", {}).get(filter_team, [])
+
             # Load corpses
             corpses = self._tournament_manager.get_tournament_corpses(self._current_tournament["id"])
             self.corpses_list.DeleteAllItems()
-            
+
             for i, corpse in enumerate(corpses):
+                participant_name = corpse.get("participant_name", "Unknown")
+
+                # Apply filters
+                if filter_username and participant_name != filter_username:
+                    continue
+                if filter_team and team_members and participant_name not in team_members:
+                    continue
+
                 timestamp = corpse.get("detected_at", "")[:10] if corpse.get("detected_at") else ""
                 confirmed = "Sí" if corpse.get("organizer_confirmed", False) else "No"
-                
-                index = self.corpses_list.InsertItem(i, corpse.get("participant_name", "Unknown"))
+
+                index = self.corpses_list.InsertItem(self.corpses_list.GetItemCount(), participant_name)
                 self.corpses_list.SetItem(index, 1, corpse.get("detected_by", "Unknown"))
                 self.corpses_list.SetItem(index, 2, timestamp)
                 self.corpses_list.SetItem(index, 3, confirmed)
                 self.corpses_list.SetItemData(index, corpse.get("id", 0))
-            
+
             # Load combat events for current tournament
             tournament_type = self._current_tournament.get("config", {}).get("tournament_type", "sc_default")
             combat_history = []
@@ -1335,28 +1271,36 @@ class TournamentWidget(wx.Panel):
                 for event in participant_history:
                     event["source_player"] = participant
                     combat_history.append(event)
-            
+
             # Sort by timestamp
             combat_history.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-            
+
             # Populate combat events list
             self.combat_events_list.DeleteAllItems()
             for i, event in enumerate(combat_history[:50]):  # Limit to 50 most recent
+                source_player = event.get("source_player", "Unknown")
+
+                # Apply filters
+                if filter_username and source_player != filter_username:
+                    continue
+                if filter_team and team_members and source_player not in team_members:
+                    continue
+
                 event_type = "Muerte" if event.get("event_type") == "death" else "Baja"
-                player = event.get("source_player", "Unknown")
+                player = source_player
                 target = event.get("target", "Unknown")
                 timestamp = event.get("timestamp", "")[:10] if event.get("timestamp") else ""
-                
-                index = self.combat_events_list.InsertItem(i, event_type)
+
+                index = self.combat_events_list.InsertItem(self.combat_events_list.GetItemCount(), event_type)
                 self.combat_events_list.SetItem(index, 1, player)
                 self.combat_events_list.SetItem(index, 2, target)
                 self.combat_events_list.SetItem(index, 3, timestamp)
-                
+
                 # Store event ID and table name as tuple
                 raw_event = event.get("raw_event", {})
                 event_id = raw_event.get("id", 0)
                 self.combat_events_list.SetItemData(index, (event_id, tournament_type))
-            
+
             # Enable recalculate button for active tournaments
             tournament_status = self._current_tournament.get("status", "")
             self.recalculate_btn.Enable(tournament_status in ["active", "paused"])
