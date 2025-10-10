@@ -454,6 +454,42 @@ class RealtimeBridge:
                 metadata={"source": "realtime_bridge"}
             )
 
+    def get_connected_users(self):
+        """
+        Obtener lista actual de usuarios conectados (consulta síncrona, sin eventos).
+        Método público para uso en diálogos modales que necesitan la lista sin esperar eventos.
+
+        Returns:
+            list: Lista de diccionarios con información de usuarios conectados.
+                  Retorna lista vacía si no hay conexión activa.
+        """
+        if 'general' not in self.channels or not self.channels['general']:
+            return []
+
+        try:
+            presence_state = self.channels['general'].presence.state
+            users = []
+            for username, presences in presence_state.items():
+                for presence in presences:
+                    last_active = self.last_activity.get(username, presence.get('last_active'))
+                    users.append({
+                        'username': username,
+                        'shard': presence.get('shard'),
+                        'version': presence.get('version'),
+                        'status': presence.get('status'),
+                        'mode': presence.get('mode'),
+                        'last_active': last_active.strftime('%Y-%m-%d %H:%M:%S') if last_active else None,
+                        'metadata': presence.get('metadata', {})
+                    })
+            return users
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error getting connected users: {e}",
+                level=MessageLevel.ERROR,
+                metadata={"source": "realtime_bridge"}
+            )
+            return []
+
     def _handle_presence_join(self, key, current, new):
         """Maneja cuando un nuevo usuario se une al canal de presencia"""
         try:
