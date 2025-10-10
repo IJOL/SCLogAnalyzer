@@ -903,11 +903,12 @@ class SupabaseDataProvider(DataProvider):
                 username,
                 killer,
                 victim
-            FROM 
+            FROM
                 sc_default
-            -- Only count reports made by the player themselves
-            WHERE 
+            -- Only count reports made by the player themselves and NOT in tournaments
+            WHERE
                 username IS NOT NULL
+                AND tournament_id IS NULL
         ),
         
         filtered_ea_squadronbattle AS (
@@ -916,11 +917,12 @@ class SupabaseDataProvider(DataProvider):
                 username,
                 killer,
                 victim
-            FROM 
+            FROM
                 ea_squadronbattle
-            -- Only count reports made by the player themselves
-            WHERE 
+            -- Only count reports made by the player themselves and NOT in tournaments
+            WHERE
                 username IS NOT NULL
+                AND tournament_id IS NULL
         ),
         
         sc_default_stats AS (
@@ -1187,12 +1189,13 @@ class SupabaseDataProvider(DataProvider):
                 username,
                 killer,
                 victim
-            FROM 
+            FROM
                 sc_default
-            -- Only count reports made by the player themselves in current month
-            WHERE 
+            -- Only count reports made by the player themselves in current month and NOT in tournaments
+            WHERE
                 username IS NOT NULL
                 AND DATE_TRUNC('month', timestamp::timestamp) = DATE_TRUNC('month', NOW())
+                AND tournament_id IS NULL
         ),
         
         filtered_ea_squadronbattle AS (
@@ -1201,12 +1204,13 @@ class SupabaseDataProvider(DataProvider):
                 username,
                 killer,
                 victim
-            FROM 
+            FROM
                 ea_squadronbattle
-            -- Only count reports made by the player themselves in current month
-            WHERE 
+            -- Only count reports made by the player themselves in current month and NOT in tournaments
+            WHERE
                 username IS NOT NULL
                 AND DATE_TRUNC('month', timestamp::timestamp) = DATE_TRUNC('month', NOW())
+                AND tournament_id IS NULL
         ),
         
         sc_default_stats AS (
@@ -1467,12 +1471,13 @@ class SupabaseDataProvider(DataProvider):
                 username,
                 killer,
                 victim
-            FROM 
+            FROM
                 sc_default
-            -- Only count reports made by the player themselves in previous month
-            WHERE 
+            -- Only count reports made by the player themselves in previous month and NOT in tournaments
+            WHERE
                 username IS NOT NULL
                 AND DATE_TRUNC('month', timestamp::timestamp) = DATE_TRUNC('month', NOW() - INTERVAL '1 month')
+                AND tournament_id IS NULL
         ),
         
         filtered_ea_squadronbattle AS (
@@ -1481,12 +1486,13 @@ class SupabaseDataProvider(DataProvider):
                 username,
                 killer,
                 victim
-            FROM 
+            FROM
                 ea_squadronbattle
-            -- Only count reports made by the player themselves in previous month
-            WHERE 
+            -- Only count reports made by the player themselves in previous month and NOT in tournaments
+            WHERE
                 username IS NOT NULL
                 AND DATE_TRUNC('month', timestamp::timestamp) = DATE_TRUNC('month', NOW() - INTERVAL '1 month')
+                AND tournament_id IS NULL
         ),
         
         sc_default_stats AS (

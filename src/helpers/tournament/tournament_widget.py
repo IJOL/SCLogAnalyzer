@@ -231,6 +231,14 @@ class TournamentWidget(wx.Panel):
         self.teammates_label.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
         right_sizer.Add(self.teammates_label, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 8)
 
+        # Button to leave tournament
+        self.leave_tournament_btn = DarkThemeButton(self, label="🚪 Abandonar Torneo")
+        self.leave_tournament_btn.SetToolTip("Abandonar el torneo activo")
+        self.leave_tournament_btn.Bind(wx.EVT_BUTTON, self._on_leave_tournament)
+        self.leave_tournament_btn.Enable(False)  # Disabled by default, enabled when user is in an active tournament
+        self.leave_tournament_btn.SetBackgroundColour(wx.Colour(180, 90, 0))  # Orange background
+        right_sizer.Add(self.leave_tournament_btn, 0, wx.ALL | wx.CENTER, 8)
+
         main_sizer.Add(right_sizer, 1, wx.EXPAND | wx.ALL, 5)
 
         return main_sizer
@@ -570,9 +578,12 @@ class TournamentWidget(wx.Panel):
                 if user_team:
                     self.my_team_label.SetLabel(user_team)
                     self.teammates_label.SetLabel(f"Compañeros:\n{', '.join(teammates) if teammates else 'ninguno'}")
+                    # Enable leave button if user is in an active tournament
+                    self.leave_tournament_btn.Enable(tournament_status == "active")
                 else:
                     self.my_team_label.SetLabel("-")
                     self.teammates_label.SetLabel("Compañeros:\n-")
+                    self.leave_tournament_btn.Enable(False)
             else:
                 self.active_tournament_name.SetLabel("Ningún torneo activo")
                 self.active_tournament_participants.SetLabel("Participantes: -")
@@ -580,6 +591,7 @@ class TournamentWidget(wx.Panel):
                 self.active_tournament_teams.SetLabel("Sin equipos")
                 self.my_team_label.SetLabel("-")
                 self.teammates_label.SetLabel("Compañeros:\n-")
+                self.leave_tournament_btn.Enable(False)
 
             # Force layout recalculation to prevent text overlap
             self.Layout()
@@ -978,6 +990,38 @@ class TournamentWidget(wx.Panel):
 
             except Exception as e:
                 wx.MessageBox(f"Error al finalizar torneo: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
+
+    def _on_leave_tournament(self, event):
+        """Handle user leaving the tournament - stops tagging their deaths with tournament_id"""
+        if not self._current_tournament:
+            return
+
+        tournament_name = self._current_tournament.get("name", "Desconocido")
+        result = wx.MessageBox(
+            f"¿Está seguro que desea abandonar el torneo '{tournament_name}'?\n\n"
+            "Tus muertes dejarán de contabilizarse para el torneo.",
+            "Confirmar abandono",
+            wx.YES_NO | wx.ICON_QUESTION
+        )
+
+        if result == wx.YES:
+            try:
+                # Simply notify the tournament manager to stop tagging this user's events
+                message_bus.emit("user_left_tournament", {
+                    "tournament_id": self._current_tournament["id"],
+                    "username": self._current_username
+                })
+
+                message_bus.publish(
+                    content=f"Has abandonado el torneo '{tournament_name}'. Tus eventos ya no se etiquetarán.",
+                    level=MessageLevel.INFO
+                )
+
+                # Update UI to reflect user is no longer in tournament
+                self._update_active_tournament_panel()
+
+            except Exception as e:
+                wx.MessageBox(f"Error al abandonar torneo: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
 
 
     def _on_tournament_created(self, event_data):

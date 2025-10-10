@@ -13,6 +13,7 @@ class TournamentManager:
     def __init__(self):
         self._lock = threading.RLock()
         self._active_tournament: Optional[Tournament] = None
+        self._abandoned_tournament_ids: set = set()  # IDs of tournaments the user has abandoned
         self._config_manager = get_config_manager(in_gui=True)
         self._data_provider = get_data_provider(self._config_manager)
         self._initialize_event_handlers()
@@ -21,6 +22,7 @@ class TournamentManager:
         """Set up MessageBus event handlers"""
         message_bus.on("application_startup", self._on_application_startup)
         message_bus.on("tournament_status_changed", self._on_tournament_status_changed)
+        message_bus.on("user_left_tournament", self._on_user_left_tournament)
 
     def _on_application_startup(self, event_data):
         """Handle application startup - restore active tournament"""
@@ -38,6 +40,17 @@ class TournamentManager:
             self._config_manager.set("tournament.current_active_tournament", tournament_id)
         elif new_status == "completed":
             self._config_manager.set("tournament.current_active_tournament", None)
+
+    def _on_user_left_tournament(self, event_data):
+        """Handle user leaving tournament"""
+        tournament_id = event_data.get("tournament_id")
+
+        if tournament_id:
+            self._abandoned_tournament_ids.add(tournament_id)
+            message_bus.publish(
+                content=f"Tournament {tournament_id} marked as abandoned",
+                level=MessageLevel.DEBUG
+            )
 
     def create_tournament(self, tournament_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create new tournament with database initialization"""
@@ -251,9 +264,12 @@ class TournamentManager:
             return []
 
     def is_tournament_participant(self, username: str) -> bool:
-        """Check if user is participant in active tournament"""
+        """Check if user is participant in active tournament and hasn't abandoned it"""
         with self._lock:
             if not self._active_tournament:
+                return False
+            # User must be a participant AND not have abandoned this tournament
+            if self._active_tournament.id in self._abandoned_tournament_ids:
                 return False
             return self._active_tournament.is_participant(username)
 
