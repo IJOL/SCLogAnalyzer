@@ -532,13 +532,14 @@ class ChatWidget(wx.Panel):
             message_bus.publish(f"Error updating connected users in chat: {str(e)}", MessageLevel.ERROR)
 
     def _trigger_users_update(self):
-        """Trigger presence sync to get current users via event - igual que en tournaments"""
+        """Load current connected users from RealtimeBridge (initial load for widget)"""
         try:
             bridge = RealtimeBridge.get_instance()
-            if bridge and 'general' in bridge.channels:
-                bridge._handle_presence_sync(bridge.channels['general'])
+            if bridge:
+                users = bridge.get_connected_users()
+                self._connected_users = [u['username'] for u in users if u.get('username')]
         except Exception as e:
-            message_bus.publish(f"Error triggering users update: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(f"Error loading connected users: {str(e)}", MessageLevel.ERROR)
 
     def _create_new_chat(self, selected_users):
         """Crear nuevo chat con usuarios seleccionados"""
