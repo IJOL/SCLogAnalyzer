@@ -320,11 +320,13 @@ class TournamentCreationDialog(wx.Dialog):
             pass
 
     def _trigger_users_update(self):
-        """Trigger presence sync to get current users via event"""
+        """Load current connected users from RealtimeBridge (for modal dialog)"""
         from helpers.core.realtime_bridge import RealtimeBridge
         bridge = RealtimeBridge.get_instance()
-        if bridge and 'general' in bridge.channels:
-            bridge._handle_presence_sync(bridge.channels['general'])
+        if bridge:
+            users = bridge.get_connected_users()
+            self._connected_users = [u['username'] for u in users if u.get('username')]
+            wx.CallAfter(self._refresh_connected_users_list)
 
 
 
