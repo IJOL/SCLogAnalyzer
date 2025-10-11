@@ -365,7 +365,7 @@ class ChatWidget(wx.Panel):
             'sender': 'local_user'
         })
 
-        message_bus.publish(f"Chat message sent to {self.current_chat}", MessageLevel.INFO)
+        message_bus.publish(content=f"Chat message sent to {self.current_chat}", level=MessageLevel.INFO)
 
     def _on_message_received(self, event_data):
         """Manejar mensaje recibido vía MessageBus"""
@@ -394,13 +394,13 @@ class ChatWidget(wx.Panel):
         """Manejar usuario que se une al chat"""
         username = event_data.get('username')
         if username:
-            message_bus.publish(f"User {username} joined chat", MessageLevel.INFO)
+            message_bus.publish(content=f"User {username} joined chat", level=MessageLevel.INFO)
 
     def _on_user_left(self, event_data):
         """Manejar usuario que abandona el chat"""
         username = event_data.get('username')
         if username:
-            message_bus.publish(f"User {username} left chat", MessageLevel.INFO)
+            message_bus.publish(content=f"User {username} left chat", level=MessageLevel.INFO)
 
     def _mark_chat_unread(self, chat_name):
         """Marcar chat como no leído"""
@@ -429,10 +429,10 @@ class ChatWidget(wx.Panel):
 
             # Enviar vía RealtimeBridge usando el evento correcto
             message_bus.emit("realtime_event", realtime_data)
-            message_bus.publish(f"Chat message sent to {self.current_chat}", MessageLevel.INFO)
+            message_bus.publish(content=f"Chat message sent to {self.current_chat}", level=MessageLevel.INFO)
 
         except Exception as e:
-            message_bus.publish(f"Error sending realtime message: {e}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error sending realtime message: {e}", level=MessageLevel.ERROR)
 
     def _get_chat_recipients(self, chat_name):
         """Obtener lista de destinatarios para un chat"""
@@ -450,10 +450,10 @@ class ChatWidget(wx.Panel):
         try:
             # Suscribirse a eventos de chat en tiempo real vía MessageBus
             message_bus.on("remote_realtime_event", self._on_realtime_event_received)
-            message_bus.publish("Chat widget subscribed to realtime events", MessageLevel.INFO)
+            message_bus.publish(content="Chat widget subscribed to realtime events", level=MessageLevel.INFO)
 
         except Exception as e:
-            message_bus.publish(f"Error setting up realtime events: {e}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error setting up realtime events: {e}", level=MessageLevel.ERROR)
 
     def _on_realtime_event_received(self, username, event_data):
         """Manejar evento de tiempo real recibido de otros usuarios"""
@@ -473,7 +473,7 @@ class ChatWidget(wx.Panel):
                     })
 
         except Exception as e:
-            message_bus.publish(f"Error handling realtime chat event: {e}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error handling realtime chat event: {e}", level=MessageLevel.ERROR)
 
     def _on_realtime_message(self, data):
         """Manejar mensaje recibido en tiempo real"""
@@ -490,7 +490,7 @@ class ChatWidget(wx.Panel):
                 })
 
         except Exception as e:
-            message_bus.publish(f"Error processing realtime message: {e}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error processing realtime message: {e}", level=MessageLevel.ERROR)
 
     def _on_realtime_user_joined(self, data):
         """Manejar usuario que se une en tiempo real"""
@@ -529,7 +529,7 @@ class ChatWidget(wx.Panel):
                 if username and username.strip():
                     self._connected_users.append(username)
         except Exception as e:
-            message_bus.publish(f"Error updating connected users in chat: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error updating connected users in chat: {str(e)}", level=MessageLevel.ERROR)
 
     def _trigger_users_update(self):
         """Load current connected users from RealtimeBridge (initial load for widget)"""
@@ -539,7 +539,7 @@ class ChatWidget(wx.Panel):
                 users = bridge.get_connected_users()
                 self._connected_users = [u['username'] for u in users if u.get('username')]
         except Exception as e:
-            message_bus.publish(f"Error loading connected users: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error loading connected users: {str(e)}", level=MessageLevel.ERROR)
 
     def _create_new_chat(self, selected_users):
         """Crear nuevo chat con usuarios seleccionados"""
@@ -569,7 +569,7 @@ class ChatWidget(wx.Panel):
                 self.chat_list.Select(i)
                 break
 
-        message_bus.publish(f"New chat created with: {', '.join(selected_users)}", MessageLevel.INFO)
+        message_bus.publish(content=f"New chat created with: {', '.join(selected_users)}", level=MessageLevel.INFO)
 
 
 class UserSelectionDialog(wx.Dialog):
@@ -647,16 +647,16 @@ class UserSelectionDialog(wx.Dialog):
             wx.CallAfter(self._refresh_user_list)
 
         except Exception as e:
-            message_bus.publish(f"Error updating connected users in dialog: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error updating connected users in dialog: {str(e)}", level=MessageLevel.ERROR)
 
     def _trigger_users_update(self):
         """Trigger presence sync to get current users via event - misma técnica que tournaments"""
         try:
             bridge = RealtimeBridge.get_instance()
-            if bridge and 'general' in bridge.channels:
-                bridge._handle_presence_sync(bridge.channels['general'])
+            if bridge:
+                self._connected_users = [u['username'] for u in bridge.get_connected_users() if u.get('username')]
         except Exception as e:
-            message_bus.publish(f"Error triggering users update in dialog: {str(e)}", MessageLevel.ERROR)
+            message_bus.publish(content=f"Error triggering users update in dialog: {str(e)}", level=MessageLevel.ERROR)
 
     def _refresh_user_list(self):
         """Refresh the user list with real connected users"""
