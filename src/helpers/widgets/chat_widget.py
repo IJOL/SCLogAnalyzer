@@ -7,7 +7,6 @@ from datetime import datetime
 
 from helpers.core.message_bus import message_bus, MessageLevel
 from helpers.core.config_utils import get_config_manager
-from helpers.core.realtime_bridge import RealtimeBridge
 from helpers.widgets.dark_listctrl import DarkListCtrl
 from helpers.ui.ui_components import DarkThemeButton
 
@@ -27,9 +26,7 @@ class ChatWidget(wx.Panel):
         self.chat_sessions = {}  # {chat_name: [messages]}
         self.current_chat = None
         self._connected_users = []  # Lista de usuarios conectados reales
-
-        # RealtimeBridge para sincronización
-        self.realtime_bridge = RealtimeBridge.get_instance()
+        self._current_username = ""  # Username del usuario actual
 
         # Aplicar tema oscuro base
         self.SetBackgroundColour(wx.Colour(45, 45, 50))
@@ -195,6 +192,7 @@ class ChatWidget(wx.Panel):
         message_bus.on("chat_user_joined", self._on_user_joined)
         message_bus.on("chat_user_left", self._on_user_left)
         message_bus.on("users_online_updated", self._on_users_online_updated)
+        message_bus.on("username_change", self._on_username_change)
 
     def _add_default_chats(self):
         """Agregar chats por defecto"""
@@ -334,9 +332,16 @@ class ChatWidget(wx.Panel):
         if not text or not self.current_chat:
             return
 
-        # Crear mensaje
-        message = {
+        # Crear mensaje para mostrar localmente (con "You")
+        local_message = {
             'sender': 'You',
+            'text': text,
+            'timestamp': datetime.now().strftime("%H:%M")
+        }
+
+        # Crear mensaje para enviar a otros (con username real)
+        remote_message = {
+            'sender': self._current_username if self._current_username else 'Unknown',
             'text': text,
             'timestamp': datetime.now().strftime("%H:%M")
         }
@@ -345,23 +350,23 @@ class ChatWidget(wx.Panel):
         if self.current_chat not in self.chat_sessions:
             self.chat_sessions[self.current_chat] = []
 
-        self.chat_sessions[self.current_chat].append(message)
+        self.chat_sessions[self.current_chat].append(local_message)
 
         # Mostrar mensaje
-        self._display_message(message)
+        self._display_message(local_message)
 
         # Limpiar input
         self.text_input.Clear()
         self.char_counter.SetLabel("200")
         self.char_counter.SetForegroundColour(wx.Colour(150, 150, 150))
 
-        # Enviar mensaje vía RealtimeBridge
-        self._send_realtime_message(message)
+        # Enviar mensaje vía RealtimeBridge con username real
+        self._send_realtime_message(remote_message)
 
         # Emitir evento a través de MessageBus
         message_bus.emit("chat_message_sent", {
             'chat': self.current_chat,
-            'message': message,
+            'message': remote_message,
             'sender': 'local_user'
         })
 
@@ -464,7 +469,9 @@ class ChatWidget(wx.Panel):
                 message = event_data.get('message')
                 sender = event_data.get('sender')
 
-                if message and chat_name:
+                # Filtrar mensajes propios para evitar duplicados
+                # username es quien envió el evento (el emisor real)
+                if message and chat_name and username != self._current_username:
                     # Procesar mensaje recibido vía MessageBus local
                     message_bus.emit("chat_message_received", {
                         'chat': chat_name,
@@ -534,6 +541,7 @@ class ChatWidget(wx.Panel):
     def _trigger_users_update(self):
         """Load current connected users from RealtimeBridge (initial load for widget)"""
         try:
+            from helpers.core.realtime_bridge import RealtimeBridge
             bridge = RealtimeBridge.get_instance()
             if bridge:
                 users = bridge.get_connected_users()
@@ -571,16 +579,25 @@ class ChatWidget(wx.Panel):
 
         message_bus.publish(content=f"New chat created with: {', '.join(selected_users)}", level=MessageLevel.INFO)
 
+    def _on_username_change(self, username, old_username):
+        """Handle username change events"""
+        self._current_username = username
+
 
 class UserSelectionDialog(wx.Dialog):
     """Diálogo para seleccionar usuarios para nuevo chat - usa misma técnica que TournamentCreationDialog"""
 
     def __init__(self, parent):
         super().__init__(parent, title="Seleccionar usuarios para chat",
-                        style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+                        style=wx.DEFAULT_DIALOG_STYLE)
 
         self.selected_users = []
         self._connected_users = []
+        self.user_check_states = {}  # username -> bool
+
+        # Checkbox images para DarkListCtrl
+        self.CHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_TICK_MARK, wx.ART_OTHER, (16, 16))
+        self.UNCHECKED_IMG = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_OTHER, (16, 16))
 
         self._create_ui()
         self.SetSize((400, 500))
@@ -602,6 +619,8 @@ class UserSelectionDialog(wx.Dialog):
 
     def _create_ui(self):
         """Crear interfaz del diálogo"""
+        from helpers.widgets.dark_listctrl import DarkListCtrl
+
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Título
@@ -613,10 +632,11 @@ class UserSelectionDialog(wx.Dialog):
         title.SetFont(title_font)
         main_sizer.Add(title, 0, wx.ALL, 10)
 
-        # Lista con checkboxes
-        self.user_list = wx.CheckListBox(self)
-        self.user_list.SetBackgroundColour(wx.Colour(45, 45, 50))  # Más oscuro para mejor contraste
-        self.user_list.SetForegroundColour(wx.Colour(240, 240, 240))  # Gris claro para mejor legibilidad
+        # Lista con checkboxes gráficos usando DarkListCtrl
+        self.user_list = DarkListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.BORDER_SUNKEN)
+        self.user_list.InsertColumn(0, "✓", width=30)
+        self.user_list.InsertColumn(1, "Usuario", width=340)
+        self.user_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_user_toggle)
         main_sizer.Add(self.user_list, 1, wx.EXPAND | wx.ALL, 10)
 
         # Botones
@@ -652,11 +672,21 @@ class UserSelectionDialog(wx.Dialog):
     def _trigger_users_update(self):
         """Trigger presence sync to get current users via event - misma técnica que tournaments"""
         try:
+            from helpers.core.realtime_bridge import RealtimeBridge
             bridge = RealtimeBridge.get_instance()
             if bridge:
                 self._connected_users = [u['username'] for u in bridge.get_connected_users() if u.get('username')]
+                wx.CallAfter(self._refresh_user_list)
         except Exception as e:
             message_bus.publish(content=f"Error triggering users update in dialog: {str(e)}", level=MessageLevel.ERROR)
+
+    def _on_user_toggle(self, event):
+        """Toggle checkbox state for the clicked user"""
+        index = event.GetIndex()
+        username = self.user_list.GetItemText(index, 1)
+        current = self.user_check_states.get(username, False)
+        self.user_check_states[username] = not current
+        self._refresh_user_list()
 
     def _refresh_user_list(self):
         """Refresh the user list with real connected users"""
@@ -666,11 +696,22 @@ class UserSelectionDialog(wx.Dialog):
                 return
 
             # Limpiar la lista actual
-            self.user_list.Clear()
+            self.user_list.DeleteAllItems()
 
-            # Agregar usuarios conectados reales
-            for username in self._connected_users:
-                self.user_list.Append(username)
+            # Agregar usuarios conectados reales con checkboxes
+            for i, username in enumerate(self._connected_users):
+                checked = self.user_check_states.get(username, False)
+                img_idx = 0 if checked else 1
+
+                # Crear ImageList en el primer item
+                if i == 0:
+                    self.img_list = wx.ImageList(16, 16)
+                    self.img_list.Add(self.CHECKED_IMG)
+                    self.img_list.Add(self.UNCHECKED_IMG)
+                    self.user_list.AssignImageList(self.img_list, wx.IMAGE_LIST_SMALL)
+
+                index = self.user_list.InsertItem(i, "", img_idx)
+                self.user_list.SetItem(index, 1, username)
 
         except RuntimeError:
             # Dialog has been destroyed, ignore
@@ -679,9 +720,9 @@ class UserSelectionDialog(wx.Dialog):
     def _on_ok(self, event):
         """Manejar OK"""
         self.selected_users = []
-        for i in range(self.user_list.GetCount()):
-            if self.user_list.IsChecked(i):
-                self.selected_users.append(self.user_list.GetString(i))
+        for username, checked in self.user_check_states.items():
+            if checked:
+                self.selected_users.append(username)
 
         if not self.selected_users:
             wx.MessageBox("Selecciona al menos un usuario", "Error", wx.OK | wx.ICON_ERROR)
