@@ -160,12 +160,15 @@ class LogFileHandler(FileSystemEventHandler):
             self.last_position = self._get_file_end_position()
             output_message(None, f"Skipping to the end of log file (position {self.last_position})")
         # Setup message bus listener for actor_profile events
-        message_bus.on("actor_profile", self._on_actor_profile)
-        message_bus.on("request_profile", self.async_profile_scraping)
-        message_bus.on("force_broadcast_profile", self._on_force_broadcast_profile)
-        message_bus.on("send_discord", self._on_send_discord)
-        message_bus.on("send_realtime", self._on_send_realtime)
-        message_bus.on("config_updated", self._on_config_updated)
+        # Store subscription IDs for proper cleanup on handler destruction
+        self._subscription_ids = [
+            message_bus.on("actor_profile", self._on_actor_profile),
+            message_bus.on("request_profile", self.async_profile_scraping),
+            message_bus.on("force_broadcast_profile", self._on_force_broadcast_profile),
+            message_bus.on("send_discord", self._on_send_discord),
+            message_bus.on("send_realtime", self._on_send_realtime),
+            message_bus.on("config_updated", self._on_config_updated)
+        ]
 
     def __getattr__(self, name):
         """
@@ -391,6 +394,11 @@ class LogFileHandler(FileSystemEventHandler):
 
     def stop(self):
         """Stop the handler and cleanup threads"""
+        # Unsubscribe from all message_bus events to prevent duplicate processing
+        for sub_id in self._subscription_ids:
+            message_bus.off(sub_id)
+        self._subscription_ids = []
+
         self.stop_event.set()
         output_message(None, "Stopping log analyzer...")
         self.cleanup_threads()
