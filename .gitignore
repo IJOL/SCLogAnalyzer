@@ -215,3 +215,7 @@ poc_hotkey_system.py
 .claude/
 planning_docs/
 rsi_browser_session/
+specs/
+.specify/
+.spec-workflow/
+.qwen/
