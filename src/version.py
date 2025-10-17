@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 17
-RELEASE = 0
+RELEASE = 1
 MATURITY = "onyx"  # "alpha", "beta", or "final"
-PATCH = "d476f9d"
+PATCH = "da462c8"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -16,7 +16,9 @@ def get_version():
 
 # Recent commit messages
 COMMIT_MESSAGES = [
-    # Commits for v0.16.x series,
+    # Commits for v0.17.x series,
+    "da462c8: Add hidden imports for wxPython and clean up build.py",
+    "9f5ef26: [chore] Increment version to v0.17.0-d476f9d-onyx",
     "d476f9d: feat: Update .gitignore to include new directories for rsi_browser_session, specs, specify, spec-workflow, and qwen",
     "1b43959: feat: Enhance LogFileHandler by managing message bus subscriptions for proper cleanup",
     "9e91dda: feat: Enhance chat functionality by adding username handling and improving user list management",
@@ -52,5 +54,31 @@ COMMIT_MESSAGES = [
     "04690d6: refactor: Remove unnecessary comment regarding dynamic tab query normalization in SupabaseDataProvider",
     "6c83810: refactor: Remove legacy view methods in SupabaseDataProvider; update DataDisplayManager and main_frame to use execute_generic_query for dynamic tabs",
     "ebec820: refactor: Update sorting logic in StalledWidget to order by timestamp instead of count",
-    "ee93899: refactor: Update import statements to use absolute paths for core modules"
+    "ee93899: refactor: Update import statements to use absolute paths for core modules",
+    "0631f08: [chore] Increment version to v0.16.3-afaaa19-laminas",
+    "afaaa19: feat: Implement generic query function for dynamic query execution in SupabaseDataProvider",
+    "e4c01e8: refactor: Add 'live' parameter to on_mode_change method for enhanced event handling",
+    "9d35322: refactor: Add 'live' parameter to mode_change events for improved event handling",
+    "61a714c: feature: Daily kills view",
+    "0750c8a: [chore] Increment version to v0.16.2-367cdfa-laminas",
+    "367cdfa: refactor: Invalidate metadata cache in SupabaseDataProvider and DataDisplayManager to ensure new views are recognized",
+    "680b52a: refactor: Remove stdout redirection from MessageBus to resolve infinite loop in debug mode",
+    "224b831: refactor: Remove unused import of ThreadPoolExecutor in RealtimeBridge",
+
+    # Version v0.16.1-4dd7627-laminas-docker,
+    "4962ae2: [chore] Increment version to v0.16.1-4dd7627-laminas",
+    "4dd7627: refactor: Enhance auto-sizing mechanism in DarkListCtrl to prevent multiple calls",
+    "747ec20: refactor: Improve shard entry validation logic in ShardListWidget",
+
+    # Version v0.16.0-2de91fb-laminas-docker,
+    "98b64c5: [chore] Increment version to v0.16.0-2de91fb-laminas",
+    "2de91fb: [chore] Increment version to v0.15.0-53fca67-laminas",
+    "53fca67: refactor: Enhance auto-sizing functionality in DarkListCtrl methods",
+    "bd7d0b3: refactor: Update import statements to use absolute paths for consistency across modules",
+    "83de46e: refactor: Replace CustomListCtrl with DarkListCtrl in SharedLogsWidget and StalledWidget for consistent theming",
+    "a5cf9af: refactor: Replace CustomListCtrl with DarkListCtrl across multiple widgets for consistent theming",
+    "4d4b497: refactor: Change shard_data structure to a list and prevent duplicate entries",
+    "c446c85: feat: Implement ShardListWidget for managing shard data and UI integration",
+    "ea22261: refactor: Remove debug logging for specific problematic users in member parsing",
+    "7691e6c: Refactor code structure for improved readability and maintainability"
 ]
