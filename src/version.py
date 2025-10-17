@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 17
-RELEASE = 1
+RELEASE = 2
 MATURITY = "onyx"  # "alpha", "beta", or "final"
-PATCH = "da462c8"
+PATCH = "79946b4"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,6 +17,8 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.17.x series,
+    "79946b4: feat: Add hidden imports for wxPython in build scripts and update requirements",
+    "5b991b7: [chore] Increment version to v0.17.1-da462c8-onyx",
     "da462c8: Add hidden imports for wxPython and clean up build.py",
     "9f5ef26: [chore] Increment version to v0.17.0-d476f9d-onyx",
     "d476f9d: feat: Update .gitignore to include new directories for rsi_browser_session, specs, specify, spec-workflow, and qwen",
