@@ -741,27 +741,31 @@ def build_pyinstaller_command(target_file, name, windowed=True):
     Build PyInstaller command using Plumbum's elegant syntax
     """
     cmd = pyinstaller["--onefile", "--clean"]
-    
+
     # Add mode
     if windowed:
         cmd = cmd["--windowed"]
     else:
         cmd = cmd["--console"]
-    
+
+    # Add hidden imports for wxPython internal modules
+    cmd = cmd["--hidden-import", "wx._xml"]
+    cmd = cmd["--hidden-import", "wx._core"]
+
     # Add data files
     cmd = cmd["--add-data", f"{CONFIG_TEMPLATE};."]
     cmd = cmd["--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_red.png'};assets"]
     cmd = cmd["--add-data", f"{SRC_DIR / 'assets' / 'icon_connection_green.png'};assets"]
     cmd = cmd["--add-data", f"{SRC_DIR / 'assets' / 'SCLogAnalyzer.ico'};assets"]
-    
+
     # Add binaries
     cmd = cmd["--add-binary", f"{VENV_DIR / 'Lib' / 'site-packages' / 'pyzbar' / 'libiconv.dll'};."]
     cmd = cmd["--add-binary", f"{VENV_DIR / 'Lib' / 'site-packages' / 'pyzbar' / 'libzbar-64.dll'};."]
-    
+
     # Add icon and name
     cmd = cmd["--icon", "src/assets/SCLogAnalyzer.ico"]
     cmd = cmd["--name", name, target_file]
-    
+
     return cmd
 
 
