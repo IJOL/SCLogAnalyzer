@@ -751,6 +751,9 @@ def build_pyinstaller_command(target_file, name, windowed=True):
     # Add hidden imports for wxPython internal modules
     cmd = cmd["--hidden-import", "wx._xml"]
     cmd = cmd["--hidden-import", "wx._core"]
+    cmd = cmd["--hidden-import", "wx.richtext"]
+    cmd = cmd["--hidden-import", "wx.xml"]
+    cmd = cmd["--hidden-import", "wx.xrc"]
 
     # Add data files
     cmd = cmd["--add-data", f"{CONFIG_TEMPLATE};."]

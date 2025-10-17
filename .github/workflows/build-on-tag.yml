@@ -34,6 +34,11 @@ jobs:
         run: |
           .\venv\Scripts\activate
           pyinstaller --onefile --windowed --clean `
+            --hidden-import wx._xml `
+            --hidden-import wx._core `
+            --hidden-import wx.richtext `
+            --hidden-import wx.xml `
+            --hidden-import wx.xrc `
             --add-data "src/config.json.template;." `
             --add-data "src/assets/icon_connection_red.png;assets" `
             --add-data "src/assets/icon_connection_green.png;assets" `
