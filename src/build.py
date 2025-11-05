@@ -23,8 +23,9 @@ DIST_DIR = ROOT_DIR / "dist"
 NUITKA_BUILD_DIR = ROOT_DIR / "nuitka-build"
 CONFIG_TEMPLATE = SRC_DIR / "config.json.template"
 
-# Default virtual environment directory name (can be overridden via CLI)
-DEFAULT_VENV_NAME = ".venv"
+# Default virtual environment directory names
+DEFAULT_VENV_NAME = ".venv"      # Development environment
+BUILD_VENV_NAME = "build-venv"   # Build environment (isolated for reproducible builds)
 # This will be overwritten after parsing CLI args, but provide default for function definitions
 VENV_DIR = ROOT_DIR / DEFAULT_VENV_NAME
 
@@ -513,21 +514,21 @@ def commit_and_push_changes(version, push=False, dry_run=False):
     try:
         # Use the version that was calculated by the increment functions
         display_version = version
-            
-        run_command(git["add", str(VERSION_FILE)], 
+
+        run_command(git["add", str(VERSION_FILE)],
                    dry_run=dry_run, description=f"Stage version.py changes")
-        run_command(git["commit", "-m", f"[chore] Increment version to {display_version}"], 
+        run_command(git["commit", "-m", f"[chore] Increment version to {display_version}"],
                    dry_run=dry_run, description=f"Commit version {display_version}")
-        
+
         print(f"Changes committed for version {display_version}")
-        
+
         if push:
             print("Pushing changes to remote repository...")
-            run_command(git["push"], 
+            run_command(git["push"],
                        dry_run=dry_run, description="Push to remote repository")
         else:
             print("Skipping push to remote repository. Use --push to push changes.")
-        
+
         return True
     except ProcessExecutionError as e:
         print(f"Error committing/pushing changes: {e}")
@@ -863,6 +864,61 @@ def build_nuitka_executable(windowed=True, dry_run=False):
         return False
 
 
+def update_requirements_txt(dry_run=False):
+    """
+    Update requirements.txt with complete pip freeze output
+    This ensures all dependencies (including transitive) are pinned
+    """
+    from datetime import datetime
+
+    if dry_run:
+        print("[DRY-RUN] Would update requirements.txt with pip freeze output")
+        return True
+
+    try:
+        print("Updating requirements.txt with complete dependency tree...")
+
+        # Get pip freeze output
+        freeze_output = pip["freeze"]()
+
+        # Get Python version
+        python_version_output = python["--version"]()
+        python_version = python_version_output.strip().split()[1]
+
+        # Create header
+        header = f"""# Complete frozen dependencies for SCLogAnalyzer
+# Generated from: pip freeze
+# Date: {datetime.now().strftime('%Y-%m-%d')}
+# Python: {python_version}
+#
+# To update dependencies:
+# 1. Edit requirements.in with desired packages
+# 2. Run: pip install -r requirements.in
+# 3. Run: python src/build.py --update-requirements
+# 4. Test locally before committing
+
+"""
+
+        # Write to requirements.txt
+        requirements_file = ROOT_DIR / "requirements.txt"
+        with open(requirements_file, 'w', encoding='utf-8') as f:
+            f.write(header)
+            f.write(freeze_output)
+
+        # Count packages
+        package_count = len(freeze_output.strip().split('\n'))
+
+        print(f"✓ requirements.txt updated successfully!")
+        print(f"✓ Total packages: {package_count}")
+        print(f"✓ Python version: {python_version}")
+
+        return True
+
+    except ProcessExecutionError as e:
+        print(f"Error updating requirements.txt: {e}")
+        return False
+
+
 def main():
     """
     Main function to run the build process using Plumbum
@@ -871,44 +927,64 @@ def main():
     parser = argparse.ArgumentParser(description='Build SC Log Analyzer with Plumbum')
     parser.add_argument('--push', '-p', action='store_true', help='Push changes to remote repository')
     parser.add_argument('--increment', '-i', action='store_true', help='Increment version')
-    parser.add_argument('--minor', type=str, metavar='MATURITY', 
+    parser.add_argument('--minor', type=str, metavar='MATURITY',
                        help='Increment minor version and set maturity (e.g., --minor alpha)')
-    parser.add_argument('--major', type=str, metavar='MATURITY', 
+    parser.add_argument('--major', type=str, metavar='MATURITY',
                        help='Increment major version and set maturity (e.g., --major beta)')
     parser.add_argument('--build', '-b', action='store_true', help='Build executables with PyInstaller')
     parser.add_argument('--nuitka', '-n', action='store_true', help='Build executable with Nuitka')
+    parser.add_argument('--update-requirements', '-u', action='store_true', help='Update requirements.txt with pip freeze')
     parser.add_argument('--test', '-t', action='store_true', help='Mark as test version')
     parser.add_argument('--skip-venv', action='store_true', help='Skip virtual environment activation')
     parser.add_argument('--skip-requirements', action='store_true', help='Skip installing requirements')
     parser.add_argument('--console', '-c', action='store_true', help='Build executable in console mode')
-    parser.add_argument('--dry-run', '-d', action='store_true', 
+    parser.add_argument('--dry-run', '-d', action='store_true',
                        help='Show commands that would be executed without running them')
     parser.add_argument('--venv-dir', default=DEFAULT_VENV_NAME,
                         help='Relative path/name of the virtual environment directory (default: .venv)')
     args = parser.parse_args()
-    
+
     global VENV_DIR
 
-    # Apply CLI venv selection
-    VENV_DIR = ROOT_DIR / args.venv_dir
+    # Use build-venv for build operations if --venv-dir not explicitly specified
+    if (args.build or args.nuitka) and args.venv_dir == DEFAULT_VENV_NAME:
+        VENV_DIR = ROOT_DIR / BUILD_VENV_NAME
+        print(f"Using isolated build environment: {BUILD_VENV_NAME}")
+    else:
+        # Apply CLI venv selection or default
+        VENV_DIR = ROOT_DIR / args.venv_dir
 
     # Add dry-run info
     if args.dry_run:
         print("[DRY-RUN MODE] Showing commands that would be executed")
         print("=" * 60)
     
+    # Handle --update-requirements as standalone operation
+    if args.update_requirements:
+        print("=== Updating requirements.txt ===")
+        if update_requirements_txt(dry_run=args.dry_run):
+            print("\nrequirements.txt updated successfully!")
+            print("To commit: git add requirements.txt && git commit -m 'chore: Update dependencies'")
+        else:
+            print("Failed to update requirements.txt")
+            return 1
+
+        # If only updating requirements, exit here
+        if not (args.increment or args.minor or args.major or args.build or args.nuitka):
+            return 0
+
     # Validar que solo se use una operación de versión a la vez
     version_ops = [args.increment, args.minor, args.major]
     version_ops_count = sum(1 for op in version_ops if op)
     if version_ops_count > 1:
         print("Error: Solo se puede usar una operación de versión a la vez (--increment, --minor, --major)")
         return 1
-    
+
     # Smart default behavior: auto-increment and optionally auto-push
     if not (args.increment or args.minor or args.major or args.build or args.nuitka):
         should_increment, should_push, reason = should_auto_increment_and_push(dry_run=args.dry_run)
         print(f"Auto-detection: {reason}")
-        
+
         if should_increment:
             args.increment = True
             if should_push and not args.push:  # Only set if not explicitly specified
@@ -917,8 +993,8 @@ def main():
         else:
             print("No action needed - no new non-chore commits found")
             return 0
-    
-        
+
+
     # Step 1: Version operations
     version = None
     if args.increment:

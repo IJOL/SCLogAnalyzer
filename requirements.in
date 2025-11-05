@@ -1,0 +1,56 @@
+# Direct dependencies for SCLogAnalyzer
+# Use this file to update dependencies, then regenerate requirements.txt with:
+# pip install -r requirements.in && pip freeze > requirements.txt
+
+# Core GUI framework
+wxPython
+
+# File monitoring
+watchdog
+
+# HTTP and web scraping
+requests
+beautifulsoup4
+
+# Build tools
+pyinstaller
+nuitka
+
+# Discord integration
+discord.py
+
+# Image processing and QR codes
+Pillow
+pyzbar
+
+# Windows integration
+pywin32
+pynput
+
+# Screen capture
+mss
+
+# System utilities
+psutil
+
+# Color utilities
+webcolors
+
+# Database integration
+supabase
+
+# Environment management
+python-dotenv
+
+# Clipboard utilities
+pyperclip
+
+# Shell command utilities
+plumbum
+
+# Testing
+pytest
+pytest-mock
+
+# Browser automation (for testing/scraping)
+playwright
