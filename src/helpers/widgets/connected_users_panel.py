@@ -15,6 +15,7 @@ from helpers.widgets.freezer_widget import FreezerWidget
 from helpers.ui.ui_components import DarkThemeButton
 from helpers.widgets.org_members_widget import OrgMembersWidget
 from helpers.widgets.shard_list_widget import ShardListWidget
+from helpers.widgets.alarms_timers_widget import AlarmsTimersWidget
 
 # --- 1. Add checkbox images for filtering ---
 
@@ -159,10 +160,22 @@ class ConnectedUsersPanel(wx.Panel):
 
         left_sizer.Add(filter_sizer, 0, wx.ALL, 5)
 
-        # Lista de logs compartidos usando SharedLogsWidget
+        # Splitter para logs compartidos y widget de alarmas/timers
+        logs_alarms_splitter = wx.SplitterWindow(left_panel, style=wx.SP_LIVE_UPDATE | wx.SP_3D)
+        logs_alarms_splitter.SetMinimumPaneSize(250)
+        logs_alarms_splitter.SetSashGravity(0.3)  # 30% para alarmas, 70% para logs
+
+        # Widget de alarmas y cronómetros (izquierda)
+        self.alarms_timers_widget = AlarmsTimersWidget(logs_alarms_splitter)
+
+        # Lista de logs compartidos usando SharedLogsWidget (derecha)
         from helpers.widgets.shared_logs_widget import SharedLogsWidget
-        self.shared_logs = SharedLogsWidget(left_panel, max_logs=500)
-        left_sizer.Add(self.shared_logs, 1, wx.EXPAND | wx.ALL, 5)
+        self.shared_logs = SharedLogsWidget(logs_alarms_splitter, max_logs=500)
+
+        # Configurar splitter vertical (alarmas a la izquierda, logs a la derecha)
+        logs_alarms_splitter.SplitVertically(self.alarms_timers_widget, self.shared_logs)
+
+        left_sizer.Add(logs_alarms_splitter, 1, wx.EXPAND | wx.ALL, 5)
         
         # Botones de control
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
