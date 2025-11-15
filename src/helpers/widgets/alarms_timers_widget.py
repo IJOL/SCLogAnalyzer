@@ -320,6 +320,9 @@ class AlarmsTimersWidget(wx.Panel):
         self._timers: Dict[str, Timer] = {}
         self._alarms: Dict[str, Alarm] = {}
         self._lock = RLock()
+        
+        # Current username tracking
+        self._current_username = ""
 
         # UI update timer
         self._update_timer: Optional[wx.Timer] = None
@@ -331,6 +334,11 @@ class AlarmsTimersWidget(wx.Panel):
         self._update_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_update_timer)
         self._update_timer.Start(100)  # 100ms = 10 updates per second
+
+        # Listen for shared alarms from remote_realtime_event
+        message_bus.on("remote_realtime_event", self._on_remote_realtime_event)
+        # Listen for username changes
+        message_bus.on("username_change", self._on_username_change)
 
     def _create_ui(self):
         """Create the widget UI structure."""
@@ -455,7 +463,13 @@ class AlarmsTimersWidget(wx.Panel):
         self.btn_delete.SetToolTip("Eliminar")
         self.btn_delete.Bind(wx.EVT_BUTTON, self._on_context_delete)
         self.btn_delete.Enable(False)
-        sizer.Add(self.btn_delete, 0, wx.RIGHT, 10)
+        sizer.Add(self.btn_delete, 0, wx.RIGHT, 3)
+
+        self.btn_share = MiniDarkThemeButton(panel, label="📢")
+        self.btn_share.SetToolTip("Compartir alarma")
+        self.btn_share.Bind(wx.EVT_BUTTON, self._on_context_share)
+        self.btn_share.Enable(False)
+        sizer.Add(self.btn_share, 0, wx.RIGHT, 10)
 
         # Separator
         separator2 = wx.StaticText(panel, label="│")
@@ -529,6 +543,7 @@ class AlarmsTimersWidget(wx.Panel):
             self.btn_plus.Enable(False)
             self.btn_minus.Enable(False)
             self.btn_delete.Enable(True)
+            self.btn_share.Enable(False)
         elif item_type == 'alarm':
             state = item.get_state()
             is_active = state != "expired"
@@ -538,6 +553,7 @@ class AlarmsTimersWidget(wx.Panel):
             self.btn_plus.Enable(is_active)
             self.btn_minus.Enable(is_active)
             self.btn_delete.Enable(True)
+            self.btn_share.Enable(is_active)
 
     def _on_item_deselected(self, event):
         """Handle item deselection to disable all context buttons."""
@@ -551,6 +567,8 @@ class AlarmsTimersWidget(wx.Panel):
         self.btn_plus.Enable(False)
         self.btn_minus.Enable(False)
         self.btn_delete.Enable(False)
+        self.btn_share.Enable(False)
+        self.btn_share.Enable(False)
 
     def _get_selected_item(self):
         """Get the currently selected item from the list."""
@@ -634,6 +652,113 @@ class AlarmsTimersWidget(wx.Panel):
                 self._alarms.clear()
         
         dlg.Destroy()
+
+    def _on_context_share(self, event):
+        """Handle share alarm button click."""
+        item_type, item = self._get_selected_item()
+        if item_type != 'alarm' or not item:
+            return
+
+        # Show dialog to edit alarm name before sharing
+        alarm = item
+        remaining = alarm.get_remaining_time()
+        seconds_remaining = int(remaining)
+        
+        if seconds_remaining <= 0:
+            wx.MessageBox("No se pueden compartir alarmas expiradas", "Error", wx.OK | wx.ICON_WARNING)
+            return
+
+        # Format time for display
+        minutes = seconds_remaining // 60
+        seconds = seconds_remaining % 60
+        time_display = f"{minutes}:{seconds:02d}"
+
+        # Dialog to edit name
+        dlg = wx.TextEntryDialog(
+            self,
+            f"Nombre para la alarma compartida ({time_display}):",
+            "Compartir Alarma",
+            alarm.name
+        )
+
+        if dlg.ShowModal() == wx.ID_OK:
+            shared_name = dlg.GetValue().strip()
+            # Use alarm name if no name provided
+            if not shared_name:
+                shared_name = alarm.name
+            
+            if shared_name:
+                # Emit realtime event to share alarm (using seconds)
+                message_bus.emit("realtime_event", {
+                    'type': 'shared_alarm',
+                    'name': shared_name,
+                    'seconds': seconds_remaining,
+                    'content': f"⏰ Alarma compartida: {shared_name} ({time_display})"
+                })
+                
+                # Show confirmation
+                message_bus.publish(
+                    content=f"Alarma '{shared_name}' compartida ({time_display})",
+                    level=MessageLevel.INFO
+                )
+
+        dlg.Destroy()
+
+    def _on_remote_realtime_event(self, username, event_data):
+        """Handle remote realtime events."""
+        try:
+            if event_data.get('type') == 'shared_alarm':
+                # Ignore our own shared alarms
+                if username == self._current_username:
+                    return
+                
+                # Extract alarm data
+                alarm_name = event_data.get('name')
+                seconds = event_data.get('seconds')
+                
+                if alarm_name and seconds and isinstance(seconds, (int, float)) and seconds > 0:
+                    # Convert seconds to minutes for Alarm constructor (rounded)
+                    minutes = round(seconds / 60.0)
+                    
+                    # Add sender's username to alarm name
+                    full_alarm_name = f"[{username}] {alarm_name}"
+                    
+                    # Create alarm, but manually set the exact remaining seconds
+                    alarm = Alarm(max(1, minutes), full_alarm_name)
+                    # Override the remaining seconds to use exact value
+                    alarm._remaining_seconds = float(seconds)
+                    alarm.start()
+                    
+                    with self._lock:
+                        self._alarms[alarm.id] = alarm
+                    
+                    # Format time for display
+                    mins = int(seconds // 60)
+                    secs = int(seconds % 60)
+                    time_display = f"{mins}:{secs:02d}"
+                    
+                    # Show notification
+                    message_bus.emit("show_windows_notification", 
+                        f"⏰ Alarma compartida por {username}: {alarm_name} ({time_display})")
+                    
+                    message_bus.publish(
+                        content=f"Alarma recibida de {username}: {alarm_name} ({time_display})",
+                        level=MessageLevel.INFO
+                    )
+                    
+                    message_bus.publish(
+                        content=f"Alarma recibida de {username}: {alarm_name} ({minutes} min)",
+                        level=MessageLevel.INFO
+                    )
+        except Exception as e:
+            message_bus.publish(
+                content=f"Error handling shared alarm: {e}",
+                level=MessageLevel.ERROR
+            )
+
+    def _on_username_change(self, username, old_username):
+        """Handle username change events."""
+        self._current_username = username
 
     def add_timer(self, name: str) -> Optional[Timer]:
         """
