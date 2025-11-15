@@ -51,6 +51,9 @@ plumbum
 # Testing
 pytest
 pytest-mock
+pytest-cov  # Code coverage reporting
+pytest-timeout  # Test timeout management
+pytest-xdist  # Parallel test execution
 
 # Browser automation (for testing/scraping)
 playwright
