@@ -1093,19 +1093,19 @@ class AlarmsTimersWidget(wx.Panel):
         state = timer.get_state()
 
         if state == "running":
-            lap_item = menu.Append(wx.ID_ANY, "🏁 Registrar Lap")
-            self.Bind(wx.EVT_MENU, lambda evt: self.on_timer_lap(timer), lap_item)
-
-            stop_item = menu.Append(wx.ID_ANY, "⏸️ Pausar")
-            self.Bind(wx.EVT_MENU, lambda evt: self.on_timer_toggle(timer), stop_item)
+            pause_item = menu.Append(wx.ID_ANY, "⏸️ Pausar")
+            self.Bind(wx.EVT_MENU, self._on_context_pause, pause_item)
+            
+            lap_item = menu.Append(wx.ID_ANY, "🏁 Lap")
+            self.Bind(wx.EVT_MENU, self._on_context_lap, lap_item)
         else:
             start_item = menu.Append(wx.ID_ANY, "▶️ Iniciar")
-            self.Bind(wx.EVT_MENU, lambda evt: self.on_timer_toggle(timer), start_item)
+            self.Bind(wx.EVT_MENU, self._on_context_start, start_item)
 
         menu.AppendSeparator()
 
         delete_item = menu.Append(wx.ID_ANY, "🗑️ Eliminar")
-        self.Bind(wx.EVT_MENU, lambda evt: self.remove_item(timer.id), delete_item)
+        self.Bind(wx.EVT_MENU, self._on_context_delete, delete_item)
 
         self.list_ctrl.PopupMenu(menu, point)
         menu.Destroy()
@@ -1117,21 +1117,30 @@ class AlarmsTimersWidget(wx.Panel):
         state = alarm.get_state()
 
         if state != "expired":
-            start_item = menu.Append(wx.ID_ANY, "⏯️ Iniciar/Pausar")
-            self.Bind(wx.EVT_MENU, lambda evt: self.on_alarm_toggle(alarm), start_item)
+            if state == "running":
+                pause_item = menu.Append(wx.ID_ANY, "⏸️ Pausar")
+                self.Bind(wx.EVT_MENU, self._on_context_pause, pause_item)
+            else:
+                start_item = menu.Append(wx.ID_ANY, "▶️ Iniciar")
+                self.Bind(wx.EVT_MENU, self._on_context_start, start_item)
 
             menu.AppendSeparator()
 
-            plus_item = menu.Append(wx.ID_ANY, "➕ +1 Minuto")
-            self.Bind(wx.EVT_MENU, lambda evt: self.on_alarm_adjust(alarm, 1), plus_item)
+            plus_item = menu.Append(wx.ID_ANY, "➕ +1 min")
+            self.Bind(wx.EVT_MENU, self._on_context_plus, plus_item)
 
-            minus_item = menu.Append(wx.ID_ANY, "➖ -1 Minuto")
-            self.Bind(wx.EVT_MENU, lambda evt: self.on_alarm_adjust(alarm, -1), minus_item)
+            minus_item = menu.Append(wx.ID_ANY, "➖ -1 min")
+            self.Bind(wx.EVT_MENU, self._on_context_minus, minus_item)
+
+            menu.AppendSeparator()
+            
+            share_item = menu.Append(wx.ID_ANY, "📤 Compartir")
+            self.Bind(wx.EVT_MENU, self._on_context_share, share_item)
 
             menu.AppendSeparator()
 
         delete_item = menu.Append(wx.ID_ANY, "🗑️ Eliminar")
-        self.Bind(wx.EVT_MENU, lambda evt: self.remove_item(alarm.id), delete_item)
+        self.Bind(wx.EVT_MENU, self._on_context_delete, delete_item)
 
         self.list_ctrl.PopupMenu(menu, point)
         menu.Destroy()
