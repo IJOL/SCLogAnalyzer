@@ -2,9 +2,9 @@
 
 MAJOR = 0
 MINOR = 17
-RELEASE = 2
+RELEASE = 3
 MATURITY = "onyx"  # "alpha", "beta", or "final"
-PATCH = "79946b4"
+PATCH = "e34d102"
 
 VERSION = f"v{MAJOR}.{MINOR}.{RELEASE}-{PATCH}-{MATURITY}"
 __version__ = VERSION  
@@ -17,9 +17,20 @@ def get_version():
 # Recent commit messages
 COMMIT_MESSAGES = [
     # Commits for v0.17.x series,
+    "e34d102: feat: Refactor context menu actions for timers and alarms in AlarmsTimersWidget",
+    "a667494: feat: Add sharing functionality for alarms and handle remote alarm events",
+    "6634ee9: feat: Integrate Alarms and Timers widget into Connected Users Panel",
+    "f767455: feat: Add requirements.in and update requirements.txt with complete dependency list",
+
+    # Version v0.17.2-79946b4-onyx-docker,
+    "7ba8054: [chore] Increment version to v0.17.2-79946b4-onyx",
     "79946b4: feat: Add hidden imports for wxPython in build scripts and update requirements",
+
+    # Version v0.17.1-da462c8-onyx-docker,
     "5b991b7: [chore] Increment version to v0.17.1-da462c8-onyx",
     "da462c8: Add hidden imports for wxPython and clean up build.py",
+
+    # Version v0.17.0-d476f9d-onyx-docker,
     "9f5ef26: [chore] Increment version to v0.17.0-d476f9d-onyx",
     "d476f9d: feat: Update .gitignore to include new directories for rsi_browser_session, specs, specify, spec-workflow, and qwen",
     "1b43959: feat: Enhance LogFileHandler by managing message bus subscriptions for proper cleanup",
@@ -57,11 +68,15 @@ COMMIT_MESSAGES = [
     "6c83810: refactor: Remove legacy view methods in SupabaseDataProvider; update DataDisplayManager and main_frame to use execute_generic_query for dynamic tabs",
     "ebec820: refactor: Update sorting logic in StalledWidget to order by timestamp instead of count",
     "ee93899: refactor: Update import statements to use absolute paths for core modules",
+
+    # Version v0.16.3-afaaa19-laminas-docker,
     "0631f08: [chore] Increment version to v0.16.3-afaaa19-laminas",
     "afaaa19: feat: Implement generic query function for dynamic query execution in SupabaseDataProvider",
     "e4c01e8: refactor: Add 'live' parameter to on_mode_change method for enhanced event handling",
     "9d35322: refactor: Add 'live' parameter to mode_change events for improved event handling",
     "61a714c: feature: Daily kills view",
+
+    # Version v0.16.2-367cdfa-laminas-docker,
     "0750c8a: [chore] Increment version to v0.16.2-367cdfa-laminas",
     "367cdfa: refactor: Invalidate metadata cache in SupabaseDataProvider and DataDisplayManager to ensure new views are recognized",
     "680b52a: refactor: Remove stdout redirection from MessageBus to resolve infinite loop in debug mode",
